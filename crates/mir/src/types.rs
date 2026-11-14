@@ -228,7 +228,8 @@ impl MirType {
 }
 
 impl MirElementary {
-    /// Its storage, as HIR lays it out: a 32-bit lane, or 8 bytes.
+    /// Its storage, as HIR lays it out: its own size, a BOOL and an 8-bit
+    /// integer one byte, a 16-bit one two.
     ///
     /// The date and time encodings: TIME is i32 ms, LTIME i64 ns; DATE i32
     /// days since 1970, LDATE i64; TOD i32 ms of the day, LTOD i64 ns; DT
@@ -271,9 +272,9 @@ impl MirElementary {
         }
     }
 
-    /// IEC semantic bit width (BYTE = 8, WORD = 16), distinct from the
-    /// 4-byte-aligned storage size; shifts, rotates and narrowing casts
-    /// respect it.
+    /// IEC semantic bit width (BYTE = 8, WORD = 16), distinct from the 32-bit
+    /// lane a value of 32 bits or fewer is computed in; shifts, rotates and
+    /// narrowing casts respect it.
     pub fn rk_bits(self) -> u32 {
         match self {
             MirElementary::Bool => 1,
