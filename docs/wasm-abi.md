@@ -40,7 +40,7 @@ Inside the component, one core module does the work:
 ```schema
 core module                         one for the workspace
 ├─ IMPORT
-│  ├─ wasi:clocks now, utc-offset   the clocks a timer or Std.Timers reads, and always in debug
+│  ├─ wasi:clocks, wasi:cli         what a timer, Std.Timers or Std.Console uses, all of it in debug
 │  └─ {extern} FUNCTION             the host's, when you declare some
 ├─ EXPORT                           what the component calls
 │  ├─ __init                        every POU's starting values, called first
@@ -222,7 +222,8 @@ A record of two fields or more is written by the host at an address the call pas
 
 A WASI import keeps the types WASI's WIT gives it, in their core form: `VAR_INPUT` are the parameters, and the `VAR_OUTPUT` and the return type the result, as above.
 A record of scalars comes back in `VAR_OUTPUT`, one for each of its fields in their order.
-`Std.Timers` declares WASI's system clock this way, `now` with `seconds: LINT` and `nanoseconds: UDINT`, and the zone's `utc-offset` with `known: BOOL` and `offset: LINT`: its `option<s64>` is laid out as a record of a byte that says whether the value is there, then the value.
+The system clock's `now` is declared this way, with `seconds: LINT` and `nanoseconds: UDINT`, and the zone's `utc-offset` with `is_some: BOOL` and `value: LINT`: its `option<s64>` is laid out as a record of a byte that says whether the value is there, then the value.
+The standard library's WASI declarations are written by rk-bindgen from WASI's WIT, in `stdlib/generated/`, and only the standard library reaches them.
 A `REF_TO` input is an address, where a record can come back too.
 A STRUCT, an ARRAY or an instance input is refused (`E1502`): it would go as an address into rk's own layout, which no WASI function reads.
 
@@ -298,9 +299,9 @@ The clocks a module imports are WASI 0.3's, in their core forms, and the host pr
 | `wasi:clocks/timezone@0.3.0` `utc-offset` | `(i64, i32, i32)` | takes an instant as its seconds and nanoseconds, and writes at the address whether the host has a zone, in one byte, and if it has, 8 bytes on, the nanoseconds the zone is east of UTC at that instant |
 
 The time zone is still unstable in WASI 0.3, `@unstable(feature = clocks-timezone)`: a host has it only with that feature on, and its signature can change in a 0.3 release.
-A release build imports the ones the program reads; a debug build imports all three, so a host that has no zone still defines `utc-offset`, answering that it has none, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.
+A release build imports the ones the program reads; a debug build imports every function the standard library declares from these interfaces, `get-resolution`, `wait-until` and `wait-for` included, so a host provides the clocks whole, as wasmtime-wasi does, and a host that has no zone still defines `utc-offset`, answering that it has none, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.
 
-[`Std.Console`](console.md) writes to WASI 0.3's standard output and error, `wasi:cli/stdout@0.3.0` and `wasi:cli/stderr@0.3.0`, with the imports it declares.
+[`Std.Console`](console.md) writes to WASI 0.3's standard output and error, `wasi:cli/stdout@0.3.0` and `wasi:cli/stderr@0.3.0`, through the declarations rk-bindgen writes for them.
 Each is one function, `write-via-stream`, which takes a stream of bytes.
 A block makes its stream at its first request, hands the reading end to the host, keeps the other end, and writes to it with the component model's stream built-ins:
 
@@ -315,4 +316,4 @@ A component's host provides all four by providing WASI's command line interfaces
 A scan never waits for a write: one the host has not taken stays pending in the block, `BUSY`, and a later scan sees it end.
 The host's side of the stream runs while the host calls the component through wasmtime's async API; a synchronous call hands over only what the host takes within it.
 
-Both outputs are written with the one block `Std.Console` imports beside the standard output's function, so a program that writes to either imports the standard output's interface; a debug build imports both.
+Each output's stream is made, and its future given up, with the built-ins named after its own `write-via-stream`. Both streams are written with the standard output's write: a stream's type is its element's, so one write takes any stream of bytes. The built-ins come from the component model, not from the host: a release build that writes only to the standard error imports only that interface. A debug build imports both.
