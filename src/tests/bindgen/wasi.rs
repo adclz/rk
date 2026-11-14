@@ -37,7 +37,7 @@ fn every_interface() -> String {
 fn every_wasi_interface_builds_into_a_component(mut with_db: RootDatabase) {
     let bindings = generated(&every_interface());
     let (mir, core) = built(&mut with_db, &bindings.files, &[]);
-    assert_abi(&bindings, &core);
+    assert_abi(&bindings, &mir, &core);
     let component = wrapped(&with_db, &mir, &core);
     for package in debug_format::wit::WASI {
         let (name, _) = package.id.split_once('@').expect("a version");
@@ -84,39 +84,17 @@ fn what_every_wasi_interface_declares() {
     wasi-clocks-timezone.st: UTC_OFFSET
         left out `iana-id`: its result holds a string, which an import cannot give back yet
         left out `to-debug-string`: its result holds a string, which an import cannot give back yet
-    wasi-filesystem-types.st: FILESIZE, LINK_COUNT, ADVICE, DESCRIPTOR_DROP, DESCRIPTOR_READ_VIA_STREAM, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE, DESCRIPTOR_WRITE_VIA_STREAM, DESCRIPTOR_APPEND_VIA_STREAM, DESCRIPTOR_READ_DIRECTORY, DIRECTORY_ENTRY_STREAM_NEW, DIRECTORY_ENTRY_STREAM_DROP_READABLE, DIRECTORY_ENTRY_STREAM_DROP_WRITABLE, DESCRIPTOR_IS_SAME_OBJECT
-        left out `descriptor-type`: it is a variant, which ST has no type for yet
-        left out `descriptor-flags`: it is flags, which ST has no type for yet
-        left out `path-flags`: it is flags, which ST has no type for yet
-        left out `open-flags`: it is flags, which ST has no type for yet
-        left out `new-timestamp`: it is a variant, which ST has no type for yet
-        left out `error-code`: it is a variant, which ST has no type for yet
+    wasi-filesystem-types.st: FILESIZE, DESCRIPTOR_TYPE, DESCRIPTOR_FLAGS, PATH_FLAGS, OPEN_FLAGS, LINK_COUNT, NEW_TIMESTAMP, ERROR_CODE, ADVICE, DESCRIPTOR_DROP, DESCRIPTOR_READ_VIA_STREAM, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_READ_RAW, RESULT_FUTURE_READ, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE, DESCRIPTOR_WRITE_VIA_STREAM, DESCRIPTOR_APPEND_VIA_STREAM, DESCRIPTOR_ADVISE_RAW, DESCRIPTOR_ADVISE, DESCRIPTOR_SYNC_DATA_RAW, DESCRIPTOR_SYNC_DATA, DESCRIPTOR_GET_FLAGS_RAW, DESCRIPTOR_GET_FLAGS, DESCRIPTOR_GET_TYPE_RAW, DESCRIPTOR_GET_TYPE, DESCRIPTOR_SET_SIZE_RAW, DESCRIPTOR_SET_SIZE, DESCRIPTOR_READ_DIRECTORY, DIRECTORY_ENTRY_STREAM_NEW, DIRECTORY_ENTRY_STREAM_DROP_READABLE, DIRECTORY_ENTRY_STREAM_DROP_WRITABLE, DESCRIPTOR_SYNC_RAW, DESCRIPTOR_SYNC, DESCRIPTOR_CREATE_DIRECTORY_AT_RAW, DESCRIPTOR_CREATE_DIRECTORY_AT, DESCRIPTOR_STAT_RAW, DESCRIPTOR_STAT, DESCRIPTOR_STAT_AT_RAW, DESCRIPTOR_STAT_AT, DESCRIPTOR_LINK_AT_RAW, DESCRIPTOR_LINK_AT, DESCRIPTOR_OPEN_AT_RAW, DESCRIPTOR_OPEN_AT, DESCRIPTOR_REMOVE_DIRECTORY_AT_RAW, DESCRIPTOR_REMOVE_DIRECTORY_AT, DESCRIPTOR_RENAME_AT_RAW, DESCRIPTOR_RENAME_AT, DESCRIPTOR_SYMLINK_AT_RAW, DESCRIPTOR_SYMLINK_AT, DESCRIPTOR_UNLINK_FILE_AT_RAW, DESCRIPTOR_UNLINK_FILE_AT, DESCRIPTOR_IS_SAME_OBJECT, DESCRIPTOR_METADATA_HASH_RAW, DESCRIPTOR_METADATA_HASH, DESCRIPTOR_METADATA_HASH_AT_RAW, DESCRIPTOR_METADATA_HASH_AT
+        left out what `other` of `descriptor-type` holds: a string, which an import cannot give back yet
+        left out what `other` of `error-code` holds: a string, which an import cannot give back yet
         left out `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan
-        left out `RESULT_FUTURE_READ`: its value holds a variant, which a read cannot give back yet
         left out `RESULT_FUTURE_WRITE`: a future's write is not imported yet
         left out `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
-        left out `[method]descriptor.advise`: its result holds a variant, which an import cannot give back yet
-        left out `[method]descriptor.sync-data`: its result holds a variant, which an import cannot give back yet
-        left out `[method]descriptor.get-flags`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]descriptor.get-type`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]descriptor.set-size`: its result holds a variant, which an import cannot give back yet
         left out `[method]descriptor.set-times`: its parameter `data-access-timestamp` holds a variant, which an import cannot take yet
         left out `DIRECTORY_ENTRY_STREAM_READ` and `DIRECTORY_ENTRY_STREAM_WRITE`: a stream's read or write moves bytes only
         left out `DIRECTORY_ENTRY_STREAM_CANCEL_READ` and `DIRECTORY_ENTRY_STREAM_CANCEL_WRITE`: a cancel blocks the scan
-        left out `[method]descriptor.sync`: its result holds a variant, which an import cannot give back yet
-        left out `[method]descriptor.create-directory-at`: its result holds a variant, which an import cannot give back yet
-        left out `[method]descriptor.stat`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]descriptor.stat-at`: its parameter `path-flags` holds flags, which an import cannot take yet
-        left out `[method]descriptor.set-times-at`: its parameter `path-flags` holds flags, which an import cannot take yet
-        left out `[method]descriptor.link-at`: its parameter `old-path-flags` holds flags, which an import cannot take yet
-        left out `[method]descriptor.open-at`: its parameter `path-flags` holds flags, which an import cannot take yet
-        left out `[method]descriptor.readlink-at`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]descriptor.remove-directory-at`: its result holds a variant, which an import cannot give back yet
-        left out `[method]descriptor.rename-at`: its result holds a variant, which an import cannot give back yet
-        left out `[method]descriptor.symlink-at`: its result holds a variant, which an import cannot give back yet
-        left out `[method]descriptor.unlink-file-at`: its result holds a variant, which an import cannot give back yet
-        left out `[method]descriptor.metadata-hash`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]descriptor.metadata-hash-at`: its parameter `path-flags` holds flags, which an import cannot take yet
+        left out `[method]descriptor.set-times-at`: its parameter `data-access-timestamp` holds a variant, which an import cannot take yet
+        left out `[method]descriptor.readlink-at`: its result holds a string, which an import cannot give back yet
     wasi-filesystem-preopens.st: 
         left out `get-directories`: its result holds a list, which an import cannot give back yet
     wasi-random-insecure-seed.st: GET_INSECURE_SEED
@@ -124,54 +102,22 @@ fn what_every_wasi_interface_declares() {
         left out `get-insecure-random-bytes`: its result holds a list, which an import cannot give back yet
     wasi-random-random.st: GET_RANDOM_U64
         left out `get-random-bytes`: its result holds a list, which an import cannot give back yet
-    wasi-sockets-types.st: IP_ADDRESS_FAMILY, TCP_SOCKET_DROP, UDP_SOCKET_DROP, TCP_SOCKET_STREAM_NEW, TCP_SOCKET_STREAM_DROP_READABLE, TCP_SOCKET_STREAM_DROP_WRITABLE, TCP_SOCKET_SEND, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE, TCP_SOCKET_RECEIVE, TCP_SOCKET_GET_IS_LISTENING, TCP_SOCKET_GET_ADDRESS_FAMILY, UDP_SOCKET_GET_ADDRESS_FAMILY
-        left out `error-code`: it is a variant, which ST has no type for yet
-        left out `ip-address`: it is a variant, which ST has no type for yet
-        left out `ip-socket-address`: it is a variant, which ST has no type for yet
-        left out `[static]tcp-socket.create`: its result holds a result with a value and an error, which an import cannot give back yet
+    wasi-sockets-types.st: ERROR_CODE, IP_ADDRESS_FAMILY, IP_ADDRESS, IP_SOCKET_ADDRESS, TCP_SOCKET_DROP, UDP_SOCKET_DROP, TCP_SOCKET_CREATE_RAW, TCP_SOCKET_CREATE, TCP_SOCKET_LISTEN_RAW, TCP_SOCKET_LISTEN, TCP_SOCKET_STREAM_NEW, TCP_SOCKET_STREAM_DROP_READABLE, TCP_SOCKET_STREAM_DROP_WRITABLE, TCP_SOCKET_SEND, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_READ_RAW, RESULT_FUTURE_READ, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE, TCP_SOCKET_RECEIVE, TCP_SOCKET_GET_LOCAL_ADDRESS_RAW, TCP_SOCKET_GET_LOCAL_ADDRESS, TCP_SOCKET_GET_REMOTE_ADDRESS_RAW, TCP_SOCKET_GET_REMOTE_ADDRESS, TCP_SOCKET_GET_IS_LISTENING, TCP_SOCKET_GET_ADDRESS_FAMILY, TCP_SOCKET_SET_LISTEN_BACKLOG_SIZE_RAW, TCP_SOCKET_SET_LISTEN_BACKLOG_SIZE, TCP_SOCKET_GET_KEEP_ALIVE_ENABLED_RAW, TCP_SOCKET_GET_KEEP_ALIVE_ENABLED, TCP_SOCKET_SET_KEEP_ALIVE_ENABLED_RAW, TCP_SOCKET_SET_KEEP_ALIVE_ENABLED, TCP_SOCKET_GET_KEEP_ALIVE_IDLE_TIME_RAW, TCP_SOCKET_GET_KEEP_ALIVE_IDLE_TIME, TCP_SOCKET_SET_KEEP_ALIVE_IDLE_TIME_RAW, TCP_SOCKET_SET_KEEP_ALIVE_IDLE_TIME, TCP_SOCKET_GET_KEEP_ALIVE_INTERVAL_RAW, TCP_SOCKET_GET_KEEP_ALIVE_INTERVAL, TCP_SOCKET_SET_KEEP_ALIVE_INTERVAL_RAW, TCP_SOCKET_SET_KEEP_ALIVE_INTERVAL, TCP_SOCKET_GET_KEEP_ALIVE_COUNT_RAW, TCP_SOCKET_GET_KEEP_ALIVE_COUNT, TCP_SOCKET_SET_KEEP_ALIVE_COUNT_RAW, TCP_SOCKET_SET_KEEP_ALIVE_COUNT, TCP_SOCKET_GET_HOP_LIMIT_RAW, TCP_SOCKET_GET_HOP_LIMIT, TCP_SOCKET_SET_HOP_LIMIT_RAW, TCP_SOCKET_SET_HOP_LIMIT, TCP_SOCKET_GET_RECEIVE_BUFFER_SIZE_RAW, TCP_SOCKET_GET_RECEIVE_BUFFER_SIZE, TCP_SOCKET_SET_RECEIVE_BUFFER_SIZE_RAW, TCP_SOCKET_SET_RECEIVE_BUFFER_SIZE, TCP_SOCKET_GET_SEND_BUFFER_SIZE_RAW, TCP_SOCKET_GET_SEND_BUFFER_SIZE, TCP_SOCKET_SET_SEND_BUFFER_SIZE_RAW, TCP_SOCKET_SET_SEND_BUFFER_SIZE, UDP_SOCKET_CREATE_RAW, UDP_SOCKET_CREATE, UDP_SOCKET_DISCONNECT_RAW, UDP_SOCKET_DISCONNECT, UDP_SOCKET_GET_LOCAL_ADDRESS_RAW, UDP_SOCKET_GET_LOCAL_ADDRESS, UDP_SOCKET_GET_REMOTE_ADDRESS_RAW, UDP_SOCKET_GET_REMOTE_ADDRESS, UDP_SOCKET_GET_ADDRESS_FAMILY, UDP_SOCKET_GET_UNICAST_HOP_LIMIT_RAW, UDP_SOCKET_GET_UNICAST_HOP_LIMIT, UDP_SOCKET_SET_UNICAST_HOP_LIMIT_RAW, UDP_SOCKET_SET_UNICAST_HOP_LIMIT, UDP_SOCKET_GET_RECEIVE_BUFFER_SIZE_RAW, UDP_SOCKET_GET_RECEIVE_BUFFER_SIZE, UDP_SOCKET_SET_RECEIVE_BUFFER_SIZE_RAW, UDP_SOCKET_SET_RECEIVE_BUFFER_SIZE, UDP_SOCKET_GET_SEND_BUFFER_SIZE_RAW, UDP_SOCKET_GET_SEND_BUFFER_SIZE, UDP_SOCKET_SET_SEND_BUFFER_SIZE_RAW, UDP_SOCKET_SET_SEND_BUFFER_SIZE
+        left out what `other` of `error-code` holds: a string, which an import cannot give back yet
         left out `[method]tcp-socket.bind`: its parameter `local-address` holds a variant, which an import cannot take yet
         left out `[method]tcp-socket.connect`: its parameter `remote-address` holds a variant, which an import cannot take yet
-        left out `[method]tcp-socket.listen`: its result holds a result with a value and an error, which an import cannot give back yet
         left out `TCP_SOCKET_STREAM_READ` and `TCP_SOCKET_STREAM_WRITE`: a stream's read or write moves bytes only
         left out `TCP_SOCKET_STREAM_CANCEL_READ` and `TCP_SOCKET_STREAM_CANCEL_WRITE`: a cancel blocks the scan
         left out `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan
-        left out `RESULT_FUTURE_READ`: its value holds a variant, which a read cannot give back yet
         left out `RESULT_FUTURE_WRITE`: a future's write is not imported yet
         left out `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
-        left out `[method]tcp-socket.get-local-address`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]tcp-socket.get-remote-address`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]tcp-socket.set-listen-backlog-size`: its result holds a variant, which an import cannot give back yet
-        left out `[method]tcp-socket.get-keep-alive-enabled`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]tcp-socket.set-keep-alive-enabled`: its result holds a variant, which an import cannot give back yet
-        left out `[method]tcp-socket.get-keep-alive-idle-time`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]tcp-socket.set-keep-alive-idle-time`: its result holds a variant, which an import cannot give back yet
-        left out `[method]tcp-socket.get-keep-alive-interval`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]tcp-socket.set-keep-alive-interval`: its result holds a variant, which an import cannot give back yet
-        left out `[method]tcp-socket.get-keep-alive-count`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]tcp-socket.set-keep-alive-count`: its result holds a variant, which an import cannot give back yet
-        left out `[method]tcp-socket.get-hop-limit`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]tcp-socket.set-hop-limit`: its result holds a variant, which an import cannot give back yet
-        left out `[method]tcp-socket.get-receive-buffer-size`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]tcp-socket.set-receive-buffer-size`: its result holds a variant, which an import cannot give back yet
-        left out `[method]tcp-socket.get-send-buffer-size`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]tcp-socket.set-send-buffer-size`: its result holds a variant, which an import cannot give back yet
-        left out `[static]udp-socket.create`: its result holds a result with a value and an error, which an import cannot give back yet
         left out `[method]udp-socket.bind`: its parameter `local-address` holds a variant, which an import cannot take yet
         left out `[method]udp-socket.connect`: its parameter `remote-address` holds a variant, which an import cannot take yet
-        left out `[method]udp-socket.disconnect`: its result holds a variant, which an import cannot give back yet
         left out `[method]udp-socket.send`: its parameter `data` holds a list, which an import cannot take yet
-        left out `[method]udp-socket.receive`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]udp-socket.get-local-address`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]udp-socket.get-remote-address`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]udp-socket.get-unicast-hop-limit`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]udp-socket.set-unicast-hop-limit`: its result holds a variant, which an import cannot give back yet
-        left out `[method]udp-socket.get-receive-buffer-size`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]udp-socket.set-receive-buffer-size`: its result holds a variant, which an import cannot give back yet
-        left out `[method]udp-socket.get-send-buffer-size`: its result holds a result with a value and an error, which an import cannot give back yet
-        left out `[method]udp-socket.set-send-buffer-size`: its result holds a variant, which an import cannot give back yet
-    wasi-sockets-ip-name-lookup.st: 
-        left out `error-code`: it is a variant, which ST has no type for yet
-        left out `resolve-addresses`: its result holds a result with a value and an error, which an import cannot give back yet
+        left out `[method]udp-socket.receive`: its result holds a list, which an import cannot give back yet
+    wasi-sockets-ip-name-lookup.st: ERROR_CODE
+        left out what `other` of `error-code` holds: a string, which an import cannot give back yet
+        left out `resolve-addresses`: its result holds a list, which an import cannot give back yet
     ");
 }
 
@@ -202,7 +148,7 @@ fn std_s_interfaces() {
 fn std_s_interfaces_build_into_a_component(mut with_db: RootDatabase) {
     let bindings = generated(rk_bindgen::STD_WORLD);
     let (mir, core) = built(&mut with_db, &bindings.files, &[]);
-    assert_abi(&bindings, &core);
+    assert_abi(&bindings, &mir, &core);
     let component = wrapped(&with_db, &mir, &core);
     for interface in [
         "wasi:cli/stdout@0.3.0",

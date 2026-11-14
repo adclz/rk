@@ -619,7 +619,8 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
 
 /// A future's value comes back as a function's would: nothing, a scalar,
 /// a flag and a side of a result, a flag and an option's value, a record's
-/// fields; a string, or a result with both sides, is not read yet.
+/// fields; a result with both sides in words, which its read is read out
+/// of. A string is not read yet.
 #[rstest]
 fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
@@ -645,6 +646,8 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     NAMESPACE INTERNAL Wasi
     	NAMESPACE Example
     		NAMESPACE Promises
+    			USING Std.Convert;
+
     			TYPE ERROR_CODE : USINT (
     				LOST := 0
     			); END_TYPE
@@ -905,6 +908,48 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
+    			/* The future's read as the host gives it: its value in words of 8 bytes,
+    			   as the canonical ABI lays it out, which `RESULT_U64_FUTURE_READ` reads. */
+    			{extern async 'wasi:example/promises@0.3.0' '[future-read-0]both'}
+    			FUNCTION_BLOCK RESULT_U64_FUTURE_READ_RAW
+    			VAR_INPUT
+    				future : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    			END_FUNCTION_BLOCK
+
+    			/* Reads the value the future holds, which comes back after `DONE`. */
+    			FUNCTION_BLOCK RESULT_U64_FUTURE_READ
+    			VAR_INPUT
+    				future : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				failed : BOOL;
+    				value : ULINT;
+    				error : ERROR_CODE;
+    			END_VAR
+    			VAR
+    				call : RESULT_U64_FUTURE_READ_RAW;
+    			END_VAR
+    				call(future := future);
+    				DONE := call.DONE;
+    				IF call.DONE THEN
+    					value := 0;
+    					error := 0;
+    					failed := call.w0.%X0;
+    					IF failed THEN
+    						error := BYTE_TO_USINT(call.w1.%B0);
+    					ELSE
+    						value := LWORD_TO_ULINT(call.w1);
+    					END_IF;
+    				END_IF;
+    			END_FUNCTION_BLOCK
+
     			/* Lets go of the future's reading end, `future`. */
     			{extern 'wasi:example/promises@0.3.0' '[future-drop-readable-0]both'}
     			FUNCTION RESULT_U64_FUTURE_DROP_READABLE
@@ -944,8 +989,6 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
        - `STRING_FUTURE_WRITE`: a future's write is not imported yet.
        - `STRING_FUTURE_CANCEL_READ` and `STRING_FUTURE_CANCEL_WRITE`: a cancel
          blocks the scan.
-       - `RESULT_U64_FUTURE_READ`: its value holds a result with a value and an
-         error, which a read cannot give back yet.
        - `RESULT_U64_FUTURE_WRITE`: a future's write is not imported yet.
        - `RESULT_U64_FUTURE_CANCEL_READ` and `RESULT_U64_FUTURE_CANCEL_WRITE`:
          a cancel blocks the scan. */

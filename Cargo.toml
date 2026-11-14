@@ -156,6 +156,9 @@ rk-bindgen = { path = "crates/bindgen" }
 # What the bindgen tests check generated imports against: the canonical
 # ABI's core type of each WIT function.
 wit-parser = { workspace = true }
+# Wraps a module built from the declarations of a WIT package of a test's
+# own, which `rk compile` has no WIT for.
+wit-component = { workspace = true }
 wasmtime = "50.0.1"
 # The hosts the console tests build: WASI's standard output and error from
 # wasmtime-wasi, over sinks that are ready, stalled or closed.

@@ -4,7 +4,9 @@
 //! Options and results that come back: an option is its flag `is_some`
 //! then its `value`, a result its flag `failed` then its ok `value` or its
 //! `error`, laid out as the canonical ABI lays the variant out. A result
-//! with both, an option of a compound, and either passed in, are left out.
+//! with both, whose value and error share their place, and an option of a
+//! record come back in words, read out of them. Either passed in is left
+//! out.
 
 use db::RootDatabase;
 use insta::assert_snapshot;
@@ -180,19 +182,157 @@ fn a_result_is_a_flag_and_one_side(mut with_db: RootDatabase) {
     ");
 }
 
-/// What two outputs cannot hold: a result with a value and an error,
-/// which share their place in memory; an option or a result of a record or
-/// a string; an option or a result passed in.
+/// What two outputs are not laid out as comes back in words: a result
+/// with a value and an error, which share their place in memory, and an
+/// option of a record. The side or the value that did not come is zero.
 #[rstest]
-fn what_two_outputs_cannot_hold_is_left_out(mut with_db: RootDatabase) {
+fn what_two_outputs_cannot_hold_comes_back_in_words(mut with_db: RootDatabase) {
+    assert_snapshot!(checked(&mut with_db, r#"
+        package wasi:example@0.3.0;
+
+        interface both-sides {
+            enum error-code { busy, gone }
+            record point { x: f64, y: f64 }
+            both: func() -> result<u32, error-code>;
+            where-is: func() -> option<point>;
+            deep: func() -> result<option<point>, error-code>;
+        }
+
+        world example {
+            import both-sides;
+        }
+    "#), @r"
+    // wasi-example-both-sides.st
+    NAMESPACE INTERNAL Wasi
+    	NAMESPACE Example
+    		NAMESPACE BothSides
+    			USING Std.Convert;
+
+    			TYPE ERROR_CODE : USINT (
+    				BUSY := 0,
+    				GONE := 1
+    			); END_TYPE
+
+    			/* `both` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `BOTH` reads. */
+    			{extern 'wasi:example/both-sides@0.3.0' 'both'}
+    			FUNCTION PRIVATE BOTH_RAW
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION BOTH
+    			VAR_OUTPUT
+    				failed : BOOL;
+    				value : UDINT;
+    				error : ERROR_CODE;
+    			END_VAR
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    				BOTH_RAW(w0 => w0, w1 => w1);
+    				value := 0;
+    				error := 0;
+    				failed := w0.%X0;
+    				IF failed THEN
+    					error := BYTE_TO_USINT(w0.%B4);
+    				ELSE
+    					value := DWORD_TO_UDINT(w0.%D1);
+    				END_IF;
+    			END_FUNCTION
+
+    			/* `where-is` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `WHERE_IS` reads. */
+    			{extern 'wasi:example/both-sides@0.3.0' 'where-is'}
+    			FUNCTION PRIVATE WHERE_IS_RAW
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    				w2 : LWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION WHERE_IS
+    			VAR_OUTPUT
+    				is_some : BOOL;
+    				value_x : LREAL;
+    				value_y : LREAL;
+    			END_VAR
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    				w2 : LWORD;
+    			END_VAR
+    				WHERE_IS_RAW(w0 => w0, w1 => w1, w2 => w2);
+    				value_x := 0.0;
+    				value_y := 0.0;
+    				is_some := w0.%X0;
+    				IF is_some THEN
+    					value_x := LWORD_TO_LREAL(w1);
+    					value_y := LWORD_TO_LREAL(w2);
+    				END_IF;
+    			END_FUNCTION
+
+    			/* `deep` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `DEEP` reads. */
+    			{extern 'wasi:example/both-sides@0.3.0' 'deep'}
+    			FUNCTION PRIVATE DEEP_RAW
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    				w2 : LWORD;
+    				w3 : LWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION DEEP
+    			VAR_OUTPUT
+    				failed : BOOL;
+    				value_is_some : BOOL;
+    				value_x : LREAL;
+    				value_y : LREAL;
+    				error : ERROR_CODE;
+    			END_VAR
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    				w2 : LWORD;
+    				w3 : LWORD;
+    			END_VAR
+    				DEEP_RAW(w0 => w0, w1 => w1, w2 => w2, w3 => w3);
+    				value_is_some := FALSE;
+    				value_x := 0.0;
+    				value_y := 0.0;
+    				error := 0;
+    				failed := w0.%X0;
+    				IF failed THEN
+    					error := BYTE_TO_USINT(w1.%B0);
+    				ELSE
+    					value_is_some := w1.%X0;
+    					IF value_is_some THEN
+    						value_x := LWORD_TO_LREAL(w2);
+    						value_y := LWORD_TO_LREAL(w3);
+    					END_IF;
+    				END_IF;
+    			END_FUNCTION
+    		END_NAMESPACE
+    	END_NAMESPACE
+    END_NAMESPACE
+    ");
+}
+
+/// What cannot come back or pass yet: a result of a string, an option or
+/// a result passed in.
+#[rstest]
+fn an_option_or_a_result_that_cannot_pass_is_left_out(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
         package wasi:example@0.3.0;
 
         interface leftovers {
             enum error-code { busy }
-            record point { x: f64, y: f64 }
-            both: func() -> result<u32, error-code>;
-            where-is: func() -> option<point>;
             name: func() -> result<string>;
             maybe-in: func(x: option<u32>);
             result-in: func(x: result<_, error-code>);
@@ -218,10 +358,6 @@ fn what_two_outputs_cannot_hold_is_left_out(mut with_db: RootDatabase) {
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - `both`: its result holds a result with a value and an error, which an
-         import cannot give back yet.
-       - `where-is`: its result holds a record, which an import cannot give
-         back yet.
        - `name`: its result holds a string, which an import cannot give back
          yet.
        - `maybe-in`: its parameter `x` holds an option, which an import cannot

@@ -4,8 +4,9 @@
 //! Generated declarations at run time, on wasmtime: the clocks through
 //! aliases, a record's outputs and an option's, a wait through an async
 //! block, on the host `rk test` runs tests on; standard input copied to
-//! standard output through the streams' and futures' built-ins, and random
-//! numbers through a tuple's outputs, on a component host.
+//! standard output through the streams' and futures' built-ins, random
+//! numbers through a tuple's outputs, and the errors of WASI's sockets,
+//! read out of the words they come back in, on a component host.
 
 use std::collections::VecDeque;
 use std::pin::Pin;
@@ -186,6 +187,17 @@ fn plc(
     stdin: Pipe,
     stdout: Pipe,
 ) -> Plc {
+    let ctx = WasiCtxBuilder::new().stdin(stdin).stdout(stdout).build();
+    plc_with(db, bindings, program, ctx)
+}
+
+/// [`plc`] on a host with the WASI context `ctx`.
+fn plc_with(
+    db: &mut RootDatabase,
+    bindings: &Bindings,
+    program: &str,
+    ctx: wasmtime_wasi::WasiCtx,
+) -> Plc {
     let configuration = r#"
         CONFIGURATION Cfg
         VAR_GLOBAL output AT %QD0 : DINT; END_VAR
@@ -197,10 +209,7 @@ fn plc(
     "#;
     let (mir, core) = built(db, &bindings.files, &[program, configuration]);
     let component = wrapped(db, &mir, &core);
-    Plc::load(
-        &component.bytes,
-        WasiCtxBuilder::new().stdin(stdin).stdout(stdout).build(),
-    )
+    Plc::load(&component.bytes, ctx)
 }
 
 /// Scans until the output is `until`, at most `scans` times: the last
@@ -331,4 +340,92 @@ fn random_numbers_through_generated_declarations(mut with_db: RootDatabase) {
         Pipe::default(),
     );
     assert_eq!(plc.scan(0), 111);
+}
+
+/// The errors of WASI's sockets, a variant, and the values beside them,
+/// read out of the words they come back in: a socket made, the address it
+/// has not, a setting refused, one taken and read back, a size, and the
+/// error of a future, from a send on a socket that is not connected. 1
+/// when each is what wasmtime's sockets give, and otherwise the number of
+/// the check that failed, negative.
+#[rstest]
+fn the_errors_of_wasi_s_sockets_are_read_out_of_words(mut with_db: RootDatabase) {
+    let bindings = generated(&world_of(&["wasi:sockets/types@0.3.0"]));
+    let program = r#"
+        PROGRAM P
+        VAR_EXTERNAL output : DINT; END_VAR
+        VAR
+            step : INT;
+            failed : BOOL;
+            socket, readable, writable, sent : UDINT;
+            error : Wasi.Sockets.Types.ERROR_CODE;
+            address : Wasi.Sockets.Types.IP_SOCKET_ADDRESS;
+            port : UINT;
+            limit : USINT;
+            size : ULINT;
+            read : Wasi.Sockets.Types.RESULT_FUTURE_READ;
+        END_VAR
+            CASE step OF
+            0:
+                step := 9;
+                Wasi.Sockets.Types.TCP_SOCKET_CREATE(
+                    address_family := Wasi.Sockets.Types.IP_ADDRESS_FAMILY#IPV4,
+                    failed => failed, value => socket, error => error);
+                IF failed OR error <> 0 THEN output := -1; RETURN; END_IF;
+                // A socket that is not bound has no address.
+                Wasi.Sockets.Types.TCP_SOCKET_GET_LOCAL_ADDRESS(self := socket,
+                    failed => failed, value => address, value_ipv4_port => port,
+                    error => error);
+                IF NOT failed OR error <> Wasi.Sockets.Types.ERROR_CODE#INVALID_STATE
+                    OR address <> 0 OR port <> 0
+                THEN
+                    output := -2; RETURN;
+                END_IF;
+                // A hop limit of 0 is refused.
+                Wasi.Sockets.Types.TCP_SOCKET_SET_HOP_LIMIT(self := socket, value := 0,
+                    failed => failed, error => error);
+                IF NOT failed OR error <> Wasi.Sockets.Types.ERROR_CODE#INVALID_ARGUMENT THEN
+                    output := -3; RETURN;
+                END_IF;
+                Wasi.Sockets.Types.TCP_SOCKET_SET_HOP_LIMIT(self := socket, value := 42,
+                    failed => failed, error => error);
+                IF failed OR error <> 0 THEN output := -4; RETURN; END_IF;
+                Wasi.Sockets.Types.TCP_SOCKET_GET_HOP_LIMIT(self := socket,
+                    failed => failed, value => limit, error => error);
+                IF failed OR limit <> 42 OR error <> 0 THEN output := -5; RETURN; END_IF;
+                Wasi.Sockets.Types.TCP_SOCKET_GET_RECEIVE_BUFFER_SIZE(self := socket,
+                    failed => failed, value => size, error => error);
+                IF failed OR size = 0 OR error <> 0 THEN output := -6; RETURN; END_IF;
+                // A send on a socket that is not connected: its future fails.
+                Wasi.Sockets.Types.BYTES_STREAM_NEW(readable => readable, writable => writable);
+                sent := Wasi.Sockets.Types.TCP_SOCKET_SEND(self := socket, data := readable);
+                step := 1;
+            1:
+                read(future := sent);
+                IF read.DONE THEN
+                    step := 9;
+                    IF NOT read.failed
+                        OR read.error <> Wasi.Sockets.Types.ERROR_CODE#INVALID_STATE
+                    THEN
+                        output := -7; RETURN;
+                    END_IF;
+                    Wasi.Sockets.Types.RESULT_FUTURE_DROP_READABLE(future := sent);
+                    Wasi.Sockets.Types.BYTES_STREAM_DROP_WRITABLE(stream := writable);
+                    Wasi.Sockets.Types.TCP_SOCKET_DROP(handle := socket);
+                    output := 1;
+                END_IF;
+            END_CASE;
+        END_PROGRAM
+    "#;
+    // TCP is what a host allows: wasmtime's does not until told to.
+    let ctx = WasiCtxBuilder::new().allow_tcp(true).build();
+    let mut plc = plc_with(&mut with_db, &bindings, program, ctx);
+    let mut output = 0;
+    for _ in 0..50 {
+        output = plc.scan(0);
+        if output != 0 {
+            break;
+        }
+    }
+    assert_eq!(output, 1, "the number of the check that failed, negative");
 }
