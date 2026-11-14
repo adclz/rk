@@ -23,83 +23,18 @@ takes at later calls, while `BUSY` stays TRUE.
 */
 NAMESPACE Std.Console
 
-	/* WASI's standard output: `write-via-stream` takes the reading end of a
-	   stream of bytes, and the stream's built-ins are imported beside it,
-	   under its name. `[stream-new-0]` makes the stream, and gives its
-	   reading end, then its writing end. */
-	{extern 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
-	FUNCTION PRIVATE NEW_STDOUT_STREAM
-		VAR_OUTPUT
-			readable: UDINT;
-			writable: UDINT;
-		END_VAR
-	END_FUNCTION
-
-	/* Hands the reading end to the host, which answers with a future of how
-	   the writing went. */
-	{extern 'wasi:cli/stdout@0.3.0' 'write-via-stream'}
-	FUNCTION PRIVATE STDOUT_READS: UDINT
-		VAR_INPUT
-			data: UDINT;
-		END_VAR
-	END_FUNCTION
-
-	/* Gives that future up, unread: its error code is not kept, and a write
-	   only sees that the host let go. */
-	{extern 'wasi:cli/stdout@0.3.0' '[future-drop-readable-1]write-via-stream'}
-	FUNCTION PRIVATE DROP_STDOUT_FUTURE
-		VAR_INPUT
-			future: UDINT;
-		END_VAR
-	END_FUNCTION
-
-	/* The same three for the standard error. Its stream is written with
-	   `Streams.STREAM_WRITE`, which is imported beside the standard output's
-	   function but writes any stream of bytes: so a program writing to the
-	   standard error imports the standard output's interface too. */
-	{extern 'wasi:cli/stderr@0.3.0' '[stream-new-0]write-via-stream'}
-	FUNCTION PRIVATE NEW_STDERR_STREAM
-		VAR_OUTPUT
-			readable: UDINT;
-			writable: UDINT;
-		END_VAR
-	END_FUNCTION
-
-	{extern 'wasi:cli/stderr@0.3.0' 'write-via-stream'}
-	FUNCTION PRIVATE STDERR_READS: UDINT
-		VAR_INPUT
-			data: UDINT;
-		END_VAR
-	END_FUNCTION
-
-	{extern 'wasi:cli/stderr@0.3.0' '[future-drop-readable-1]write-via-stream'}
-	FUNCTION PRIVATE DROP_STDERR_FUTURE
-		VAR_INPUT
-			future: UDINT;
-		END_VAR
-	END_FUNCTION
+	/* The blocks reach WASI through what rk-bindgen writes in `generated/`
+	   from WASI's WIT. Each output's `WRITE_VIA_STREAM`, in `Wasi.Cli.Stdout`
+	   and in `Wasi.Cli.Stderr`, hands the host the reading end of a stream of
+	   bytes, which the interface's `BYTES_STREAM_NEW` makes, and answers with
+	   a future of how the writing went, which its
+	   `RESULT_FUTURE_DROP_READABLE` gives up unread: its error code is not
+	   kept, and a write only sees that the host let go. Both streams are
+	   written with the standard output's `BYTES_STREAM_WRITE`: a write is the
+	   component model's, and takes any stream of bytes. */
 
 	/* What `STDOUT` and `STDERR` write with, which they alone reach. */
 	NAMESPACE INTERNAL Streams
-
-		/* The component model's write of a stream of bytes: a copy of `data`
-		   into the stream's writing end `stream`, which ends when the host
-		   has taken some of the bytes, `written` of them, or has let go of
-		   its end, `closed`. The host reads the bytes from the block while
-		   the copy runs: a call made then checks the copy, and leaves the
-		   block's inputs as they are, whatever it passes. */
-		{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
-		FUNCTION_BLOCK STREAM_WRITE
-			VAR_INPUT
-				stream: UDINT;
-				data: STRING[4096];
-			END_VAR
-			VAR_OUTPUT
-				DONE: BOOL;
-				written: UDINT;
-				closed: BOOL;
-			END_VAR
-		END_FUNCTION_BLOCK
 
 		/* The bytes `IN` holds. */
 		FUNCTION TEXT_LEN: UDINT
@@ -140,7 +75,7 @@ NAMESPACE Std.Console
 				requested: BOOL;
 				closed: BOOL;
 				rest: STRING[4096];
-				write: STREAM_WRITE;
+				write: Wasi.Cli.Stdout.BYTES_STREAM_WRITE;
 			END_VAR
 			VAR_TEMP
 				again: BOOL;
@@ -224,8 +159,9 @@ NAMESPACE Std.Console
 
 		// The stream, made at the first request.
 		IF REQ AND NOT open THEN
-			NEW_STDOUT_STREAM(readable => reading, writable => writing);
-			DROP_STDOUT_FUTURE(future := STDOUT_READS(data := reading));
+			Wasi.Cli.Stdout.BYTES_STREAM_NEW(readable => reading, writable => writing);
+			Wasi.Cli.Stdout.RESULT_FUTURE_DROP_READABLE(
+				future := Wasi.Cli.Stdout.WRITE_VIA_STREAM(data := reading));
 			open := TRUE;
 		END_IF;
 		output(REQ := REQ, IN := IN, stream := writing);
@@ -267,8 +203,9 @@ NAMESPACE Std.Console
 
 		// The stream, made at the first request.
 		IF REQ AND NOT open THEN
-			NEW_STDERR_STREAM(readable => reading, writable => writing);
-			DROP_STDERR_FUTURE(future := STDERR_READS(data := reading));
+			Wasi.Cli.Stderr.BYTES_STREAM_NEW(readable => reading, writable => writing);
+			Wasi.Cli.Stderr.RESULT_FUTURE_DROP_READABLE(
+				future := Wasi.Cli.Stderr.WRITE_VIA_STREAM(data := reading));
 			open := TRUE;
 		END_IF;
 		output(REQ := REQ, IN := IN, stream := writing);
