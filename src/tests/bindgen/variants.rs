@@ -4,7 +4,10 @@
 //! Variants, and results with a value and an error: what no record of
 //! outputs is laid out as. The import, `<NAME>_RAW`, gives the result in
 //! words, and `<NAME>` reads each value out of them where the canonical ABI
-//! puts it.
+//! puts it. A variant passed in is its case and what each case holds, which
+//! `<NAME>` packs into the words `<NAME>_RAW` takes: the values the cases
+//! share, or the bytes of the tuple an async call's parameters are in past
+//! 4 values.
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -777,6 +780,260 @@ fn a_variant_of_more_than_256_cases_has_its_case_in_a_uint(mut with_db: RootData
     }
 }
 
+/// A variant passed in is its case, then what each case holds, which a
+/// call may leave out. As values, the cases share them, each as wide as the
+/// widest any case puts there: a REAL and a ULINT in one LWORD. In memory,
+/// where an async call's parameters go past 4 values, the variant is the
+/// bytes of its place in the tuple, in words; a scalar and a string beside
+/// it are passed as they are, and where the words are 4 at most a fifth
+/// makes the call pass them in memory.
+#[rstest]
+fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
+    assert_snapshot!(checked(&mut with_db, r#"
+        package wasi:example@0.3.0;
+
+        interface passing {
+            record point { x: s32, y: s32 }
+            variant target { nowhere, at(point), level(f32), far(u64) }
+            aim: func(t: target);
+            aim-later: async func(t: target) -> bool;
+            aim-named: async func(id: u8, t: target, name: string);
+            aim-both: async func(first: target, second: target);
+        }
+
+        world example {
+            import passing;
+        }
+    "#), @r"
+    // wasi-example-passing.st
+    NAMESPACE INTERNAL Wasi
+    	NAMESPACE Example
+    		NAMESPACE Passing
+    			USING Std.Convert;
+
+    			TYPE TARGET : USINT (
+    				NOWHERE := 0,
+    				AT_ := 1,
+    				LEVEL := 2,
+    				FAR := 3
+    			); END_TYPE
+
+    			/* `aim` as the host takes it: its parameters as the canonical ABI passes
+    			   them, which `AIM` packs. */
+    			{extern 'wasi:example/passing@0.3.0' 'aim'}
+    			FUNCTION PRIVATE AIM_RAW
+    			VAR_INPUT
+    				a0 : DWORD;
+    				a1 : LWORD;
+    				a2 : DWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION AIM
+    			VAR_INPUT
+    				t : TARGET;
+    				t_at_x : DINT := 0;
+    				t_at_y : DINT := 0;
+    				t_level : REAL := 0.0;
+    				t_far : ULINT := 0;
+    			END_VAR
+    			VAR
+    				a0 : DWORD;
+    				a1 : LWORD;
+    				a2 : DWORD;
+    			END_VAR
+    				a0 := 0;
+    				a1 := 0;
+    				a2 := 0;
+    				a0.%B0 := USINT_TO_BYTE(t);
+    				CASE t OF
+    					TARGET#AT_:
+    						a1.%D0 := DINT_TO_DWORD(t_at_x);
+    						a2 := DINT_TO_DWORD(t_at_y);
+    					TARGET#LEVEL:
+    						a1.%D0 := REAL_TO_DWORD(t_level);
+    					TARGET#FAR:
+    						a1 := ULINT_TO_LWORD(t_far);
+    				END_CASE;
+    				AIM_RAW(a0 := a0, a1 := a1, a2 := a2);
+    			END_FUNCTION
+
+    			/* `aim-later` as the host takes it: its parameters as the canonical ABI
+    			   passes them, which `AIM_LATER` packs. */
+    			{extern async 'wasi:example/passing@0.3.0' 'aim-later'}
+    			FUNCTION_BLOCK AIM_LATER_RAW
+    			VAR_INPUT
+    				a0 : DWORD;
+    				a1 : LWORD;
+    				a2 : DWORD;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				value : BOOL;
+    			END_VAR
+    			END_FUNCTION_BLOCK
+
+    			FUNCTION_BLOCK AIM_LATER
+    			VAR_INPUT
+    				t : TARGET;
+    				t_at_x : DINT := 0;
+    				t_at_y : DINT := 0;
+    				t_level : REAL := 0.0;
+    				t_far : ULINT := 0;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				value : BOOL;
+    			END_VAR
+    			VAR
+    				a0 : DWORD;
+    				a1 : LWORD;
+    				a2 : DWORD;
+    				call : AIM_LATER_RAW;
+    			END_VAR
+    				a0 := 0;
+    				a1 := 0;
+    				a2 := 0;
+    				a0.%B0 := USINT_TO_BYTE(t);
+    				CASE t OF
+    					TARGET#AT_:
+    						a1.%D0 := DINT_TO_DWORD(t_at_x);
+    						a2 := DINT_TO_DWORD(t_at_y);
+    					TARGET#LEVEL:
+    						a1.%D0 := REAL_TO_DWORD(t_level);
+    					TARGET#FAR:
+    						a1 := ULINT_TO_LWORD(t_far);
+    				END_CASE;
+    				call(a0 := a0, a1 := a1, a2 := a2);
+    				DONE := call.DONE;
+    				IF call.DONE THEN
+    					value := call.value;
+    				END_IF;
+    			END_FUNCTION_BLOCK
+
+    			/* `aim-named` as the host takes it: its parameters as the canonical ABI
+    			   passes them, which `AIM_NAMED` packs. */
+    			{extern async 'wasi:example/passing@0.3.0' 'aim-named'}
+    			FUNCTION_BLOCK AIM_NAMED_RAW
+    			VAR_INPUT
+    				id : USINT;
+    				a0 : LWORD;
+    				a1 : LWORD;
+    				name : STRING[4096];
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    			END_VAR
+    			END_FUNCTION_BLOCK
+
+    			FUNCTION_BLOCK AIM_NAMED
+    			VAR_INPUT
+    				id : USINT;
+    				t : TARGET;
+    				t_at_x : DINT := 0;
+    				t_at_y : DINT := 0;
+    				t_level : REAL := 0.0;
+    				t_far : ULINT := 0;
+    				name : STRING[4096];
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    			END_VAR
+    			VAR
+    				a0 : LWORD;
+    				a1 : LWORD;
+    				call : AIM_NAMED_RAW;
+    			END_VAR
+    				a0 := 0;
+    				a1 := 0;
+    				a0.%B0 := USINT_TO_BYTE(t);
+    				CASE t OF
+    					TARGET#AT_:
+    						a1.%D0 := DINT_TO_DWORD(t_at_x);
+    						a1.%D1 := DINT_TO_DWORD(t_at_y);
+    					TARGET#LEVEL:
+    						a1.%D0 := REAL_TO_DWORD(t_level);
+    					TARGET#FAR:
+    						a1 := ULINT_TO_LWORD(t_far);
+    				END_CASE;
+    				call(id := id, a0 := a0, a1 := a1, name := name);
+    				DONE := call.DONE;
+    			END_FUNCTION_BLOCK
+
+    			/* `aim-both` as the host takes it: its parameters as the canonical ABI
+    			   passes them, which `AIM_BOTH` packs. */
+    			{extern async 'wasi:example/passing@0.3.0' 'aim-both'}
+    			FUNCTION_BLOCK AIM_BOTH_RAW
+    			VAR_INPUT
+    				a0 : LWORD;
+    				a1 : LWORD;
+    				a2 : LWORD;
+    				a3 : LWORD;
+    				a4 : LWORD;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    			END_VAR
+    			END_FUNCTION_BLOCK
+
+    			FUNCTION_BLOCK AIM_BOTH
+    			VAR_INPUT
+    				first : TARGET;
+    				first_at_x : DINT := 0;
+    				first_at_y : DINT := 0;
+    				first_level : REAL := 0.0;
+    				first_far : ULINT := 0;
+    				second : TARGET;
+    				second_at_x : DINT := 0;
+    				second_at_y : DINT := 0;
+    				second_level : REAL := 0.0;
+    				second_far : ULINT := 0;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    			END_VAR
+    			VAR
+    				a0 : LWORD;
+    				a1 : LWORD;
+    				a2 : LWORD;
+    				a3 : LWORD;
+    				a4 : LWORD;
+    				call : AIM_BOTH_RAW;
+    			END_VAR
+    				a0 := 0;
+    				a1 := 0;
+    				a2 := 0;
+    				a3 := 0;
+    				a4 := 0;
+    				a0.%B0 := USINT_TO_BYTE(first);
+    				CASE first OF
+    					TARGET#AT_:
+    						a1.%D0 := DINT_TO_DWORD(first_at_x);
+    						a1.%D1 := DINT_TO_DWORD(first_at_y);
+    					TARGET#LEVEL:
+    						a1.%D0 := REAL_TO_DWORD(first_level);
+    					TARGET#FAR:
+    						a1 := ULINT_TO_LWORD(first_far);
+    				END_CASE;
+    				a2.%B0 := USINT_TO_BYTE(second);
+    				CASE second OF
+    					TARGET#AT_:
+    						a3.%D0 := DINT_TO_DWORD(second_at_x);
+    						a3.%D1 := DINT_TO_DWORD(second_at_y);
+    					TARGET#LEVEL:
+    						a3.%D0 := REAL_TO_DWORD(second_level);
+    					TARGET#FAR:
+    						a3 := ULINT_TO_LWORD(second_far);
+    				END_CASE;
+    				call(a0 := a0, a1 := a1, a2 := a2, a3 := a3, a4 := a4);
+    				DONE := call.DONE;
+    			END_FUNCTION_BLOCK
+    		END_NAMESPACE
+    	END_NAMESPACE
+    END_NAMESPACE
+    ");
+}
+
 /// Every kind of value a case holds, an option and a result of a variant,
 /// a record that holds an option and a tuple, and an async function.
 const SHAPES: &str = r#"
@@ -1116,6 +1373,327 @@ fn what_a_host_returns_is_read_back(mut with_db: RootDatabase) {
     let mut plc = hosted(&mut with_db, SHAPES, READ_BACK, shapes_host);
     let mut output = 0;
     for _ in 0..20 {
+        output = plc.scan(0);
+        if output != 0 {
+            break;
+        }
+    }
+    assert_eq!(output, 1, "the number of the check that failed, negative");
+}
+
+/// Values a host gives back as it took them: a variant of every kind of
+/// case, an option and a result, each also of a float alone, a record of
+/// records, as values and in memory.
+const ECHOES: &str = r#"
+    package wasi:example@0.3.0;
+
+    interface echoes {
+        record point { x: s32, y: s32 }
+        enum color { red, green, blue }
+        flags marks { bold, dashed, filled }
+        variant figure {
+            nothing,
+            circle(f32),
+            square(u16),
+            at(point),
+            pair(tuple<s8, u64>),
+            tinted(color),
+            marked(marks),
+            wide(f64),
+            signed(s16),
+            long(s64),
+            flagged(bool),
+        }
+        record segment { start: point, end: point, width: u8 }
+        echo: func(f: figure) -> figure;
+        echo-later: async func(f: figure) -> figure;
+        echo-two: async func(first: figure, id: u32, second: figure) -> tuple<figure, u32, figure>;
+        maybe: func(p: option<point>) -> option<point>;
+        outcome: func(r: result<u32, color>) -> result<u32, color>;
+        warm: func(t: option<f32>) -> option<f32>;
+        reach: func(d: result<f64, f64>) -> result<f64, f64>;
+        line: func(s: segment) -> segment;
+        line-later: async func(s: segment, scale: u8) -> segment;
+        tagged: async func(name: string, f: figure, id: u32) -> tuple<u32, figure>;
+    }
+
+    world example {
+        import echoes;
+    }
+"#;
+
+/// The host's side of [`ECHOES`]: each function gives back what it took,
+/// `echo-two` its three parameters as a tuple, `line-later` its segment as
+/// wide as `scale`, `tagged` its figure after `id` plus the length of
+/// `name`.
+fn echoes_host(linker: &mut Linker<Host>) {
+    let mut echoes = linker
+        .instance("wasi:example/echoes@0.3.0")
+        .expect("the interface");
+    for name in ["echo", "maybe", "outcome", "warm", "reach", "line"] {
+        echoes
+            .func_new(name, |_, _, params, results| {
+                results[0] = params[0].clone();
+                Ok(())
+            })
+            .expect("a function of the host");
+    }
+    echoes
+        .func_new_concurrent("echo-later", |_, _, params, results| {
+            Box::pin(async move {
+                Later(false).await;
+                results[0] = params[0].clone();
+                Ok(())
+            })
+        })
+        .expect("an async function of the host");
+    echoes
+        .func_new_concurrent("echo-two", |_, _, params, results| {
+            Box::pin(async move {
+                Later(false).await;
+                results[0] = Val::Tuple(params.to_vec());
+                Ok(())
+            })
+        })
+        .expect("an async function of the host");
+    echoes
+        .func_new_concurrent("line-later", |_, _, params, results| {
+            Box::pin(async move {
+                let [Val::Record(fields), scale] = params else {
+                    panic!("a segment and a scale: {params:?}");
+                };
+                let fields = fields
+                    .iter()
+                    .map(|(name, value)| match name.as_str() {
+                        "width" => (name.clone(), scale.clone()),
+                        _ => (name.clone(), value.clone()),
+                    })
+                    .collect();
+                results[0] = Val::Record(fields);
+                Ok(())
+            })
+        })
+        .expect("an async function of the host");
+    echoes
+        .func_new_concurrent("tagged", |_, _, params, results| {
+            Box::pin(async move {
+                let [Val::String(name), figure, Val::U32(id)] = params else {
+                    panic!("a name, a figure and a number: {params:?}");
+                };
+                results[0] = Val::Tuple(vec![Val::U32(id + name.len() as u32), figure.clone()]);
+                Ok(())
+            })
+        })
+        .expect("an async function of the host");
+}
+
+/// What the host of [`ECHOES`] gives back, compared with what it was
+/// passed: 1 when every value came back as it went and nothing else did,
+/// and otherwise the number of the check that failed, negative.
+const ECHOED: &str = r#"
+    /* Whether a figure comes back as it was passed: its case, what the case
+       holds, and zero for what the other cases would hold. */
+    FUNCTION same : BOOL
+    VAR_INPUT
+        f : Wasi.Example.Echoes.FIGURE;
+        circle : REAL := 0.0; square : UINT := 0; x : DINT := 0; y : DINT := 0;
+        first : SINT := 0; second : ULINT := 0;
+        tinted : Wasi.Example.Echoes.COLOR := 0; marked : Wasi.Example.Echoes.MARKS := 0;
+        wide : LREAL := 0.0; signed : INT := 0; long : LINT := 0; flagged : BOOL := FALSE;
+    END_VAR
+    VAR
+        got : Wasi.Example.Echoes.FIGURE;
+        got_circle : REAL; got_square : UINT; got_x : DINT; got_y : DINT;
+        got_first : SINT; got_second : ULINT;
+        got_tinted : Wasi.Example.Echoes.COLOR; got_marked : Wasi.Example.Echoes.MARKS;
+        got_wide : LREAL; got_signed : INT; got_long : LINT; got_flagged : BOOL;
+    END_VAR
+        Wasi.Example.Echoes.ECHO(f := f, f_circle := circle, f_square := square, f_at_x := x,
+            f_at_y := y, f_pair_0 := first, f_pair_1 := second, f_tinted := tinted,
+            f_marked := marked, f_wide := wide, f_signed := signed, f_long := long,
+            f_flagged := flagged,
+            value => got, circle => got_circle, square => got_square, at_x => got_x,
+            at_y => got_y, pair_0 => got_first, pair_1 => got_second, tinted => got_tinted,
+            marked => got_marked, wide => got_wide, signed => got_signed, long => got_long,
+            flagged => got_flagged);
+        same := got = f AND got_circle = circle AND got_square = square AND got_x = x
+            AND got_y = y AND got_first = first AND got_second = second
+            AND got_tinted = tinted AND got_marked = marked AND got_wide = wide
+            AND got_signed = signed AND got_long = long AND got_flagged = flagged;
+    END_FUNCTION
+
+    FUNCTION check : DINT
+    VAR
+        some, failed : BOOL;
+        x, y, end_x, end_y : DINT;
+        value : UDINT;
+        error : Wasi.Example.Echoes.COLOR;
+        width : USINT;
+        got : Wasi.Example.Echoes.FIGURE;
+        circle : REAL;
+        near, far : LREAL;
+    END_VAR
+        check := 0;
+        IF NOT same(f := 0) THEN check := -1; RETURN; END_IF;
+        IF NOT same(f := 1, circle := 1.5) THEN check := -2; RETURN; END_IF;
+        IF NOT same(f := 2, square := 65535) THEN check := -3; RETURN; END_IF;
+        IF NOT same(f := 3, x := -1, y := 2) THEN check := -4; RETURN; END_IF;
+        IF NOT same(f := 4, first := -5, second := ULINT#16#0102030405060708) THEN
+            check := -5; RETURN;
+        END_IF;
+        IF NOT same(f := 5, tinted := 2) THEN check := -6; RETURN; END_IF;
+        IF NOT same(f := 6, marked := 16#05) THEN check := -7; RETURN; END_IF;
+        IF NOT same(f := 7, wide := -2.25) THEN check := -8; RETURN; END_IF;
+        IF NOT same(f := 8, signed := -300) THEN check := -9; RETURN; END_IF;
+        IF NOT same(f := 9, long := LINT#-1099511627776) THEN check := -10; RETURN; END_IF;
+        // A flag where the case before held a number: FALSE is every bit of
+        // it at zero, which the words start from at each call.
+        IF NOT same(f := 10, flagged := FALSE) THEN check := -17; RETURN; END_IF;
+        IF NOT same(f := 10, flagged := TRUE) THEN check := -18; RETURN; END_IF;
+        // What another case would hold is not passed with this one.
+        Wasi.Example.Echoes.ECHO(f := 1, f_circle := 2.5, f_at_x := 7, f_at_y := 8,
+            f_long := 9, value => got, circle => circle, at_x => x, at_y => y);
+        IF got <> 1 OR circle <> 2.5 OR x <> 0 OR y <> 0 THEN check := -11; RETURN; END_IF;
+
+        Wasi.Example.Echoes.MAYBE(p_is_some := TRUE, p_x := 7, p_y := -8,
+            is_some => some, value_x => x, value_y => y);
+        IF NOT some OR x <> 7 OR y <> -8 THEN check := -12; RETURN; END_IF;
+        Wasi.Example.Echoes.MAYBE(p_is_some := FALSE, p_x := 7, p_y := -8,
+            is_some => some, value_x => x, value_y => y);
+        IF some OR x <> 0 OR y <> 0 THEN check := -13; RETURN; END_IF;
+
+        Wasi.Example.Echoes.OUTCOME(r_failed := FALSE, r_value := 4000000000,
+            failed => failed, value => value, error => error);
+        IF failed OR value <> 4000000000 OR error <> 0 THEN check := -14; RETURN; END_IF;
+        Wasi.Example.Echoes.OUTCOME(r_failed := TRUE, r_value := 77, r_error := 2,
+            failed => failed, value => value, error => error);
+        IF NOT failed OR value <> 0 OR error <> 2 THEN check := -15; RETURN; END_IF;
+
+        Wasi.Example.Echoes.LINE(s_start_x := 1, s_start_y := -2, s_end_x := 3, s_end_y := -4,
+            s_width := 200, start_x => x, start_y => y, end_x => end_x, end_y => end_y,
+            width => width);
+        IF x <> 1 OR y <> -2 OR end_x <> 3 OR end_y <> -4 OR width <> 200 THEN
+            check := -16; RETURN;
+        END_IF;
+
+        // A value both sides agree on is passed as the REAL or the LREAL it is.
+        Wasi.Example.Echoes.WARM(t_is_some := TRUE, t := 36.5, is_some => some,
+            value => circle);
+        IF NOT some OR circle <> 36.5 THEN check := -26; RETURN; END_IF;
+        Wasi.Example.Echoes.WARM(t_is_some := FALSE, t := 36.5, is_some => some);
+        IF some THEN check := -27; RETURN; END_IF;
+        Wasi.Example.Echoes.REACH(d_failed := FALSE, d_value := -2.5,
+            failed => failed, value => near, error => far);
+        IF failed OR near <> -2.5 OR far <> 0.0 THEN check := -28; RETURN; END_IF;
+        Wasi.Example.Echoes.REACH(d_failed := TRUE, d_value := 1.0, d_error := 1.0E300,
+            failed => failed, value => near, error => far);
+        IF NOT failed OR near <> 0.0 OR far <> 1.0E300 THEN check := -29; RETURN; END_IF;
+    END_FUNCTION
+
+    PROGRAM P
+    VAR_EXTERNAL output : DINT; END_VAR
+    VAR
+        checked : BOOL;
+        step : INT;
+        later : Wasi.Example.Echoes.ECHO_LATER;
+        two : Wasi.Example.Echoes.ECHO_TWO;
+        line : Wasi.Example.Echoes.LINE_LATER;
+        tagged : Wasi.Example.Echoes.TAGGED;
+    END_VAR
+        IF NOT checked THEN
+            checked := TRUE;
+            output := check();
+            IF output <> 0 THEN step := 9; END_IF;
+        END_IF;
+        CASE step OF
+        0:
+            later(f := 4, f_pair_0 := -5, f_pair_1 := ULINT#16#0102030405060708);
+            IF later.DONE THEN
+                IF later.value <> 4 OR later.pair_0 <> -5
+                    OR later.pair_1 <> ULINT#16#0102030405060708
+                THEN
+                    output := -20; step := 9;
+                ELSE
+                    step := 1;
+                END_IF;
+            END_IF;
+        1:
+            // The pair the block still holds is not passed with this case.
+            later(f := 7, f_wide := -2.25);
+            IF later.DONE THEN
+                IF later.value <> 7 OR later.wide <> -2.25 OR later.pair_0 <> 0
+                    OR later.pair_1 <> 0
+                THEN
+                    output := -21; step := 9;
+                ELSE
+                    step := 2;
+                END_IF;
+            END_IF;
+        2:
+            two(first := 3, first_at_x := -1, first_at_y := 2, id := 4000000000,
+                second := 9, second_long := LINT#-1099511627776);
+            IF two.DONE THEN
+                IF two.item0 <> 3 OR two.item0_at_x <> -1 OR two.item0_at_y <> 2
+                    OR two.item1 <> 4000000000 OR two.item2 <> 9
+                    OR two.item2_long <> LINT#-1099511627776
+                THEN
+                    output := -22; step := 9;
+                ELSE
+                    step := 3;
+                END_IF;
+            END_IF;
+        3:
+            two(first := 6, first_marked := 16#05, id := 7, second := 2,
+                second_square := 65535);
+            IF two.DONE THEN
+                IF two.item0 <> 6 OR two.item0_marked <> 16#05 OR two.item0_at_x <> 0
+                    OR two.item1 <> 7 OR two.item2 <> 2 OR two.item2_square <> 65535
+                    OR two.item2_long <> 0
+                THEN
+                    output := -23; step := 9;
+                ELSE
+                    step := 4;
+                END_IF;
+            END_IF;
+        4:
+            line(s_start_x := 1, s_start_y := -2, s_end_x := 3, s_end_y := -4,
+                s_width := 5, scale := 9);
+            IF line.DONE THEN
+                IF line.start_x <> 1 OR line.start_y <> -2 OR line.end_x <> 3
+                    OR line.end_y <> -4 OR line.width <> 9
+                THEN
+                    output := -24; step := 9;
+                ELSE
+                    step := 5;
+                END_IF;
+            END_IF;
+        5:
+            // A string beside a figure in the tuple.
+            tagged(name := 'four', f := 2, f_square := 9, id := 100);
+            IF tagged.DONE THEN
+                IF tagged.item0 <> 104 OR tagged.item1 <> 2 OR tagged.item1_square <> 9 THEN
+                    output := -25;
+                ELSE
+                    output := 1;
+                END_IF;
+                step := 9;
+            END_IF;
+        END_CASE;
+    END_PROGRAM
+"#;
+
+/// What generated code packs for a host comes back from it as it went:
+/// each case of a variant passed as values, the cases sharing them; an
+/// option and a result, a float as the REAL or the LREAL it is where no
+/// other value shares its place; a record of records; and, in an async call, a
+/// variant as values and two of them in the tuple the call's parameters
+/// are in, beside a scalar or a string. wasmtime reads what was packed, as
+/// the canonical ABI says, and lays out what the host gives back.
+#[rstest]
+fn what_is_packed_for_a_host_comes_back_as_it_went(mut with_db: RootDatabase) {
+    let mut plc = hosted(&mut with_db, ECHOES, ECHOED, echoes_host);
+    let mut output = 0;
+    for _ in 0..40 {
         output = plc.scan(0);
         if output != 0 {
             break;

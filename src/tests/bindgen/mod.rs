@@ -13,7 +13,8 @@
 //! against WASI's WIT; `runtime` runs generated declarations on wasmtime.
 //! What a result read out of words holds is checked there too, against a
 //! host of the test's own ([`hosted`]): wasmtime lays out what the host
-//! returns, and the generated code reads it back.
+//! returns, and the generated code reads it back; and what the generated
+//! code packs for the host, wasmtime reads.
 
 mod aliases;
 mod async_calls;
@@ -67,9 +68,9 @@ pub(super) fn shown(files: &[rk_bindgen::File]) -> String {
         .join("\n")
 }
 
-/// The conversions the code that reads a result out of words calls, each
-/// cut out of `Std.Convert` as the standard library writes it: the whole
-/// file takes a test half a minute to build.
+/// The conversions the code that reads a result out of words or packs a
+/// parameter into them calls, each cut out of `Std.Convert` as the standard
+/// library writes it: the whole file takes a test half a minute to build.
 pub(super) fn std_convert() -> String {
     let convert = include_str!("../../../stdlib/Convert.st");
     let mut text = String::from("NAMESPACE Std.Convert\n");
@@ -84,6 +85,16 @@ pub(super) fn std_convert() -> String {
         "LWORD_TO_LINT",
         "DWORD_TO_REAL",
         "LWORD_TO_LREAL",
+        "USINT_TO_BYTE",
+        "UINT_TO_WORD",
+        "UDINT_TO_DWORD",
+        "ULINT_TO_LWORD",
+        "SINT_TO_BYTE",
+        "INT_TO_WORD",
+        "DINT_TO_DWORD",
+        "LINT_TO_LWORD",
+        "REAL_TO_DWORD",
+        "LREAL_TO_LWORD",
     ] {
         let start = convert
             .find(&format!("\tFUNCTION {name}:"))

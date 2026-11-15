@@ -163,6 +163,8 @@ wasmtime = "50.0.1"
 # The hosts the console tests build: WASI's standard output and error from
 # wasmtime-wasi, over sinks that are ready, stalled or closed.
 wasmtime-wasi = { version = "50.0.1", default-features = false, features = ["p3"] }
-tokio = { version = "1", default-features = false }
+# `rt-multi-thread`: the runtime a host of WASI's sockets listens and
+# connects within, which wasmtime-wasi builds tokio with already.
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread"] }
 wasm-encoder = { workspace = true }
 anyhow = "1"

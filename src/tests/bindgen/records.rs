@@ -4,9 +4,9 @@
 //! Records and tuples: one passed in is one input per field, as the
 //! canonical ABI flattens it, `when_seconds`, `pair_0`; one that comes back
 //! is one output per field, which rk lays out as the canonical ABI lays out
-//! the record. One that holds a record comes back in words, each field
-//! read out of them under its record's name. What holds something that
-//! cannot pass is left out.
+//! the record. One that holds a record passes field by field too, and
+//! comes back in words, each field read out of them under its record's
+//! name. What holds something that cannot pass is left out.
 
 use db::RootDatabase;
 use insta::assert_snapshot;
@@ -206,17 +206,19 @@ fn a_field_named_as_a_keyword(mut with_db: RootDatabase) {
     ");
 }
 
-/// A record that holds records comes back in words: each field of each
-/// record is an output named after both, read where the canonical ABI
-/// puts it.
+/// A record that holds records passes field by field, each named after
+/// both, as the canonical ABI flattens it, and comes back in words: each
+/// field of each record is an output, read where the canonical ABI puts
+/// it.
 #[rstest]
-fn a_record_of_records_comes_back_in_words(mut with_db: RootDatabase) {
+fn a_record_of_records_passes_by_field_and_comes_back_in_words(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
         package wasi:example@0.3.0;
 
         interface nested {
             record point { x: f64, y: f64 }
             record segment { start: point, end: point, width: u8 }
+            draw: func(s: segment);
             longest: func() -> segment;
         }
 
@@ -229,6 +231,17 @@ fn a_record_of_records_comes_back_in_words(mut with_db: RootDatabase) {
     	NAMESPACE Example
     		NAMESPACE Nested
     			USING Std.Convert;
+
+    			{extern 'wasi:example/nested@0.3.0' 'draw'}
+    			FUNCTION DRAW
+    			VAR_INPUT
+    				s_start_x : LREAL;
+    				s_start_y : LREAL;
+    				s_end_x : LREAL;
+    				s_end_y : LREAL;
+    				s_width : USINT;
+    			END_VAR
+    			END_FUNCTION
 
     			/* `longest` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `LONGEST` reads. */
@@ -271,19 +284,16 @@ fn a_record_of_records_comes_back_in_words(mut with_db: RootDatabase) {
     ");
 }
 
-/// What a record holds must pass too: a record in a record passed in, a
-/// string in a record that comes back, a list in a record passed in.
+/// What a record holds must pass too: a string in a record that comes
+/// back, a list in a record passed in.
 #[rstest]
 fn a_record_holding_what_cannot_pass_is_left_out(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
         package wasi:example@0.3.0;
 
         interface nested {
-            record point { x: f64, y: f64 }
-            record segment { start: point, end: point }
             record named { name: string, id: u32 }
             record bag { items: list<u8> }
-            draw: func(s: segment);
             who: func() -> named;
             fill: func(b: bag);
         }
@@ -294,8 +304,6 @@ fn a_record_holding_what_cannot_pass_is_left_out(mut with_db: RootDatabase) {
     "#), @r"
     // wasi-example-nested.st
     /* Not generated:
-       - `draw`: its parameter `s` holds a record, which an import cannot take
-         yet.
        - `who`: its result holds a string, which an import cannot give back
          yet.
        - `fill`: its parameter `b` holds a list, which an import cannot take

@@ -5,8 +5,9 @@
 //! then its `value`, a result its flag `failed` then its ok `value` or its
 //! `error`, laid out as the canonical ABI lays the variant out. A result
 //! with both, whose value and error share their place, and an option of a
-//! record come back in words, read out of them. Either passed in is left
-//! out.
+//! record come back in words, read out of them. Either passed in is its
+//! flag and what it holds, packed into the values the canonical ABI passes
+//! it as.
 
 use db::RootDatabase;
 use insta::assert_snapshot;
@@ -324,10 +325,12 @@ fn what_two_outputs_cannot_hold_comes_back_in_words(mut with_db: RootDatabase) {
     ");
 }
 
-/// What cannot come back or pass yet: a result of a string, an option or
-/// a result passed in.
+/// An option or a result passed in is its flag, then what it holds, which
+/// a call may leave out: the import takes them as the values the canonical
+/// ABI flattens them into, a REAL or an LREAL where each side is one. A
+/// result of a string cannot come back yet.
 #[rstest]
-fn an_option_or_a_result_that_cannot_pass_is_left_out(mut with_db: RootDatabase) {
+fn an_option_or_a_result_passed_in_is_its_flag_and_what_it_holds(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
         package wasi:example@0.3.0;
 
@@ -336,6 +339,8 @@ fn an_option_or_a_result_that_cannot_pass_is_left_out(mut with_db: RootDatabase)
             name: func() -> result<string>;
             maybe-in: func(x: option<u32>);
             result-in: func(x: result<_, error-code>);
+            warm-in: func(t: option<f32>);
+            far-in: func(d: result<f64, f64>);
             kept: func() -> u8;
         }
 
@@ -347,9 +352,126 @@ fn an_option_or_a_result_that_cannot_pass_is_left_out(mut with_db: RootDatabase)
     NAMESPACE INTERNAL Wasi
     	NAMESPACE Example
     		NAMESPACE Leftovers
+    			USING Std.Convert;
+
     			TYPE ERROR_CODE : USINT (
     				BUSY := 0
     			); END_TYPE
+
+    			/* `maybe-in` as the host takes it: its parameters as the canonical ABI
+    			   passes them, which `MAYBE_IN` packs. */
+    			{extern 'wasi:example/leftovers@0.3.0' 'maybe-in'}
+    			FUNCTION PRIVATE MAYBE_IN_RAW
+    			VAR_INPUT
+    				a0 : DWORD;
+    				a1 : DWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION MAYBE_IN
+    			VAR_INPUT
+    				x_is_some : BOOL;
+    				x : UDINT := 0;
+    			END_VAR
+    			VAR
+    				a0 : DWORD;
+    				a1 : DWORD;
+    			END_VAR
+    				a0 := 0;
+    				a1 := 0;
+    				a0.%X0 := x_is_some;
+    				IF x_is_some THEN
+    					a1 := UDINT_TO_DWORD(x);
+    				END_IF;
+    				MAYBE_IN_RAW(a0 := a0, a1 := a1);
+    			END_FUNCTION
+
+    			/* `result-in` as the host takes it: its parameters as the canonical ABI
+    			   passes them, which `RESULT_IN` packs. */
+    			{extern 'wasi:example/leftovers@0.3.0' 'result-in'}
+    			FUNCTION PRIVATE RESULT_IN_RAW
+    			VAR_INPUT
+    				a0 : DWORD;
+    				a1 : DWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION RESULT_IN
+    			VAR_INPUT
+    				x_failed : BOOL;
+    				x_error : ERROR_CODE := 0;
+    			END_VAR
+    			VAR
+    				a0 : DWORD;
+    				a1 : DWORD;
+    			END_VAR
+    				a0 := 0;
+    				a1 := 0;
+    				a0.%X0 := x_failed;
+    				IF x_failed THEN
+    					a1.%B0 := USINT_TO_BYTE(x_error);
+    				END_IF;
+    				RESULT_IN_RAW(a0 := a0, a1 := a1);
+    			END_FUNCTION
+
+    			/* `warm-in` as the host takes it: its parameters as the canonical ABI
+    			   passes them, which `WARM_IN` packs. */
+    			{extern 'wasi:example/leftovers@0.3.0' 'warm-in'}
+    			FUNCTION PRIVATE WARM_IN_RAW
+    			VAR_INPUT
+    				a0 : DWORD;
+    				a1 : REAL;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION WARM_IN
+    			VAR_INPUT
+    				t_is_some : BOOL;
+    				t : REAL := 0.0;
+    			END_VAR
+    			VAR
+    				a0 : DWORD;
+    				a1 : REAL;
+    			END_VAR
+    				a0 := 0;
+    				a1 := 0.0;
+    				a0.%X0 := t_is_some;
+    				IF t_is_some THEN
+    					a1 := t;
+    				END_IF;
+    				WARM_IN_RAW(a0 := a0, a1 := a1);
+    			END_FUNCTION
+
+    			/* `far-in` as the host takes it: its parameters as the canonical ABI
+    			   passes them, which `FAR_IN` packs. */
+    			{extern 'wasi:example/leftovers@0.3.0' 'far-in'}
+    			FUNCTION PRIVATE FAR_IN_RAW
+    			VAR_INPUT
+    				a0 : DWORD;
+    				a1 : LREAL;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION FAR_IN
+    			VAR_INPUT
+    				d_failed : BOOL;
+    				d_value : LREAL := 0.0;
+    				d_error : LREAL := 0.0;
+    			END_VAR
+    			VAR
+    				a0 : DWORD;
+    				a1 : LREAL;
+    			END_VAR
+    				a0 := 0;
+    				a1 := 0.0;
+    				a0.%X0 := d_failed;
+    				IF d_failed THEN
+    					a1 := d_error;
+    				ELSE
+    					a1 := d_value;
+    				END_IF;
+    				FAR_IN_RAW(a0 := a0, a1 := a1);
+    			END_FUNCTION
 
     			{extern 'wasi:example/leftovers@0.3.0' 'kept'}
     			FUNCTION KEPT : USINT
@@ -359,10 +481,6 @@ fn an_option_or_a_result_that_cannot_pass_is_left_out(mut with_db: RootDatabase)
     END_NAMESPACE
     /* Not generated:
        - `name`: its result holds a string, which an import cannot give back
-         yet.
-       - `maybe-in`: its parameter `x` holds an option, which an import cannot
-         take yet.
-       - `result-in`: its parameter `x` holds a result, which an import cannot
-         take yet. */
+         yet. */
     ");
 }

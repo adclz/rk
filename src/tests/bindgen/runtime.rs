@@ -5,8 +5,10 @@
 //! aliases, a record's outputs and an option's, a wait through an async
 //! block, on the host `rk test` runs tests on; standard input copied to
 //! standard output through the streams' and futures' built-ins, random
-//! numbers through a tuple's outputs, and the errors of WASI's sockets,
-//! read out of the words they come back in, on a component host.
+//! numbers through a tuple's outputs, the errors of WASI's sockets, read
+//! out of the words they come back in, and the addresses its sockets are
+//! bound and connected to, packed into the words they are passed in, on a
+//! component host.
 
 use std::collections::VecDeque;
 use std::pin::Pin;
@@ -422,6 +424,125 @@ fn the_errors_of_wasi_s_sockets_are_read_out_of_words(mut with_db: RootDatabase)
     let mut plc = plc_with(&mut with_db, &bindings, program, ctx);
     let mut output = 0;
     for _ in 0..50 {
+        output = plc.scan(0);
+        if output != 0 {
+            break;
+        }
+    }
+    assert_eq!(output, 1, "the number of the check that failed, negative");
+}
+
+/// An address, a variant, passed to WASI's sockets and read back from
+/// them: a UDP socket and a TCP socket bound to the loopback address, as
+/// values, the cases sharing them; a second TCP socket connected to the
+/// first's port in an async call, whose parameters are in memory, and the
+/// address it is connected to. 1 when each address came back as it went,
+/// and otherwise the number of the check that failed, negative.
+#[rstest]
+fn an_address_passed_to_wasi_s_sockets_comes_back(mut with_db: RootDatabase) {
+    let bindings = generated(&world_of(&["wasi:sockets/types@0.3.0"]));
+    let program = r#"
+        PROGRAM P
+        VAR_EXTERNAL output : DINT; END_VAR
+        VAR
+            step : INT;
+            failed : BOOL;
+            datagrams, listener, accepted, client : UDINT;
+            error : Wasi.Sockets.Types.ERROR_CODE;
+            address : Wasi.Sockets.Types.IP_SOCKET_ADDRESS;
+            port, listening : UINT;
+            first, second, third, last : USINT;
+            connect : Wasi.Sockets.Types.TCP_SOCKET_CONNECT;
+        END_VAR
+            CASE step OF
+            0:
+                step := 9;
+                Wasi.Sockets.Types.UDP_SOCKET_CREATE(
+                    address_family := Wasi.Sockets.Types.IP_ADDRESS_FAMILY#IPV4,
+                    failed => failed, value => datagrams);
+                IF failed THEN output := -1; RETURN; END_IF;
+                // Port 0: the host picks one.
+                Wasi.Sockets.Types.UDP_SOCKET_BIND(self := datagrams,
+                    local_address := Wasi.Sockets.Types.IP_SOCKET_ADDRESS#IPV4,
+                    local_address_ipv4_address_0 := 127, local_address_ipv4_address_3 := 1,
+                    failed => failed, error => error);
+                IF failed THEN output := -2; RETURN; END_IF;
+                Wasi.Sockets.Types.UDP_SOCKET_GET_LOCAL_ADDRESS(self := datagrams,
+                    failed => failed, value => address, value_ipv4_port => port,
+                    value_ipv4_address_0 => first, value_ipv4_address_1 => second,
+                    value_ipv4_address_2 => third, value_ipv4_address_3 => last);
+                IF failed OR address <> Wasi.Sockets.Types.IP_SOCKET_ADDRESS#IPV4 OR port = 0
+                    OR first <> 127 OR second <> 0 OR third <> 0 OR last <> 1
+                THEN
+                    output := -3; RETURN;
+                END_IF;
+
+                Wasi.Sockets.Types.TCP_SOCKET_CREATE(
+                    address_family := Wasi.Sockets.Types.IP_ADDRESS_FAMILY#IPV4,
+                    failed => failed, value => listener);
+                IF failed THEN output := -4; RETURN; END_IF;
+                Wasi.Sockets.Types.TCP_SOCKET_BIND(self := listener,
+                    local_address := Wasi.Sockets.Types.IP_SOCKET_ADDRESS#IPV4,
+                    local_address_ipv4_address_0 := 127, local_address_ipv4_address_3 := 1,
+                    failed => failed, error => error);
+                IF failed THEN output := -5; RETURN; END_IF;
+                Wasi.Sockets.Types.TCP_SOCKET_GET_LOCAL_ADDRESS(self := listener,
+                    failed => failed, value_ipv4_port => listening);
+                IF failed OR listening = 0 THEN output := -6; RETURN; END_IF;
+                Wasi.Sockets.Types.TCP_SOCKET_LISTEN(self := listener,
+                    failed => failed, value => accepted);
+                IF failed THEN output := -7; RETURN; END_IF;
+                Wasi.Sockets.Types.TCP_SOCKET_CREATE(
+                    address_family := Wasi.Sockets.Types.IP_ADDRESS_FAMILY#IPV4,
+                    failed => failed, value => client);
+                IF failed THEN output := -8; RETURN; END_IF;
+                // Bound here, or the host binds it to any address as it
+                // connects, which this host does not allow.
+                Wasi.Sockets.Types.TCP_SOCKET_BIND(self := client,
+                    local_address := Wasi.Sockets.Types.IP_SOCKET_ADDRESS#IPV4,
+                    local_address_ipv4_address_0 := 127, local_address_ipv4_address_3 := 1,
+                    failed => failed, error => error);
+                IF failed THEN output := -11; RETURN; END_IF;
+                step := 1;
+            1:
+                connect(self := client,
+                    remote_address := Wasi.Sockets.Types.IP_SOCKET_ADDRESS#IPV4,
+                    remote_address_ipv4_port := listening,
+                    remote_address_ipv4_address_0 := 127, remote_address_ipv4_address_3 := 1);
+                IF connect.DONE THEN
+                    step := 9;
+                    IF connect.failed THEN output := -9; RETURN; END_IF;
+                    Wasi.Sockets.Types.TCP_SOCKET_GET_REMOTE_ADDRESS(self := client,
+                        failed => failed, value => address, value_ipv4_port => port,
+                        value_ipv4_address_0 => first, value_ipv4_address_3 => last);
+                    IF failed OR address <> Wasi.Sockets.Types.IP_SOCKET_ADDRESS#IPV4
+                        OR port <> listening OR first <> 127 OR last <> 1
+                    THEN
+                        output := -10; RETURN;
+                    END_IF;
+                    output := 1;
+                END_IF;
+            END_CASE;
+        END_PROGRAM
+    "#;
+    // WASI's sockets are tokio's: a host that listens and connects runs
+    // within its runtime, which moves the connection on while the scans
+    // check it.
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .expect("a tokio runtime");
+    let _within = runtime.enter();
+    // What a guest may bind and connect to is the host's to allow: here,
+    // this machine alone.
+    let mut ctx = WasiCtxBuilder::new();
+    ctx.allow_tcp(true)
+        .allow_udp(true)
+        .socket_addr_check(|address, _| Box::pin(async move { address.ip().is_loopback() }));
+    let mut plc = plc_with(&mut with_db, &bindings, program, ctx.build());
+    let mut output = 0;
+    for _ in 0..200 {
         output = plc.scan(0);
         if output != 0 {
             break;
