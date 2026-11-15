@@ -11,7 +11,9 @@
 //!
 //! A result that holds a variant, or a value and an error, comes back in
 //! words, as the canonical ABI lays it out: the import is `<NAME>_RAW`, and
-//! `<NAME>` calls it and reads each value out of the words ([`lift`]).
+//! `<NAME>` calls it and reads each value out of the words ([`lift`]). A
+//! parameter that holds one is passed the same way: `<NAME>` packs its
+//! values into the words `<NAME>_RAW` takes ([`lower`]).
 //!
 //! Each interface is a namespace inside its package's, inside `Wasi`, the
 //! one INTERNAL namespace: `wasi:clocks/monotonic-clock` is
@@ -22,6 +24,7 @@
 //! cannot express yet is left out, and the file says why at its end.
 
 pub mod lift;
+pub mod lower;
 pub mod names;
 pub mod shapes;
 
@@ -53,7 +56,7 @@ const MAX_FLAT_PARAMS: usize = 16;
 
 /// An async call takes its parameters as values up to this many, and as
 /// the address of a tuple of them past it, which rk lays out field by field.
-const MAX_FLAT_ASYNC_PARAMS: usize = 4;
+pub(crate) const MAX_FLAT_ASYNC_PARAMS: usize = 4;
 
 /// A file of generated code.
 #[derive(Debug)]
@@ -187,7 +190,10 @@ impl Out {
         self.line(section);
         self.depth += 1;
         for var in vars {
-            self.line(&format!("{} : {};", var.name, var.ty));
+            match var.start {
+                Some(start) => self.line(&format!("{} : {} := {start};", var.name, var.ty)),
+                None => self.line(&format!("{} : {};", var.name, var.ty)),
+            }
         }
         self.depth -= 1;
         self.line("END_VAR");
@@ -388,6 +394,7 @@ impl Generator<'_> {
                             name: "handle".to_string(),
                             ty: "UDINT".to_string(),
                             flat: 1,
+                            start: None,
                         }],
                     );
                     out.line("END_FUNCTION");
@@ -477,8 +484,8 @@ impl Generator<'_> {
 
     /// The declaration of `function`, imported from `module`, written to
     /// `out`, and its POU's name, after its import's where the two are
-    /// apart: `<NAME>_RAW`, whose words `<NAME>` reads the result out of.
-    /// `Err` says why it cannot be.
+    /// apart: `<NAME>_RAW`, whose parameters `<NAME>` packs and whose
+    /// result it reads. `Err` says why it cannot be.
     fn function(
         &self,
         out: &mut Out,
@@ -491,28 +498,24 @@ impl Generator<'_> {
             return Err("it is a property, which rk does not import".to_string());
         };
         let asynchronous = function.kind.is_async();
-        let mut inputs = Vec::new();
-        for param in &function.params {
-            let vars = shapes::input(resolve, &param.name, param.ty, here).map_err(|what| {
-                format!(
-                    "its parameter `{}` holds {what}, which an import cannot take yet",
-                    param.name
-                )
-            })?;
-            inputs.extend(vars);
-        }
-        let flat: usize = inputs.iter().map(|var| var.flat).sum();
-        if !asynchronous && flat > MAX_FLAT_PARAMS {
+        let signature = resolve.wasm_signature(
+            match asynchronous {
+                true => AbiVariant::GuestImportAsync,
+                false => AbiVariant::GuestImport,
+            },
+            function,
+        );
+        let lowered = lower::lower(
+            resolve,
+            &self.sizes,
+            function,
+            signature.indirect_params,
+            here,
+        )?;
+        if !asynchronous && signature.indirect_params {
             return Err(format!(
-                "it takes {flat} values, which the canonical ABI passes in memory past {MAX_FLAT_PARAMS}"
-            ));
-        }
-        let flattened = function.params.iter().any(|param| {
-            shapes::scalar(resolve, param.ty, here).is_none() && param.ty != Type::String
-        });
-        if asynchronous && flattened && flat > MAX_FLAT_ASYNC_PARAMS {
-            return Err(format!(
-                "it takes a record among {flat} values, which an async call passes in memory as a tuple holding the record whole"
+                "it takes {} values, which the canonical ABI passes in memory past {MAX_FLAT_PARAMS}",
+                lowered.flat
             ));
         }
         let returned = match shapes::result(resolve, function.result, asynchronous, here) {
@@ -522,12 +525,10 @@ impl Generator<'_> {
             // memory: an async call's result always, another's past one
             // value.
             Err(what) => {
-                let in_memory = asynchronous
-                    || resolve
-                        .wasm_signature(AbiVariant::GuestImport, function)
-                        .retptr;
                 let lifted = match function.result {
-                    Some(ty) if in_memory => lift::lift(resolve, &self.sizes, ty, here),
+                    Some(ty) if asynchronous || signature.retptr => {
+                        lift::lift(resolve, &self.sizes, ty, here)
+                    }
                     _ => Err(what),
                 };
                 Returned::Words(lifted.map_err(|what| {
@@ -535,25 +536,29 @@ impl Generator<'_> {
                 })?)
             }
         };
-        // A call that is not async returns a record in memory from two
-        // fields on.
-        let words = match &returned {
-            Returned::Words(lifted) => lifted.words(if asynchronous { 1 } else { 2 }),
-            Returned::Fields(_) => Vec::new(),
+        // What the import gives back: the words a result is read out of, a
+        // call that is not async returning a record in memory from two
+        // fields on, or the outputs as they are.
+        let (given, outputs): (Vec<Var>, &[Var]) = match &returned {
+            Returned::Words(lifted) => (
+                lifted.words(if asynchronous { 1 } else { 2 }),
+                &lifted.outputs,
+            ),
+            Returned::Fields(Shape::Outputs(outputs)) => (outputs.clone(), outputs),
+            Returned::Fields(_) => (Vec::new(), &[]),
         };
-        let mut variables: Vec<&str> = inputs.iter().map(|var| var.name.as_str()).collect();
+        let apart = lowered.packs() || matches!(returned, Returned::Words(_));
+        let mut variables: Vec<&str> = lowered.inputs.iter().map(|var| var.name.as_str()).collect();
         if asynchronous {
             variables.push("DONE");
         }
-        match &returned {
-            Returned::Fields(Shape::Outputs(outputs)) => {
-                variables.extend(outputs.iter().map(|var| var.name.as_str()));
-            }
-            Returned::Fields(_) => {}
-            Returned::Words(lifted) => {
-                variables.extend(lifted.outputs.iter().map(|var| var.name.as_str()));
-                variables.push("call");
-                variables.extend(words.iter().map(|var| var.name.as_str()));
+        variables.extend(outputs.iter().map(|var| var.name.as_str()));
+        let words = lowered.words();
+        if apart {
+            variables.push("call");
+            variables.extend(words.iter().map(|var| var.name.as_str()));
+            if let Returned::Words(_) = returned {
+                variables.extend(given.iter().map(|var| var.name.as_str()));
             }
         }
         for (at, variable) in variables.iter().enumerate() {
@@ -568,84 +573,122 @@ impl Generator<'_> {
         }
 
         let name = &function.name;
-        let shape = match returned {
-            Returned::Fields(shape) => shape,
-            Returned::Words(lifted) => {
-                let raw = format!("{pou}_RAW");
-                let passed: Vec<String> = inputs
-                    .iter()
-                    .map(|var| format!("{0} := {0}", var.name))
-                    .collect();
-                out.prose(&format!(
-                    "`{name}` as the host gives it: its result in words of 8 bytes, as the canonical ABI lays it out, which `{pou}` reads."
-                ));
-                match asynchronous {
-                    false => {
-                        out.line(&format!("{{extern '{module}' '{name}'}}"));
-                        out.line(&format!("FUNCTION PRIVATE {raw}"));
-                        out.vars("VAR_INPUT", &inputs);
-                        out.vars("VAR_OUTPUT", &words);
-                        out.line("END_FUNCTION");
-                        out.line("");
-                        out.docs(&function.docs);
-                        out.line(&format!("FUNCTION {pou}"));
-                        out.vars("VAR_INPUT", &inputs);
-                        out.vars("VAR_OUTPUT", &lifted.outputs);
-                        out.vars("VAR", &words);
-                        out.depth += 1;
-                        let received = words.iter().map(|var| format!("{0} => {0}", var.name));
-                        let arguments: Vec<String> = passed.into_iter().chain(received).collect();
-                        out.line(&format!("{raw}({});", arguments.join(", ")));
-                        lifted.write(out, "w");
-                        out.depth -= 1;
-                        out.line("END_FUNCTION");
-                    }
-                    true => {
-                        out.line(&format!("{{extern async '{module}' '{name}'}}"));
-                        out.line(&format!("FUNCTION_BLOCK {raw}"));
-                        out.vars("VAR_INPUT", &inputs);
-                        out.vars("VAR_OUTPUT", &[vec![done()], words].concat());
-                        out.line("END_FUNCTION_BLOCK");
-                        out.line("");
-                        out.docs(&function.docs);
-                        out.line(&format!("FUNCTION_BLOCK {pou}"));
-                        out.vars("VAR_INPUT", &inputs);
-                        reader(out, &raw, &passed.join(", "), &lifted);
-                        out.line("END_FUNCTION_BLOCK");
-                    }
-                }
-                out.line("");
-                return Ok(vec![raw, pou]);
-            }
+        let value = match &returned {
+            Returned::Fields(Shape::Return(st)) => format!(" : {st}"),
+            _ => String::new(),
         };
-        out.docs(&function.docs);
+        let import = if apart {
+            format!("{pou}_RAW")
+        } else {
+            pou.clone()
+        };
+        if apart {
+            out.prose(&match (lowered.packs(), &returned) {
+                (false, _) => format!(
+                    "`{name}` as the host gives it: its result in words of 8 bytes, as the canonical ABI lays it out, which `{pou}` reads."
+                ),
+                (true, Returned::Fields(_)) => format!(
+                    "`{name}` as the host takes it: its parameters as the canonical ABI passes them, which `{pou}` packs."
+                ),
+                (true, Returned::Words(_)) => format!(
+                    "`{name}` as the host has it: its parameters as the canonical ABI passes them, which `{pou}` packs, and its result in words of 8 bytes, which it reads."
+                ),
+            });
+        } else {
+            out.docs(&function.docs);
+        }
+        // The import: its parameters, and what it gives back.
         match asynchronous {
             false => {
                 out.line(&format!("{{extern '{module}' '{name}'}}"));
-                match &shape {
-                    Shape::Return(st) => out.line(&format!("FUNCTION {pou} : {st}")),
-                    _ => out.line(&format!("FUNCTION {pou}")),
-                }
-                out.vars("VAR_INPUT", &inputs);
-                if let Shape::Outputs(outputs) = &shape {
-                    out.vars("VAR_OUTPUT", outputs);
-                }
+                let private = if apart { "PRIVATE " } else { "" };
+                out.line(&format!("FUNCTION {private}{import}{value}"));
+                out.vars("VAR_INPUT", &lowered.params);
+                out.vars("VAR_OUTPUT", &given);
                 out.line("END_FUNCTION");
             }
             true => {
                 out.line(&format!("{{extern async '{module}' '{name}'}}"));
-                out.line(&format!("FUNCTION_BLOCK {pou}"));
-                out.vars("VAR_INPUT", &inputs);
-                let mut outputs = vec![done()];
-                if let Shape::Outputs(fields) = shape {
-                    outputs.extend(fields);
-                }
-                out.vars("VAR_OUTPUT", &outputs);
+                out.line(&format!("FUNCTION_BLOCK {import}"));
+                out.vars("VAR_INPUT", &lowered.params);
+                out.vars("VAR_OUTPUT", &[vec![done()], given.clone()].concat());
                 out.line("END_FUNCTION_BLOCK");
             }
         }
         out.line("");
-        Ok(vec![pou])
+        if !apart {
+            return Ok(vec![pou]);
+        }
+
+        // What a call names: the values themselves, packed into the
+        // import's parameters before its call and read out of what it
+        // gives back after.
+        let passed: Vec<String> = lowered
+            .params
+            .iter()
+            .map(|var| format!("{0} := {0}", var.name))
+            .collect();
+        out.docs(&function.docs);
+        match asynchronous {
+            false => {
+                out.line(&format!("FUNCTION {pou}{value}"));
+                out.vars("VAR_INPUT", &lowered.inputs);
+                out.vars("VAR_OUTPUT", outputs);
+                let mut locals = words;
+                if let Returned::Words(_) = returned {
+                    locals.extend(given.iter().cloned());
+                }
+                out.vars("VAR", &locals);
+                out.depth += 1;
+                lowered.write(out);
+                let received = given.iter().map(|var| format!("{0} => {0}", var.name));
+                let arguments: Vec<String> = passed.into_iter().chain(received).collect();
+                match value.is_empty() {
+                    true => out.line(&format!("{import}({});", arguments.join(", "))),
+                    false => out.line(&format!("{pou} := {import}({});", arguments.join(", "))),
+                }
+                if let Returned::Words(lifted) = &returned {
+                    lifted.write(out, "w");
+                }
+                out.depth -= 1;
+                out.line("END_FUNCTION");
+            }
+            true => {
+                out.line(&format!("FUNCTION_BLOCK {pou}"));
+                out.vars("VAR_INPUT", &lowered.inputs);
+                out.vars("VAR_OUTPUT", &[vec![done()], outputs.to_vec()].concat());
+                let mut locals = words;
+                locals.push(Var {
+                    name: "call".to_string(),
+                    ty: import.clone(),
+                    flat: 1,
+                    start: None,
+                });
+                out.vars("VAR", &locals);
+                out.depth += 1;
+                lowered.write(out);
+                out.line(&format!("call({});", passed.join(", ")));
+                out.line("DONE := call.DONE;");
+                if !outputs.is_empty() {
+                    out.line("IF call.DONE THEN");
+                    out.depth += 1;
+                    match &returned {
+                        Returned::Words(lifted) => lifted.write(out, "call.w"),
+                        Returned::Fields(_) => {
+                            for output in outputs {
+                                out.line(&format!("{0} := call.{0};", output.name));
+                            }
+                        }
+                    }
+                    out.depth -= 1;
+                    out.line("END_IF;");
+                }
+                out.depth -= 1;
+                out.line("END_FUNCTION_BLOCK");
+            }
+        }
+        out.line("");
+        Ok(vec![import, pou])
     }
 
     /// The built-ins of each stream and future `function` takes or gives
@@ -723,6 +766,7 @@ fn reader(out: &mut Out, raw: &str, passed: &str, lifted: &lift::Lifted) {
             name: "call".to_string(),
             ty: raw.to_string(),
             flat: 1,
+            start: None,
         }],
     );
     out.depth += 1;
@@ -803,6 +847,7 @@ fn done() -> Var {
         name: "DONE".to_string(),
         ty: "BOOL".to_string(),
         flat: 1,
+        start: None,
     }
 }
 
@@ -1064,6 +1109,7 @@ fn built_in_set(
         name: name.to_string(),
         ty: "UDINT".to_string(),
         flat: 1,
+        start: None,
     };
     let kind = match carrier {
         Carrier::Stream => "stream",
@@ -1109,12 +1155,14 @@ fn built_in_set(
                             name: "data".to_string(),
                             ty: data,
                             flat: 1,
+                            start: None,
                         },
                         handle("read"),
                         Var {
                             name: "closed".to_string(),
                             ty: "BOOL".to_string(),
                             flat: 1,
+                            start: None,
                         },
                     ],
                 );
@@ -1135,6 +1183,7 @@ fn built_in_set(
                         name: "data".to_string(),
                         ty: format!("STRING[{STRING_LIMIT}]"),
                         flat: 2,
+                        start: None,
                     },
                 ],
             );
@@ -1147,6 +1196,7 @@ fn built_in_set(
                         name: "closed".to_string(),
                         ty: "BOOL".to_string(),
                         flat: 1,
+                        start: None,
                     },
                 ],
             );

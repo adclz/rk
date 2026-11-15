@@ -18,9 +18,10 @@ use wit_parser::{Int, Resolve, SizeAlign, Type, TypeDefKind, TypeOwner};
 use crate::shapes::{self, Var};
 use crate::{Out, names};
 
-/// How a value is read out of a word, by its size in bytes.
+/// How a value is read out of a word or packed into one, by its size in
+/// bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Kind {
+pub(crate) enum Kind {
     Bool,
     Unsigned(usize),
     Signed(usize),
@@ -31,15 +32,7 @@ enum Kind {
 
 /// How a scalar `ty` is read: `None` for what [`shapes::scalar`] has no
 /// type for.
-fn kind(resolve: &Resolve, ty: Type) -> Option<Kind> {
-    let tag = |int: Int| {
-        Kind::Unsigned(match int {
-            Int::U8 => 1,
-            Int::U16 => 2,
-            Int::U32 => 4,
-            Int::U64 => 8,
-        })
-    };
+pub(crate) fn kind(resolve: &Resolve, ty: Type) -> Option<Kind> {
     Some(match shapes::resolved(resolve, ty) {
         Type::Bool => Kind::Bool,
         Type::U8 => Kind::Unsigned(1),
@@ -54,8 +47,8 @@ fn kind(resolve: &Resolve, ty: Type) -> Option<Kind> {
         Type::F64 => Kind::Float(8),
         Type::Char | Type::String | Type::ErrorContext => return None,
         Type::Id(id) => match &resolve.types[id].kind {
-            TypeDefKind::Enum(enumeration) => tag(enumeration.tag()),
-            TypeDefKind::Variant(variant) if !shapes::carries(variant) => tag(variant.tag()),
+            TypeDefKind::Enum(enumeration) => tag_kind(enumeration.tag()),
+            TypeDefKind::Variant(variant) if !shapes::carries(variant) => tag_kind(variant.tag()),
             TypeDefKind::Flags(flags) => Kind::Bits(shapes::flags_base(flags)?.1),
             TypeDefKind::Handle(_)
             | TypeDefKind::Resource
@@ -68,13 +61,34 @@ fn kind(resolve: &Resolve, ty: Type) -> Option<Kind> {
 
 impl Kind {
     /// What a value that did not come holds.
-    fn zero(self) -> &'static str {
+    pub(crate) fn zero(self) -> &'static str {
         match self {
             Kind::Bool => "FALSE",
             Kind::Float(_) => "0.0",
             _ => "0",
         }
     }
+
+    /// How many bytes the canonical ABI holds the value in.
+    pub(crate) fn bytes(self) -> usize {
+        match self {
+            Kind::Bool => 1,
+            Kind::Unsigned(bytes)
+            | Kind::Signed(bytes)
+            | Kind::Float(bytes)
+            | Kind::Bits(bytes) => bytes,
+        }
+    }
+}
+
+/// The unsigned integer a case is held in, as a value is read.
+pub(crate) fn tag_kind(tag: Int) -> Kind {
+    Kind::Unsigned(match tag {
+        Int::U8 => 1,
+        Int::U16 => 2,
+        Int::U32 => 4,
+        Int::U64 => 8,
+    })
 }
 
 /// A value's place in the result, in bytes from its start, and how it is
@@ -138,22 +152,52 @@ impl Read {
     }
 }
 
-/// A statement of the code that reads a result.
+/// A statement of the code that reads a result or packs a parameter: what
+/// is done with one value, or what a flag or a case decides.
 #[derive(Debug)]
-enum Step {
-    /// An output takes the value read.
-    Set(String, Read),
+pub(crate) enum Step<L> {
+    /// One value, read or packed.
+    Leaf(L),
     /// What a flag decides: one side when it is TRUE, the other when not.
     Either {
         flag: String,
-        then: Vec<Step>,
-        otherwise: Vec<Step>,
+        then: Vec<Step<L>>,
+        otherwise: Vec<Step<L>>,
     },
     /// What each case of a variant holds, by the case's name.
     Cases {
         selector: String,
-        arms: Vec<(String, Vec<Step>)>,
+        arms: Vec<(String, Vec<Step<L>>)>,
     },
+}
+
+impl<L> Step<L> {
+    /// The step with each of its values turned into what `leaf` makes of
+    /// it.
+    pub(crate) fn map<M>(self, leaf: &mut dyn FnMut(L) -> M) -> Step<M> {
+        let all = |steps: Vec<Step<L>>, leaf: &mut dyn FnMut(L) -> M| -> Vec<Step<M>> {
+            steps.into_iter().map(|step| step.map(leaf)).collect()
+        };
+        match self {
+            Step::Leaf(value) => Step::Leaf(leaf(value)),
+            Step::Either {
+                flag,
+                then,
+                otherwise,
+            } => Step::Either {
+                flag,
+                then: all(then, leaf),
+                otherwise: all(otherwise, leaf),
+            },
+            Step::Cases { selector, arms } => Step::Cases {
+                selector,
+                arms: arms
+                    .into_iter()
+                    .map(|(label, steps)| (label, all(steps, leaf)))
+                    .collect(),
+            },
+        }
+    }
 }
 
 /// A result taken apart: its outputs, and the code that gives them their
@@ -168,7 +212,7 @@ pub struct Lifted {
     /// The outputs that are only there when their flag or their case came,
     /// each with what it holds otherwise.
     zeroes: Vec<(String, &'static str)>,
-    steps: Vec<Step>,
+    steps: Vec<Step<(String, Read)>>,
 }
 
 /// `ty`, a function's result, taken apart; `Err` says what in it cannot
@@ -223,6 +267,7 @@ impl Lifted {
                 name: format!("w{at}"),
                 ty: "LWORD".to_string(),
                 flat: 1,
+                start: None,
             })
             .collect()
     }
@@ -233,21 +278,22 @@ impl Lifted {
         for (name, zero) in &self.zeroes {
             out.line(&format!("{name} := {zero};"));
         }
-        write(out, &self.steps, word);
+        write(out, &self.steps, &|(name, read)| {
+            format!("{name} := {};", read.expression(word))
+        });
     }
 }
 
-fn write(out: &mut Out, steps: &[Step], word: &str) {
-    let block = |out: &mut Out, steps: &[Step]| {
+/// Writes `steps`, each value's statement as `leaf` writes it.
+pub(crate) fn write<L>(out: &mut Out, steps: &[Step<L>], leaf: &dyn Fn(&L) -> String) {
+    let block = |out: &mut Out, steps: &[Step<L>]| {
         out.depth += 1;
-        write(out, steps, word);
+        write(out, steps, leaf);
         out.depth -= 1;
     };
     for step in steps {
         match step {
-            Step::Set(name, read) => {
-                out.line(&format!("{name} := {};", read.expression(word)));
-            }
+            Step::Leaf(value) => out.line(&leaf(value)),
             Step::Either {
                 flag,
                 then,
@@ -288,7 +334,7 @@ fn write(out: &mut Out, steps: &[Step], word: &str) {
 }
 
 /// `part` after `prefix`, as WIT joins words.
-fn join(prefix: &str, part: &str) -> String {
+pub(crate) fn join(prefix: &str, part: &str) -> String {
     match prefix {
         "" => part.to_string(),
         prefix => format!("{prefix}-{part}"),
@@ -317,6 +363,7 @@ impl Walk<'_> {
             name: name.clone(),
             ty,
             flat: 1,
+            start: None,
         });
         name
     }
@@ -334,7 +381,7 @@ impl Walk<'_> {
         offset: usize,
         prefix: &str,
         inside: bool,
-    ) -> Result<Vec<Step>, &'static str> {
+    ) -> Result<Vec<Step<(String, Read)>>, &'static str> {
         let (resolve, sizes) = (self.resolve, self.sizes);
         let or_value = |prefix: &str| match prefix {
             "" => "value".to_string(),
@@ -344,7 +391,7 @@ impl Walk<'_> {
             let st = shapes::scalar(resolve, ty, self.here)
                 .expect("a value read out of a word has a scalar type");
             let name = self.output(&or_value(prefix), st, kind, inside);
-            return Ok(vec![Step::Set(name, Read { offset, kind })]);
+            return Ok(vec![Step::Leaf((name, Read { offset, kind }))]);
         }
         let flag = |walk: &mut Self, name: &str| {
             let name = walk.output(name, "BOOL".to_string(), Kind::Bool, inside);
@@ -352,7 +399,7 @@ impl Walk<'_> {
                 offset,
                 kind: Kind::Bool,
             };
-            (name.clone(), Step::Set(name, read))
+            (name.clone(), Step::Leaf((name, read)))
         };
         let Type::Id(id) = shapes::resolved(resolve, ty) else {
             return Err(shapes::what(resolve, ty));
@@ -427,12 +474,7 @@ impl Walk<'_> {
             }
             TypeDefKind::Variant(variant) => {
                 let st = shapes::type_name(resolve, id, self.here);
-                let kind = match variant.tag() {
-                    Int::U8 => Kind::Unsigned(1),
-                    Int::U16 => Kind::Unsigned(2),
-                    Int::U32 => Kind::Unsigned(4),
-                    Int::U64 => Kind::Unsigned(8),
-                };
+                let kind = tag_kind(variant.tag());
                 let held = offset
                     + sizes
                         .payload_offset(variant.tag(), variant.cases.iter().map(|c| c.ty.as_ref()))
@@ -456,7 +498,7 @@ impl Walk<'_> {
                     }
                 }
                 Ok(vec![
-                    Step::Set(selector.clone(), Read { offset, kind }),
+                    Step::Leaf((selector.clone(), Read { offset, kind })),
                     Step::Cases { selector, arms },
                 ])
             }

@@ -8,7 +8,8 @@
 //! one output per field, which rk lays out as the canonical ABI lays out
 //! the value. What no record of outputs is laid out as, a variant or a
 //! result with a value and an error, is read by the generated code itself
-//! ([`crate::lift`]). Anything else is not generated yet, and says why.
+//! ([`crate::lift`]), and packed by it when it is passed in
+//! ([`crate::lower`]). Anything else is not generated yet, and says why.
 
 use wit_parser::{Handle, Resolve, Type, TypeDefKind, TypeId, TypeOwner};
 
@@ -25,6 +26,9 @@ pub struct Var {
     pub ty: String,
     /// How many values the canonical ABI flattens it into.
     pub flat: usize,
+    /// The value it starts with, for an input a call may leave out: what
+    /// is only passed with its case.
+    pub start: Option<&'static str>,
 }
 
 /// What a function gives back.
@@ -199,32 +203,33 @@ fn string() -> String {
     format!("STRING[{STRING_LIMIT}]")
 }
 
-/// The variables a parameter `name` of type `ty` becomes: one, or one per
-/// field of a record or a tuple, `when_seconds`. `Err` says what it is
-/// that cannot be passed.
+/// The variable a parameter `name` of type `ty` is when it is passed as it
+/// is: a scalar, or a string. `None` for what holds other values.
+pub fn single(resolve: &Resolve, name: &str, ty: Type, here: Option<TypeOwner>) -> Option<Var> {
+    let (st, flat) = match resolved(resolve, ty) {
+        Type::String => (string(), 2),
+        _ => (scalar(resolve, ty, here)?, 1),
+    };
+    Some(Var {
+        name: names::lower(name),
+        ty: st,
+        flat,
+        start: None,
+    })
+}
+
+/// The variables a parameter `name` of type `ty` becomes when its values
+/// are passed one after the other: one, or one per field of a record or a
+/// tuple, `when_seconds`, the fields of a record it holds among them, as
+/// the canonical ABI flattens them. `Err` says what it is that cannot be
+/// passed so.
 pub fn input(
     resolve: &Resolve,
     name: &str,
     ty: Type,
     here: Option<TypeOwner>,
 ) -> Result<Vec<Var>, &'static str> {
-    let one = |name: String, ty: Type| -> Result<Var, &'static str> {
-        match resolved(resolve, ty) {
-            Type::String => Ok(Var {
-                name,
-                ty: string(),
-                flat: 2,
-            }),
-            _ => scalar(resolve, ty, here)
-                .map(|st| Var {
-                    name,
-                    ty: st,
-                    flat: 1,
-                })
-                .ok_or_else(|| what(resolve, ty)),
-        }
-    };
-    if let Ok(var) = one(names::lower(name), ty) {
+    if let Some(var) = single(resolve, name, ty, here) {
         return Ok(vec![var]);
     }
     let fields: Vec<(String, Type)> = match definition(resolve, ty) {
@@ -241,10 +246,11 @@ pub fn input(
             .collect(),
         _ => return Err(what(resolve, ty)),
     };
-    fields
-        .into_iter()
-        .map(|(field, ty)| one(names::lower(&field), ty))
-        .collect()
+    let mut vars = Vec::new();
+    for (field, ty) in fields {
+        vars.extend(input(resolve, &field, ty, here)?);
+    }
+    Ok(vars)
 }
 
 /// What a function returns, `ty`, as ST gives it back: a FUNCTION's own
@@ -266,6 +272,7 @@ pub fn result(
                 name: names::lower(name),
                 ty: st,
                 flat: 1,
+                start: None,
             })
             .ok_or_else(|| what(resolve, ty))
     };
@@ -275,6 +282,7 @@ pub fn result(
                 name: "value".to_string(),
                 ty: st,
                 flat: 1,
+                start: None,
             }]),
             false => Shape::Return(st),
         });
@@ -283,6 +291,7 @@ pub fn result(
         name: name.to_string(),
         ty: "BOOL".to_string(),
         flat: 1,
+        start: None,
     };
     let outputs = match definition(resolve, ty) {
         Some(TypeDefKind::Record(record)) => record
