@@ -563,10 +563,24 @@ impl Generator<'_> {
                     }
                     for case in &variant.cases {
                         let Some(held) = case.ty else { continue };
-                        if let Some(what) = lift::unreadable(resolve, &self.sizes, held, here) {
+                        // What no call gives back, or else a text, which
+                        // comes back from a call that waits for it, where
+                        // it is the one block of the result.
+                        let unread =
+                            |texts| lift::unreadable(resolve, &self.sizes, held, here, texts);
+                        let reason = match (unread(true), unread(false)) {
+                            (Some(what), _) => {
+                                Some(format!("{what}, which an import cannot give back yet"))
+                            }
+                            (None, Some(what)) => {
+                                Some(format!("{what}, which an async call cannot give back yet"))
+                            }
+                            (None, None) => None,
+                        };
+                        if let Some(reason) = reason {
                             skipped.push(Skipped {
                                 item: format!("what `{}` of `{name}` holds", case.name),
-                                reason: format!("{what}, which an import cannot give back yet"),
+                                reason,
                             });
                         }
                     }
@@ -893,14 +907,28 @@ impl Generator<'_> {
             lowered.apart() || matches!(returned, Returned::Words(_) | Returned::Members { .. });
         // The STRING the host writes the result's string into: the
         // caller's, which the import's wrapper passes on, or a member of
-        // the STRUCT the FUNCTION gives back.
+        // the STRUCT the FUNCTION gives back; the arrays of its list; or
+        // the STRING of its text, an output of the import, cut to fit.
         let places: Vec<lift::Place> = returned.places().to_vec();
         let text: Vec<Var> = places.iter().map(|place| place.var.clone()).collect();
-        let own_text: Vec<Var> = places
-            .iter()
-            .filter(|place| place.source.is_none())
-            .map(|place| place.var.clone())
-            .collect();
+        let (in_outs, texts): (Vec<Var>, Vec<Var>) = {
+            let (cut, kept): (Vec<&lift::Place>, Vec<&lift::Place>) =
+                places.iter().partition(|place| place.cut);
+            let vars = |places: Vec<&lift::Place>| {
+                places.into_iter().map(|place| place.var.clone()).collect()
+            };
+            (vars(kept), vars(cut))
+        };
+        // What no member holds: the caller's STRING or arrays, and a text,
+        // which the FUNCTION gives as an output.
+        let own = |cut: bool| -> Vec<Var> {
+            places
+                .iter()
+                .filter(|place| place.source.is_none() && place.cut == cut)
+                .map(|place| place.var.clone())
+                .collect()
+        };
+        let (own_text, own_texts) = (own(false), own(true));
         let mut variables: Vec<&str> = lowered.inputs.iter().map(|var| var.name.as_str()).collect();
         variables.extend(lowered.sources.iter().map(|(param, _)| param.as_str()));
         if asynchronous {
@@ -968,6 +996,10 @@ impl Generator<'_> {
         };
         if apart {
             out.prose(&match (lowered.apart(), &returned) {
+                (false, _) if !texts.is_empty() => format!(
+                    "`{name}` as the host gives it: its result in words of 8 bytes, as the canonical ABI lays it out, which `{pou}` reads, and its text in `{}`, where the host writes it, cut to fit.",
+                    texts[0].name
+                ),
                 (false, _) if text.len() == 1 && text[0].ty == "STRING" => format!(
                     "`{name}` as the host gives it: its result in words of 8 bytes, as the canonical ABI lays it out, which `{pou}` reads, and its string in `{}`, where the host writes it.",
                     text[0].name
@@ -1005,8 +1037,8 @@ impl Generator<'_> {
                 let private = if apart { "PRIVATE " } else { "" };
                 out.line(&format!("FUNCTION {private}{import}{value}"));
                 out.vars("VAR_INPUT", &lowered.params);
-                out.vars("VAR_IN_OUT", &text);
-                out.vars("VAR_OUTPUT", &given);
+                out.vars("VAR_IN_OUT", &in_outs);
+                out.vars("VAR_OUTPUT", &[given.clone(), texts.clone()].concat());
                 out.line("END_FUNCTION");
             }
             true => {
@@ -1036,7 +1068,7 @@ impl Generator<'_> {
                 out.line(&format!("FUNCTION {pou}{pou_value}"));
                 out.vars("VAR_INPUT", &lowered.inputs);
                 out.vars("VAR_IN_OUT", &own_text);
-                out.vars("VAR_OUTPUT", outputs);
+                out.vars("VAR_OUTPUT", &[outputs.to_vec(), own_texts].concat());
                 let mut locals = words;
                 if let Returned::Words(_) = returned {
                     locals.extend(given.iter().cloned());
@@ -1044,10 +1076,12 @@ impl Generator<'_> {
                 out.vars("VAR", &locals);
                 out.depth += 1;
                 lowered.write(out);
+                // A STRING or arrays the call passes, a text it receives.
                 let written = places.iter().map(|place| {
                     format!(
-                        "{} := {}",
+                        "{} {} {}",
                         place.var.name,
+                        if place.cut { "=>" } else { ":=" },
                         place.source.as_deref().unwrap_or(&place.var.name)
                     )
                 });

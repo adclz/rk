@@ -13,16 +13,18 @@
 //! zero. A record of scalars is read by no code: the import gives its
 //! values as outputs, which go to their members ([`Lifted::as_outputs`]).
 //!
-//! A case whose value ST cannot hold yet, a string or a list, keeps its
-//! name and comes back without the value.
+//! A case whose value ST cannot hold yet, a list, keeps its name and comes
+//! back without the value.
 //!
 //! A string is no value read out of the words: the host writes it where
 //! the guest says, and a call that waits for its result says the STRING its
 //! caller passed ([`Lifted::places`]). Nor is a list: the host writes its
 //! elements into the caller's arrays, one per field of an element, an
 //! `ARRAY[*]` of any length, and the words give how many came. One string
-//! or one list comes back so, the one a result holds outside its error and
-//! outside a variant's cases.
+//! or one list comes back so, outside the result's error and outside a
+//! variant's cases. A string inside them is a text, an error's or a case's,
+//! which comes back into its member or its output, cut to fit, when it is
+//! the one block the result can hold.
 
 use wit_parser::{Int, Resolve, SizeAlign, Type, TypeDefKind, TypeId, TypeOwner};
 
@@ -247,11 +249,13 @@ pub(crate) fn or_value(prefix: &str) -> String {
 /// Where the host writes a block of the result: a STRING, or an array of
 /// a list. A variable of the import, `var`, which a call passes `source`
 /// for: a member of a STRUCT the call gives, or else the call's own
-/// variable of that name.
+/// variable of that name. A text, an error's or a case's, is `cut` to fit
+/// its STRING, the import's STRING `VAR_OUTPUT`.
 #[derive(Debug, Clone)]
 pub struct Place {
     pub var: Var,
     pub source: Option<String>,
+    pub cut: bool,
 }
 
 /// A result taken apart: its outputs, and the code that gives them their
@@ -272,7 +276,8 @@ pub struct Lifted {
     steps: Vec<Step<(String, Read)>>,
     /// Where the host writes what the result holds in blocks of its own:
     /// the STRING of its string, the caller's, empty when no string came,
-    /// or the arrays of its list, one per field of an element.
+    /// the arrays of its list, one per field of an element, or the STRING
+    /// of its text, cut to fit.
     pub places: Vec<Place>,
     /// Whether a value of a STRUCT comes back.
     pub structured: bool,
@@ -300,6 +305,11 @@ pub fn lift(
         outputs: Vec::new(),
         zeroes: Vec::new(),
         strings,
+        // A text comes back when it is the one block the result holds: a
+        // call says where its one block goes, before it knows which side
+        // or which case comes.
+        texts: strings && blocks_in(resolve, ty) == 1,
+        in_text: false,
         places: Vec::new(),
         taken: 0,
         whole: whole.map(str::to_string),
@@ -346,12 +356,14 @@ fn blocks_in(resolve: &Resolve, ty: Type) -> usize {
 }
 
 /// What in `ty`, the value a variant's case holds, cannot come back, when
-/// something cannot: the case then comes back as its name alone.
+/// something cannot: the case then comes back as its name alone. With
+/// `texts`, as a call that waits for it reads it, one text of it can.
 pub fn unreadable(
     resolve: &Resolve,
     sizes: &SizeAlign,
     ty: Type,
     here: Option<TypeOwner>,
+    texts: bool,
 ) -> Option<&'static str> {
     Walk {
         resolve,
@@ -361,6 +373,8 @@ pub fn unreadable(
         outputs: Vec::new(),
         zeroes: Vec::new(),
         strings: false,
+        texts,
+        in_text: true,
         places: Vec::new(),
         taken: 0,
         whole: None,
@@ -620,8 +634,13 @@ struct Walk<'a> {
     scope: &'a Scope,
     outputs: Vec<Var>,
     zeroes: Vec<(String, &'static str)>,
-    /// Whether a string or a list may come back where the walk is.
+    /// Whether a string or a list may come back outside an error and a
+    /// case.
     strings: bool,
+    /// Whether a text may come back: a string inside an error or a case.
+    texts: bool,
+    /// Whether the walk is inside an error or a case.
+    in_text: bool,
     /// The STRING the one string that comes back is written into, or the
     /// arrays of the one list.
     places: Vec<Place>,
@@ -636,12 +655,12 @@ struct Walk<'a> {
 }
 
 impl Walk<'_> {
-    /// What `ty` holds, walked with no string allowed in it: an error, or
-    /// what a variant's case holds.
-    fn without_strings<T>(&mut self, walk: impl FnOnce(&mut Self) -> T) -> T {
-        let strings = std::mem::replace(&mut self.strings, false);
+    /// What `ty` holds, walked as an error or as what a variant's case
+    /// holds: a string in it is a text, and no list comes back.
+    fn as_text<T>(&mut self, walk: impl FnOnce(&mut Self) -> T) -> T {
+        let in_text = std::mem::replace(&mut self.in_text, true);
         let walked = walk(self);
-        self.strings = strings;
+        self.in_text = in_text;
         walked
     }
 
@@ -703,23 +722,34 @@ impl Walk<'_> {
             return Ok(vec![Step::Leaf((target, Read { offset, kind }))]);
         }
         // A string is not read: the host wrote it into the STRING the call
-        // passed, which is empty when none came.
+        // passed, which is empty when none came, cut to fit for a text.
         if let Type::String = shapes::resolved(resolve, ty) {
-            return match (self.strings, self.taken) {
+            let comes = match self.in_text {
+                true => self.texts,
+                false => self.strings,
+            };
+            return match (comes, self.taken) {
                 (false, _) => Err("a string"),
                 (true, 0) => {
                     let (name, source) = match at {
                         At::Top => (or_value(prefix), None),
                         At::Member(path) => (prefix.to_string(), Some(At::member(path, prefix))),
                     };
+                    // A text's STRING is as long as a member's: one the
+                    // FUNCTION gives as an output, where no member holds it.
+                    let ty = match self.in_text {
+                        true => types::member_string(),
+                        false => "STRING".to_string(),
+                    };
                     self.places.push(Place {
                         var: Var {
                             name: self.scope.variable(&name),
-                            ty: "STRING".to_string(),
+                            ty,
                             flat: 0,
                             start: None,
                         },
                         source,
+                        cut: self.in_text,
                     });
                     self.taken = 1;
                     Ok(Vec::new())
@@ -774,7 +804,7 @@ impl Walk<'_> {
             // and how many came, its length, which the words hold. A STRUCT
             // holds no list.
             TypeDefKind::List(element) => {
-                let arrays = match (self.strings, at) {
+                let arrays = match (self.strings && !self.in_text, at) {
                     (true, At::Top) => {
                         list_arrays(resolve, self.here, *element, prefix).ok_or("a list")?
                     }
@@ -789,6 +819,7 @@ impl Walk<'_> {
                             start: None,
                         },
                         source: None,
+                        cut: false,
                     });
                 }
                 self.taken = 2;
@@ -855,7 +886,7 @@ impl Walk<'_> {
                     None => Ok(Vec::new()),
                 };
                 let ok = side(self, result.ok, "value")?;
-                let error = self.without_strings(|walk| side(walk, result.err, "error"))?;
+                let error = self.as_text(|walk| side(walk, result.err, "error"))?;
                 Ok(vec![
                     set,
                     Step::Either {
@@ -928,8 +959,8 @@ impl Walk<'_> {
                 for case in &variant.cases {
                     let Some(ty) = case.ty else { continue };
                     let (outputs, zeroes) = (self.outputs.len(), self.zeroes.len());
-                    let walked =
-                        self.without_strings(|walk| walk.value(ty, held, &case.name, true, &at));
+                    let (places, taken) = (self.places.len(), self.taken);
+                    let walked = self.as_text(|walk| walk.value(ty, held, &case.name, true, &at));
                     match walked {
                         Ok(steps) if steps.is_empty() => {}
                         Ok(steps) => {
@@ -938,6 +969,8 @@ impl Walk<'_> {
                         Err(_) => {
                             self.outputs.truncate(outputs);
                             self.zeroes.truncate(zeroes);
+                            self.places.truncate(places);
+                            self.taken = taken;
                         }
                     }
                 }
