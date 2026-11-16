@@ -251,8 +251,9 @@ A string or a list too long by up to that much raises as above; one longer still
 A `REF_TO` input is an address, where a record can come back too.
 A STRUCT, an ARRAY or an instance input is refused (`E1502`): it would go as an address into rk's own layout, which no WASI function reads.
 
-A host function WIT declares an `async func` is imported by a FUNCTION_BLOCK, with `{extern async 'module' 'name'}`.
-A scan never waits for it: each call of the block takes the call one step, starting it when none is running and checking it otherwise.
+A host function WIT declares an `async func` is imported by a FUNCTION_BLOCK, with `{extern async 'module' 'name'}`, and so are a stream's read or write and a future's read (below).
+`async` says how the import is lowered, as the component model's `[async-lower]` prefix does for calls and copies alike: its call returns at once, and its end comes later, as an event the block checks for.
+A scan never waits for it: each call of the block takes the operation one step, starting it when none is running and checking it otherwise.
 
 ```st
 {extern async 'wasi:clocks/monotonic-clock@0.3.0' 'wait-for'}
@@ -288,7 +289,7 @@ A FUNCTION can still call one it does not hold: the caller's, handed over as VAR
 REQ, BUSY or any other control a block's users need is written in ST, by a block that calls it.
 A call that has started cannot be cancelled: the component model's cancel needs a flag wasmtime has off by default.
 
-The declaration says the function is async, and the build checks it against WASI's WIT: `{extern async}` names an `async func`, and a plain `{extern}` a `func`, whose call a scan cannot wait for.
+For a function, the build checks the declaration against WASI's WIT: `{extern async}` names an `async func`, and a plain `{extern}` a `func`, whose call a scan cannot wait for.
 The build also checks that WASI's interface has the function, and names the declaration when it does not.
 For a host's own module, the WIT rk writes declares an `async func`, its result the record of the block's `VAR_OUTPUT` but `DONE`.
 
@@ -311,7 +312,10 @@ The host reads the bytes from the block while the copy runs: a call made then ch
 
 A stream's read, `[stream-read-N]f`, is the write the other way: an `{extern async}` FUNCTION_BLOCK that takes the stream's reading end, a `UDINT`, and after `DONE` gives the bytes, how many came, a `UDINT`, and whether the writer left, a `BOOL` (`E1516` otherwise).
 The bytes land in a `STRING`, whose length becomes how many came, or in an `ARRAY OF BYTE` of one dimension, a byte an element: either holds what a read takes at most, and the host writes into it while the read runs, so the bytes are whole in the call where `DONE` is `TRUE`.
+A stream of a resource's handles is read the same way into an `ARRAY OF UDINT` of one dimension, a handle an element, each one the program's own to drop: a listening TCP socket hands over the connections it accepts in one, the stream `listen` gives.
+The host writes each element as wide as the stream's own, so the build checks that the buffer holds what the stream carries, bytes or handles; a stream of anything else is read or written by no block yet.
 A future's read, `[future-read-N]f`, takes the future's reading end and gives after `DONE` the fields of its value, laid out as an async call's result is; a future's writer gives its value before it lets go, so a read always gets one.
+A future is a value, not a call: the function that gave it has returned, often with a stream beside it to read while the work runs, and the program reads the future when it wants, passes it on, or drops it, where a call that has started is followed to its end.
 A future's write is not imported yet (`E1516`).
 
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:

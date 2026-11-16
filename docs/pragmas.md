@@ -19,5 +19,7 @@ A known pragma where it has no place, such as `{export}` inside a `VAR` section,
 
 - `{extern 'module' 'name'}` declares a `FUNCTION` as a WASM import; the declaration is the signature, typed in WIT, see [WASM ABI](wasm-abi.md).
 
+- `{extern async 'module' 'name'}` declares a `FUNCTION_BLOCK` as a WASM import lowered async, what a scan does not wait for: the call of an `async func`, a stream's read or write, or a future's read. Each call of the block takes it one step, until `DONE`, see [WASM ABI](wasm-abi.md).
+
 
 - `{wasm 'instruction' (params a b) (result r)}` is a statement that emits one WASM instruction on the named operands.
