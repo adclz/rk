@@ -12,6 +12,11 @@
 //!
 //! A case whose value ST cannot hold yet, a string or a list, keeps its
 //! name and comes back without the value.
+//!
+//! A string is no value read out of the words: the host writes it where
+//! the guest says, and a call that waits for its result says the STRING its
+//! caller passed ([`Lifted::text`]). One string comes back so, the one a
+//! result holds outside its error and outside a variant's cases.
 
 use wit_parser::{Int, Resolve, SizeAlign, Type, TypeDefKind, TypeOwner};
 
@@ -61,6 +66,12 @@ pub(crate) fn kind(resolve: &Resolve, ty: Type) -> Option<Kind> {
 }
 
 impl Kind {
+    /// Whether the value is converted on its way into or out of a word,
+    /// with `Std.Convert`: a flag and a bit string are taken as they are.
+    pub(crate) fn converts(self) -> bool {
+        !matches!(self, Kind::Bool | Kind::Bits(_))
+    }
+
     /// What a value that did not come holds.
     pub(crate) fn zero(self) -> &'static str {
         match self {
@@ -214,16 +225,21 @@ pub struct Lifted {
     /// each with what it holds otherwise.
     zeroes: Vec<(String, &'static str)>,
     steps: Vec<Step<(String, Read)>>,
+    /// The STRING the result's string is written into, by the host: the
+    /// caller's, empty when no string came.
+    pub text: Option<Var>,
 }
 
 /// `ty`, a function's result, taken apart, its outputs named in `scope`;
-/// `Err` says what in it cannot come back.
+/// `Err` says what in it cannot come back. A string can where `strings`
+/// says so: in the result of a call that waits for it.
 pub fn lift(
     resolve: &Resolve,
     sizes: &SizeAlign,
     ty: Type,
     here: Option<TypeOwner>,
     scope: &Scope,
+    strings: bool,
 ) -> Result<Lifted, &'static str> {
     let mut walk = Walk {
         resolve,
@@ -232,14 +248,44 @@ pub fn lift(
         scope,
         outputs: Vec::new(),
         zeroes: Vec::new(),
+        strings,
+        text: None,
     };
     let steps = walk.value(ty, 0, "", false)?;
+    // The host writes the first block it is given into the STRING: any
+    // other block it could write, a string or a list where no output takes
+    // it, would land there first.
+    if walk.text.is_some() && blocks_in(resolve, ty) > 1 {
+        return Err("two strings or a string and a list");
+    }
     Ok(Lifted {
         outputs: walk.outputs,
         words: sizes.size(&ty).size_wasm32().div_ceil(8).max(1),
         zeroes: walk.zeroes,
         steps,
+        text: walk.text,
     })
+}
+
+/// How many blocks the host may write for a value of `ty`, each at its own
+/// address: a string's bytes, and for a list its elements and what they
+/// hold, counted as two at least. Wherever they are: each field, each side
+/// of a result, each case of a variant.
+fn blocks_in(resolve: &Resolve, ty: Type) -> usize {
+    let Type::Id(id) = shapes::resolved(resolve, ty) else {
+        return usize::from(shapes::resolved(resolve, ty) == Type::String);
+    };
+    let sum = |types: &mut dyn Iterator<Item = Type>| types.map(|ty| blocks_in(resolve, ty)).sum();
+    match &resolve.types[id].kind {
+        TypeDefKind::Record(record) => sum(&mut record.fields.iter().map(|field| field.ty)),
+        TypeDefKind::Tuple(tuple) => sum(&mut tuple.types.iter().copied()),
+        TypeDefKind::Option(some) => blocks_in(resolve, *some),
+        TypeDefKind::Result(result) => sum(&mut result.ok.into_iter().chain(result.err)),
+        TypeDefKind::Variant(variant) => sum(&mut variant.cases.iter().filter_map(|case| case.ty)),
+        TypeDefKind::List(_) | TypeDefKind::Map(..) => 2,
+        TypeDefKind::FixedLengthList(element, _) => 2 * blocks_in(resolve, *element),
+        _ => 0,
+    }
 }
 
 /// What in `ty`, the value a variant's case holds, cannot come back, when
@@ -257,6 +303,8 @@ pub fn unreadable(
         scope: &Scope::default(),
         outputs: Vec::new(),
         zeroes: Vec::new(),
+        strings: false,
+        text: None,
     }
     .value(ty, 0, "case", true)
     .err()
@@ -276,6 +324,12 @@ impl Lifted {
             .collect()
     }
 
+    /// Whether the code that reads the result converts a value, and needs
+    /// `Std.Convert`.
+    pub fn converts(&self) -> bool {
+        any(&self.steps, &|(_, read)| read.kind.converts())
+    }
+
     /// Writes the statements that give each output its value, read from
     /// the words named `word` and their number.
     pub(crate) fn write(&self, out: &mut Out, word: &str) {
@@ -286,6 +340,17 @@ impl Lifted {
             format!("{name} := {};", read.expression(word))
         });
     }
+}
+
+/// Whether a value of `steps` is one `leaf` says yes to.
+pub(crate) fn any<L>(steps: &[Step<L>], leaf: &dyn Fn(&L) -> bool) -> bool {
+    steps.iter().any(|step| match step {
+        Step::Leaf(value) => leaf(value),
+        Step::Either {
+            then, otherwise, ..
+        } => any(then, leaf) || any(otherwise, leaf),
+        Step::Cases { arms, .. } => arms.iter().any(|(_, steps)| any(steps, leaf)),
+    })
 }
 
 /// Writes `steps`, each value's statement as `leaf` writes it.
@@ -363,9 +428,22 @@ struct Walk<'a> {
     scope: &'a Scope,
     outputs: Vec<Var>,
     zeroes: Vec<(String, &'static str)>,
+    /// Whether a string may come back where the walk is.
+    strings: bool,
+    /// The STRING the one string that comes back is written into.
+    text: Option<Var>,
 }
 
 impl Walk<'_> {
+    /// What `ty` holds, walked with no string allowed in it: an error, or
+    /// what a variant's case holds.
+    fn without_strings<T>(&mut self, walk: impl FnOnce(&mut Self) -> T) -> T {
+        let strings = std::mem::replace(&mut self.strings, false);
+        let walked = walk(self);
+        self.strings = strings;
+        walked
+    }
+
     /// An output named after `name`, of the ST type `ty`, read as `kind`:
     /// its name in ST. `inside` a flag or a case, it holds zero when that
     /// did not come.
@@ -417,6 +495,23 @@ impl Walk<'_> {
             };
             (name.clone(), Step::Leaf((name, read)))
         };
+        // A string is not read: the host wrote it into the STRING the call
+        // passed, which is empty when none came.
+        if let Type::String = shapes::resolved(resolve, ty) {
+            return match (self.strings, &self.text) {
+                (false, _) => Err("a string"),
+                (true, Some(_)) => Err("two strings"),
+                (true, None) => {
+                    self.text = Some(Var {
+                        name: self.scope.variable(&or_value(prefix)),
+                        ty: "STRING".to_string(),
+                        flat: 0,
+                        start: None,
+                    });
+                    Ok(Vec::new())
+                }
+            };
+        }
         let Type::Id(id) = shapes::resolved(resolve, ty) else {
             return Err(shapes::what(resolve, ty));
         };
@@ -479,7 +574,7 @@ impl Walk<'_> {
                     None => Ok(Vec::new()),
                 };
                 let ok = side(self, result.ok, "value")?;
-                let error = side(self, result.err, "error")?;
+                let error = self.without_strings(|walk| side(walk, result.err, "error"))?;
                 Ok(vec![
                     set,
                     Step::Either {
@@ -503,7 +598,10 @@ impl Walk<'_> {
                     // A case whose value cannot come back keeps its name
                     // alone: the file says so where the variant is.
                     let (outputs, zeroes) = (self.outputs.len(), self.zeroes.len());
-                    match self.value(ty, held, &join(prefix, &case.name), true) {
+                    let walked = self.without_strings(|walk| {
+                        walk.value(ty, held, &join(prefix, &case.name), true)
+                    });
+                    match walked {
                         Ok(steps) if steps.is_empty() => {}
                         Ok(steps) => {
                             arms.push((format!("{st}#{}", names::upper(&case.name)), steps));

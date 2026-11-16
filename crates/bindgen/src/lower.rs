@@ -129,9 +129,17 @@ pub struct Lowered {
     pub flat: usize,
     slots: Vec<Slot>,
     steps: Vec<Step<String>>,
+    /// Whether packing converts a value, with `Std.Convert`.
+    converts: bool,
 }
 
 impl Lowered {
+    /// Whether the code that packs the inputs converts a value, and needs
+    /// `Std.Convert`.
+    pub fn converts(&self) -> bool {
+        self.converts
+    }
+
     /// Whether values are packed into words: the import's parameters are
     /// then not the inputs a call gives.
     pub fn packs(&self) -> bool {
@@ -273,21 +281,28 @@ pub fn lower(
             }
         }
         let slots = &lowered.slots[first..];
-        let mut statement = |put: Put| match in_memory {
-            true => {
-                let slot = slots
-                    .iter()
-                    .find(|slot| slot.at <= put.offset && put.offset < slot.at + slot.bytes)
-                    .expect("a value lies in its parameter's bytes");
-                slot.put(put.offset - slot.at, put.kind, &put.source)
-            }
-            false => slots[put.position].put(0, put.kind, &put.source),
+        let mut converts = false;
+        let mut statement = |put: Put| {
+            let (slot, within) = match in_memory {
+                true => {
+                    let slot = slots
+                        .iter()
+                        .find(|slot| slot.at <= put.offset && put.offset < slot.at + slot.bytes)
+                        .expect("a value lies in its parameter's bytes");
+                    (slot, put.offset - slot.at)
+                }
+                false => (&slots[put.position], 0),
+            };
+            // A REAL or an LREAL slot takes its value as it is.
+            converts |= put.kind.converts() && !slot.float;
+            slot.put(within, put.kind, &put.source)
         };
         let steps: Vec<Step<String>> = steps
             .into_iter()
             .map(|step| step.map(&mut statement))
             .collect();
         lowered.steps.extend(steps);
+        lowered.converts |= converts;
         lowered
             .params
             .extend(lowered.slots[first..].iter().map(Slot::var));

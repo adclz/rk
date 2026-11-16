@@ -270,6 +270,14 @@ impl Returned {
             Returned::Fields(_) => &[],
         }
     }
+
+    /// The STRING a call passes for the string the result holds.
+    fn text(&self) -> Option<&Var> {
+        match self {
+            Returned::Words(lifted) => lifted.text.as_ref(),
+            Returned::Fields(_) => None,
+        }
+    }
 }
 
 /// What the type `def` is declared as in ST, where it is: an alias of a
@@ -504,7 +512,7 @@ impl Generator<'_> {
                 None => self.function(&mut out, &module, function, here, &mut taken),
             };
             match written {
-                Ok(apart) => converts |= apart,
+                Ok(converted) => converts |= converted,
                 Err(reason) => skipped.push(Skipped {
                     item: format!("`{}`", function.name),
                     reason,
@@ -559,8 +567,9 @@ impl Generator<'_> {
     }
 
     /// The declaration of `function`, imported from `module`, written to
-    /// `out` under the name `taken` holds for it, and whether its import
-    /// is apart from it: `<NAME>_RAW`, whose parameters `<NAME>` packs and
+    /// `out` under the name `taken` holds for it, and whether its code
+    /// converts a value, with `Std.Convert`. Its import may be apart from
+    /// it: `<NAME>_RAW`, whose parameters `<NAME>` packs and
     /// whose result it reads, which `taken` then holds too. `Err` says why
     /// it cannot be.
     fn function(
@@ -614,14 +623,19 @@ impl Generator<'_> {
                 // the words it comes back in, where the canonical ABI
                 // writes it in memory: an async call's result always,
                 // another's past one value.
+                // A string comes back to a call that waits for it: the
+                // host writes it into the STRING the call passes.
                 (Err(_), Some(ty)) if asynchronous || signature.retptr => Returned::Words(
-                    lift::lift(resolve, &self.sizes, ty, here, &scope).map_err(cannot)?,
+                    lift::lift(resolve, &self.sizes, ty, here, &scope, !asynchronous)
+                        .map_err(cannot)?,
                 ),
                 // One value, inside records or tuples that hold it alone:
                 // the canonical ABI returns it as it is, and the import
                 // gives it as the one output it would be read into.
                 (Err(what), Some(ty)) => {
-                    match lift::lift(resolve, &self.sizes, ty, here, &scope).map_err(cannot)? {
+                    match lift::lift(resolve, &self.sizes, ty, here, &scope, false)
+                        .map_err(cannot)?
+                    {
                         lifted if lifted.outputs.len() == 1 => {
                             Returned::Fields(Shape::Outputs(lifted.outputs))
                         }
@@ -651,7 +665,13 @@ impl Generator<'_> {
                     own.extend(lifted.words(words_back).into_iter().map(|var| var.name));
                 }
             }
-            let named = || lowered.inputs.iter().chain(returned.outputs());
+            let named = || {
+                lowered
+                    .inputs
+                    .iter()
+                    .chain(returned.outputs())
+                    .chain(returned.text())
+            };
             own.retain(|name| {
                 !scope.holds(name) && named().any(|var| var.name.eq_ignore_ascii_case(name))
             });
@@ -669,11 +689,15 @@ impl Generator<'_> {
             Returned::Fields(_) => outputs.to_vec(),
         };
         let apart = lowered.packs() || matches!(returned, Returned::Words(_));
+        // The STRING the host writes the result's string into: the
+        // caller's, which the import's wrapper passes on.
+        let text: Vec<Var> = returned.text().into_iter().cloned().collect();
         let mut variables: Vec<&str> = lowered.inputs.iter().map(|var| var.name.as_str()).collect();
         if asynchronous {
             variables.push("DONE");
         }
         variables.extend(outputs.iter().map(|var| var.name.as_str()));
+        variables.extend(text.iter().map(|var| var.name.as_str()));
         let words = lowered.words();
         if apart {
             if asynchronous {
@@ -708,6 +732,10 @@ impl Generator<'_> {
         };
         if apart {
             out.prose(&match (lowered.packs(), &returned) {
+                (false, _) if !text.is_empty() => format!(
+                    "`{name}` as the host gives it: its result in words of 8 bytes, as the canonical ABI lays it out, which `{pou}` reads, and its string in `{}`, where the host writes it.",
+                    text[0].name
+                ),
                 (false, _) => format!(
                     "`{name}` as the host gives it: its result in words of 8 bytes, as the canonical ABI lays it out, which `{pou}` reads."
                 ),
@@ -728,6 +756,7 @@ impl Generator<'_> {
                 let private = if apart { "PRIVATE " } else { "" };
                 out.line(&format!("FUNCTION {private}{import}{value}"));
                 out.vars("VAR_INPUT", &lowered.params);
+                out.vars("VAR_IN_OUT", &text);
                 out.vars("VAR_OUTPUT", &given);
                 out.line("END_FUNCTION");
             }
@@ -757,6 +786,7 @@ impl Generator<'_> {
             false => {
                 out.line(&format!("FUNCTION {pou}{value}"));
                 out.vars("VAR_INPUT", &lowered.inputs);
+                out.vars("VAR_IN_OUT", &text);
                 out.vars("VAR_OUTPUT", outputs);
                 let mut locals = words;
                 if let Returned::Words(_) = returned {
@@ -765,8 +795,10 @@ impl Generator<'_> {
                 out.vars("VAR", &locals);
                 out.depth += 1;
                 lowered.write(out);
+                let written = text.iter().map(|var| format!("{0} := {0}", var.name));
                 let received = given.iter().map(|var| format!("{0} => {0}", var.name));
-                let arguments: Vec<String> = passed.into_iter().chain(received).collect();
+                let arguments: Vec<String> =
+                    passed.into_iter().chain(written).chain(received).collect();
                 match value.is_empty() {
                     true => out.line(&format!("{import}({});", arguments.join(", "))),
                     false => out.line(&format!("{pou} := {import}({});", arguments.join(", "))),
@@ -812,7 +844,7 @@ impl Generator<'_> {
             }
         }
         out.line("");
-        Ok(true)
+        Ok(lowered.converts() || matches!(&returned, Returned::Words(lifted) if lifted.converts()))
     }
 
     /// The built-ins of each stream and future `function` takes or gives
@@ -1354,7 +1386,7 @@ fn built_in_set(
             let lifted = |what| match payload {
                 Some(ty) => {
                     let scope = Scope::holding(&["DONE", "call"]);
-                    lift::lift(resolve, sizes, ty, owner, &scope)
+                    lift::lift(resolve, sizes, ty, owner, &scope, false)
                 }
                 None => Err(what),
             };
@@ -1395,7 +1427,7 @@ fn built_in_set(
                     out.line("");
                     written.push(raw);
                     written.push(read);
-                    *converts = true;
+                    *converts |= lifted.converts();
                 }
                 Err(Err(what)) => skipped.push(Skipped {
                     item: format!("`{name}_READ`"),
