@@ -2208,15 +2208,20 @@ fn an_address_without_a_width_letter_is_a_bit(mut with_db: db::RootDatabase) {
 }
 
 /// The names the module exports for the host are the ones HIR reserves
-/// (`MODULE_EXPORTS`, E1509): with every band in use, every export that is
-/// not a body (`P$__body__`) is on the list, and the list has nothing else.
+/// (`MODULE_EXPORTS`, E1509): with every band in use and an import, every
+/// export that is not a body (`P$__body__`) is on the list, and the list
+/// has nothing else.
 #[rstest]
 fn the_module_exports_what_hir_reserves(mut with_db: db::RootDatabase) {
     let source = r#"
+        {extern 'host' 'tick'}
+        FUNCTION Tick : INT
+        END_FUNCTION
+
         PROGRAM P
         VAR_EXTERNAL i1 : INT; q1 : INT; m1 : INT; g : INT; END_VAR
         VAR RETAIN n : INT; END_VAR
-            q1 := i1 + m1 + g + n;
+            q1 := i1 + m1 + g + n + Tick();
         END_PROGRAM
 
         CONFIGURATION Cfg
