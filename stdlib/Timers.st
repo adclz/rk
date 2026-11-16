@@ -53,11 +53,10 @@ NAMESPACE Std.Timers
 	   after them. */
 	FUNCTION WALL_LDT : LDT
 		VAR
-			seconds : LINT;
-			nanoseconds : UDINT;
+			instant : Wasi.Clocks.SystemClock.INSTANT;
 		END_VAR
-		Wasi.Clocks.SystemClock.NOW(seconds => seconds, nanoseconds => nanoseconds);
-		WALL_LDT := LINT_TO_LDT(seconds * LINT#1000000000 + nanoseconds);
+		instant := Wasi.Clocks.SystemClock.NOW();
+		WALL_LDT := LINT_TO_LDT(instant.seconds * LINT#1000000000 + instant.nanoseconds);
 	END_FUNCTION
 
 	/* Returns the host's wall clock as a `DT`, in UTC. */
@@ -79,24 +78,22 @@ NAMESPACE Std.Timers
 			IN : LDT;
 		END_VAR
 		VAR
-			seconds, nanoseconds : LINT;
+			when : Wasi.Clocks.SystemClock.INSTANT;
+			nanoseconds : LINT;
 			known : BOOL;
 			offset : LINT;
 		END_VAR
 		// WASI takes the whole seconds, rounded down, and the nanoseconds after them.
-		seconds := LDT_TO_LINT(IN) / LINT#1000000000;
+		when.seconds := LDT_TO_LINT(IN) / LINT#1000000000;
 		nanoseconds := LDT_TO_LINT(IN) MOD LINT#1000000000;
 		IF nanoseconds < LINT#0 THEN
-			seconds := seconds - LINT#1;
+			when.seconds := when.seconds - LINT#1;
 			nanoseconds := nanoseconds + LINT#1000000000;
 		END_IF;
+		when.nanoseconds := LINT_TO_UDINT(nanoseconds);
 		// The `utc-offset` of the WASI time zone: an `option<s64>`, which
 		// comes back as whether the host has a zone, then the offset.
-		Wasi.Clocks.Timezone.UTC_OFFSET(
-			when_seconds := seconds,
-			when_nanoseconds := LINT_TO_UDINT(nanoseconds),
-			is_some => known,
-			value => offset);
+		Wasi.Clocks.Timezone.UTC_OFFSET(when := when, is_some => known, value => offset);
 		IF NOT known THEN
 			__RAISE('the host has no time zone');
 		END_IF;

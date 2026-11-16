@@ -41,6 +41,20 @@ NAMESPACE INTERNAL Wasi
 				is_some := w0.%X0;
 			END_FUNCTION
 
+			/* `utc-offset` as the host takes it: its parameters as the canonical ABI
+			   passes them, which `UTC_OFFSET` passes field by field. */
+			{extern 'wasi:clocks/timezone@0.3.0' 'utc-offset'}
+			FUNCTION PRIVATE UTC_OFFSET_RAW
+			VAR_INPUT
+				when_seconds : LINT;
+				when_nanoseconds : UDINT;
+			END_VAR
+			VAR_OUTPUT
+				is_some : BOOL;
+				value : LINT;
+			END_VAR
+			END_FUNCTION
+
 			/* The number of nanoseconds difference between UTC time and the local
 			   time of the currently configured timezone, at the exact time of
 			   `instant`.
@@ -53,16 +67,15 @@ NAMESPACE INTERNAL Wasi
 			   to provide mappings from times to deltas between the configured timezone
 			   and UTC, or determining the current timezone fails, this returns
 			   nothing. */
-			{extern 'wasi:clocks/timezone@0.3.0' 'utc-offset'}
 			FUNCTION UTC_OFFSET
 			VAR_INPUT
-				when_seconds : LINT;
-				when_nanoseconds : UDINT;
+				when : Wasi.Clocks.SystemClock.INSTANT;
 			END_VAR
 			VAR_OUTPUT
 				is_some : BOOL;
 				value : LINT;
 			END_VAR
+				UTC_OFFSET_RAW(when_seconds := when.seconds, when_nanoseconds := when.nanoseconds, is_some => is_some, value => value);
 			END_FUNCTION
 
 			/* `to-debug-string` as the host gives it: its result in words of 8 bytes,
