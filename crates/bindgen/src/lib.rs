@@ -56,7 +56,7 @@ use wit_parser::{
 };
 
 use names::Scope;
-use shapes::{STRING_LIMIT, Shape, Var};
+use shapes::{HANDLES_AT_ONCE, STRING_LIMIT, Shape, Var};
 
 /// The interfaces `Std` reaches WASI through, as a world for [`resolve`].
 pub const STD_WORLD: &str = "package rk:std-wasi;
@@ -1598,6 +1598,16 @@ fn built_in_set(
     out.line("");
 
     let bytes = carrier == Carrier::Stream && payload == Some(Type::U8);
+    let handles = match payload {
+        Some(Type::Id(id)) => matches!(resolve.types[id].kind, TypeDefKind::Handle(_)),
+        _ => false,
+    };
+    let closed = || Var {
+        name: "closed".to_string(),
+        ty: "BOOL".to_string(),
+        flat: 1,
+        start: None,
+    };
     match carrier {
         Carrier::Stream if bytes => {
             for (block, data) in [
@@ -1626,12 +1636,7 @@ fn built_in_set(
                             start: None,
                         },
                         handle("read"),
-                        Var {
-                            name: "closed".to_string(),
-                            ty: "BOOL".to_string(),
-                            flat: 1,
-                            start: None,
-                        },
+                        closed(),
                     ],
                 );
                 out.line("END_FUNCTION_BLOCK");
@@ -1656,25 +1661,47 @@ fn built_in_set(
                     },
                 ],
             );
+            out.vars("VAR_OUTPUT", &[done(), handle("written"), closed()]);
+            out.line("END_FUNCTION_BLOCK");
+            out.line("");
+        }
+        // A resource's handles, read into an ARRAY OF UDINT: what a stream
+        // of them is for, a listener's connections. Nothing a component
+        // imports takes such a stream from it, which a write would feed.
+        Carrier::Stream if handles => {
+            out.prose(
+                "Reads the handles that come next into `data`, as many as it holds at most: `read` of them, after `DONE`, each the program's own to drop. `closed` is TRUE once the writer has let go.",
+            );
+            out.line(&format!("{{extern async {}}}", pragma("read")));
+            let read = pou("READ");
+            out.line(&format!("FUNCTION_BLOCK {read}"));
+            written.push(read);
+            out.vars("VAR_INPUT", &[handle(end)]);
             out.vars(
                 "VAR_OUTPUT",
                 &[
                     done(),
-                    handle("written"),
                     Var {
-                        name: "closed".to_string(),
-                        ty: "BOOL".to_string(),
+                        name: "data".to_string(),
+                        ty: format!("ARRAY[0..{}] OF UDINT", HANDLES_AT_ONCE - 1),
                         flat: 1,
                         start: None,
                     },
+                    handle("read"),
+                    closed(),
                 ],
             );
             out.line("END_FUNCTION_BLOCK");
             out.line("");
+            skipped.push(Skipped {
+                item: format!("`{name}_WRITE`"),
+                reason: "a stream's write moves bytes only".to_string(),
+            });
         }
         Carrier::Stream => skipped.push(Skipped {
             item: format!("`{name}_READ` and `{name}_WRITE`"),
-            reason: "a stream's read or write moves bytes only".to_string(),
+            reason: "a stream's read moves bytes or handles only, and its write bytes only"
+                .to_string(),
         }),
         Carrier::Future => {
             let reads = "Reads the value the future holds, which comes back after `DONE`.";

@@ -20,6 +20,10 @@ use crate::names::{self, Scope};
 /// long as Linux allows, and what `Std.Console` writes at once.
 pub const STRING_LIMIT: u32 = 4096;
 
+/// The most handles a generated stream read takes at once: what a
+/// listener's connections need, which come one by one.
+pub const HANDLES_AT_ONCE: u32 = 16;
+
 /// A variable of a generated POU.
 #[derive(Debug, Clone)]
 pub struct Var {
