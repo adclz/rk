@@ -260,10 +260,109 @@ END_FUNCTION"#;
     ");
 }
 
-/// An import returns a record of scalars: a STRUCT or a STRING output is
-/// refused, on a WASI import too, which keeps the core rules (the interface
-/// is made up), and on any other. An output or a return type that does not
-/// resolve is reported where the type is written, and nowhere else.
+/// A WASI import gives a text, an error's or a case's, by writing it into
+/// the STRING its first STRING VAR_OUTPUT is bound to, cut to fit: no field
+/// of the import's result. A call binds it as any output, to a variable or
+/// a member, or leaves it out.
+#[rstest]
+fn valid_wasi_extern_gives_a_text(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE fault : STRUCT kind : USINT; other : STRING[256]; END_STRUCT END_TYPE
+
+{extern 'wasi:test/rt@0.1.0' 'why'}
+FUNCTION why
+VAR_INPUT code : INT; END_VAR
+VAR_OUTPUT w0 : LWORD; w1 : LWORD; other : STRING[256]; END_VAR
+END_FUNCTION
+
+FUNCTION Use : BOOL
+VAR
+    short : STRING[8];
+    error : fault;
+END_VAR
+    why(code := 1, other => short);
+    why(code := 2, other => error.other);
+    why(code := 3);
+    Use := short = error.other;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// The host's one block goes into one place: a second STRING VAR_OUTPUT, or
+/// one beside the STRING VAR_IN_OUT or the ARRAY[*] VAR_IN_OUTs, has none to
+/// take. Only a WASI FUNCTION takes a text so: an async import's result is
+/// written when no call is running.
+#[rstest]
+fn invalid_wasi_extern_text_beside(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'wasi:test/rt@0.1.0' 'two-texts'}
+FUNCTION two_texts
+VAR_OUTPUT first : STRING; second : STRING[20]; END_VAR
+END_FUNCTION
+
+{extern 'wasi:test/rt@0.1.0' 'text-and-string'}
+FUNCTION text_and_string
+VAR_IN_OUT name : STRING; END_VAR
+VAR_OUTPUT other : STRING; END_VAR
+END_FUNCTION
+
+{extern 'wasi:test/rt@0.1.0' 'text-and-list'}
+FUNCTION text_and_list
+VAR_IN_OUT values : ARRAY[*] OF UDINT; END_VAR
+VAR_OUTPUT other : STRING; END_VAR
+END_FUNCTION
+
+{extern async 'wasi:test/rt@0.1.0' 'why-later'}
+FUNCTION_BLOCK why_later
+VAR_OUTPUT DONE : BOOL; other : STRING; END_VAR
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:4:28 ]
+       |
+     4 | VAR_OUTPUT first : STRING; second : STRING[20]; END_VAR
+       |                            ^^^|^^
+       |                               `---- VAR_OUTPUT 'second' cannot take a text from the host beside the string, list or text the import takes
+       |
+       | Note: a WASI import gives one string, one list or one text, which the host writes into what the call passes
+    ---'
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:10:12 ]
+        |
+     10 | VAR_OUTPUT other : STRING; END_VAR
+        |            ^^|^^
+        |              `---- VAR_OUTPUT 'other' cannot take a text from the host beside the string, list or text the import takes
+        |
+        | Note: a WASI import gives one string, one list or one text, which the host writes into what the call passes
+    ----'
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:16:12 ]
+        |
+     16 | VAR_OUTPUT other : STRING; END_VAR
+        |            ^^|^^
+        |              `---- VAR_OUTPUT 'other' cannot take a text from the host beside the string, list or text the import takes
+        |
+        | Note: a WASI import gives one string, one list or one text, which the host writes into what the call passes
+    ----'
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:21:25 ]
+        |
+     21 | VAR_OUTPUT DONE : BOOL; other : STRING; END_VAR
+        |                         ^^|^^
+        |                           `---- VAR_OUTPUT 'other' cannot be a field of the import's result: only a scalar can
+        |
+        | Note: an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars
+    ----'
+    ");
+}
+
+/// An import returns a record of scalars: a STRUCT output is refused, on a
+/// WASI import too, which keeps the core rules (the interface is made up),
+/// and on any other; a STRING one on any import but a WASI FUNCTION, whose
+/// first is its text. An output or a return type that does not resolve is
+/// reported where the type is written, and nowhere else.
 #[rstest]
 fn invalid_extern_aggregate_output(mut with_db: RootDatabase) {
     let source = r#"
@@ -290,15 +389,6 @@ END_FUNCTION"#;
      6 | VAR_OUTPUT p : Pt; s : STRING; END_VAR
        |            |
        |            `-- VAR_OUTPUT 'p' cannot be a field of the import's result: only a scalar can
-       |
-       | Note: an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars
-    ---'
-    [E1502] Error: not representable on an import
-       ,-[ file:///test0.st:6:20 ]
-       |
-     6 | VAR_OUTPUT p : Pt; s : STRING; END_VAR
-       |                    |
-       |                    `-- VAR_OUTPUT 's' cannot be a field of the import's result: only a scalar can
        |
        | Note: an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars
     ---'
