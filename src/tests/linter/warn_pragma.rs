@@ -198,9 +198,9 @@ END_FUNCTION"#;
         |               ^^^^^^|^^^^^
         |                     `------- reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on
         |
-        |-[ file:///lib0.st:76:2 ]
+        |-[ file:///lib0.st:75:2 ]
         |
-     76 |     {warn = 'reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on'}
+     75 |     {warn = 'reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on'}
         |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         |                                                               `------------------------------------------------------------ the pragma is declared here
         |
@@ -213,9 +213,9 @@ END_FUNCTION"#;
          |               ^^^^|^^^^
          |                   `------ reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on
          |
-         |-[ file:///lib0.st:110:2 ]
+         |-[ file:///lib0.st:107:2 ]
          |
-     110 |     {warn = 'reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on'}
+     107 |     {warn = 'reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on'}
          |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
          |                                                               `------------------------------------------------------------ the pragma is declared here
          |
