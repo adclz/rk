@@ -59,6 +59,105 @@ END_FUNCTION"#;
     ");
 }
 
+/// A WASI import gives a string by writing it into the STRING a call
+/// passes for it: its one STRING VAR_IN_OUT, of any length, which is no
+/// parameter of the import. A call binds it as any VAR_IN_OUT.
+#[rstest]
+fn valid_wasi_extern_gives_a_string(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'wasi:test/rt@0.1.0' 'name-of'}
+FUNCTION name_of
+VAR_INPUT channel : INT; END_VAR
+VAR_IN_OUT text : STRING; END_VAR
+VAR_OUTPUT w0 : LWORD; w1 : LWORD; END_VAR
+END_FUNCTION
+
+FUNCTION Use : BOOL
+VAR
+    short : STRING[8];
+    long : STRING[200];
+END_VAR
+    name_of(channel := 1, text := short);
+    name_of(channel := 2, text := long);
+    Use := short = long;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// The host's string goes into the import's first STRING VAR_IN_OUT: a
+/// second one has none to take, and a VAR_IN_OUT of another type is no
+/// place for a string.
+#[rstest]
+fn invalid_wasi_extern_second_string(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'wasi:test/rt@0.1.0' 'names-of'}
+FUNCTION names_of
+VAR_IN_OUT first : STRING; second : STRING[20]; count : INT; END_VAR
+VAR_OUTPUT w0 : LWORD; w1 : LWORD; END_VAR
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:4:28 ]
+       |
+     4 | VAR_IN_OUT first : STRING; second : STRING[20]; count : INT; END_VAR
+       |                            ^^^|^^
+       |                               `---- VAR_IN_OUT 'second' cannot take a string from the host: the import's first STRING VAR_IN_OUT does
+       |
+       | Note: a WASI import gives one string, which the host writes into its one STRING VAR_IN_OUT
+    ---'
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:4:49 ]
+       |
+     4 | VAR_IN_OUT first : STRING; second : STRING[20]; count : INT; END_VAR
+       |                                                 ^^|^^
+       |                                                   `---- VAR_IN_OUT 'count' cannot cross a WASM import: an extern takes copies, not references
+       |
+       | Note: an extern FUNCTION receives copies of its VAR_INPUT
+    ---'
+    ");
+}
+
+/// Only a WASI FUNCTION takes a string so: a host module's import is typed
+/// from its declaration, where a VAR_IN_OUT has no place, and an async
+/// import's result is written when no call is running.
+#[rstest]
+fn invalid_extern_string_in_out_elsewhere(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'host' 'name-of'}
+FUNCTION name_of
+VAR_IN_OUT text : STRING; END_VAR
+END_FUNCTION
+
+{extern async 'wasi:test/rt@0.1.0' 'name-later'}
+FUNCTION_BLOCK name_later
+VAR_IN_OUT text : STRING; END_VAR
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:4:12 ]
+       |
+     4 | VAR_IN_OUT text : STRING; END_VAR
+       |            ^^|^
+       |              `--- VAR_IN_OUT 'text' cannot cross a WASM import: an extern takes copies, not references
+       |
+       | Note: an extern FUNCTION receives copies of its VAR_INPUT
+    ---'
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:9:12 ]
+       |
+     9 | VAR_IN_OUT text : STRING; END_VAR
+       |            ^^|^
+       |              `--- VAR_IN_OUT 'text' cannot cross a WASM import: an extern takes copies, not references
+       |
+       | Note: an extern FUNCTION receives copies of its VAR_INPUT
+    ---'
+    ");
+}
+
 /// An import returns a record of scalars: a STRUCT or a STRING output is
 /// refused, on a WASI import too, which keeps the core rules (the interface
 /// is made up), and on any other. An output or a return type that does not
