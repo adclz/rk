@@ -27,7 +27,6 @@ unsafe extern "C" {
 /// Throw an `$rk_exception` carrying `msg`; `#[inline]` so the (ptr, len)
 /// flattening happens at the call site.
 #[inline]
-#[allow(dead_code)]
 pub(crate) fn rk_raise(msg: &'static str) -> ! {
     unsafe { __iec_raise(msg.as_ptr(), msg.len() as u32) }
 }

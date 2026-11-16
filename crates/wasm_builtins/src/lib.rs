@@ -6,6 +6,7 @@
 #![no_std]
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
+pub mod host;
 pub mod trap;
 
 #[unsafe(no_mangle)]
