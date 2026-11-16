@@ -4,16 +4,23 @@
 //! ST declarations for the WIT interfaces a world imports, as wit-bindgen
 //! writes Rust for them: a FUNCTION for each function, an `{extern async}`
 //! FUNCTION_BLOCK for each async one, a typed enum for each enum, for the
-//! cases of each variant and for each flags type, a TYPE for each alias of
-//! a scalar, the drop of each resource, and the built-ins of each stream's
-//! and future's type the interface takes or gives, once per type, under the
-//! name of its first function whose type has it.
+//! cases of each variant and for each flags type, which starts with no
+//! flag set, a STRUCT for each record, each tuple WIT names and each
+//! variant whose cases hold values ([`types`]), a TYPE for each alias of a
+//! scalar or of a STRUCT, the drop of each resource, and the built-ins of
+//! each stream's and future's type the interface takes or gives, once per
+//! type, under the name of its first function whose type has it.
 //!
-//! A result that holds a variant, or a value and an error, comes back in
-//! words, as the canonical ABI lays it out: the import is `<NAME>_RAW`, and
-//! `<NAME>` calls it and reads each value out of the words ([`lift`]). A
-//! parameter that holds one is passed the same way: `<NAME>` packs its
-//! values into the words `<NAME>_RAW` takes ([`lower`]).
+//! A value of a STRUCT is taken as one input and given back whole: as the
+//! FUNCTION's own value, or as an output. Its import is apart from it,
+//! `<NAME>_RAW`. A record of scalars comes back in the import's outputs,
+//! which rk lays out as the canonical ABI lays out the record, and
+//! `<NAME>` puts each in its member; one passed in goes field by field. A
+//! result that holds a variant, a record of records, or a value and an
+//! error, comes back in words, as the canonical ABI lays it out, and
+//! `<NAME>` reads each value out of them ([`lift`]). A parameter that
+//! holds one is passed the same way: `<NAME>` packs its values into the
+//! words `<NAME>_RAW` takes ([`lower`]).
 //!
 //! Each interface is a namespace inside its package's, inside `Wasi`, the
 //! one INTERNAL namespace: `wasi:clocks/monotonic-clock` is
@@ -26,15 +33,18 @@
 //! ST compares names without case, and two WIT names may be written alike.
 //! The names WIT gives come first: of two that ST takes for one, the later
 //! function is left out, and a name the generator makes, a drop, a `_RAW`
-//! import or a built-in, takes a `_` after it. A variable that would be the
-//! name of its FUNCTION's value, or one its generated code uses, takes one
-//! too ([`names::Scope`]). Two interfaces that would be one namespace, or
-//! one file, stop the generator.
+//! import or a built-in, takes a `_` after it. So does a function named as
+//! a type, since a program names the type, and a variable that would be
+//! the name of its FUNCTION's value, or one its generated code uses
+//! ([`names::Scope`]). Two members of a STRUCT that ST takes for one leave
+//! its type out, and the functions that take or give it. Two interfaces
+//! that would be one namespace, or one file, stop the generator.
 
 pub mod lift;
 pub mod lower;
 pub mod names;
 pub mod shapes;
+pub mod types;
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
@@ -259,13 +269,22 @@ enum Returned {
     Fields(Shape),
     /// Words the generated code reads its values out of.
     Words(lift::Lifted),
+    /// A value of a STRUCT the canonical ABI lays out as a record of
+    /// scalars: the import gives its values as its outputs, `raw`, as it
+    /// gives a record's, and the FUNCTION puts each in its member, at the
+    /// same place in `targets`.
+    Members {
+        lifted: lift::Lifted,
+        raw: Vec<Var>,
+        targets: Vec<String>,
+    },
 }
 
 impl Returned {
     /// The outputs a call names.
     fn outputs(&self) -> &[Var] {
         match self {
-            Returned::Words(lifted) => &lifted.outputs,
+            Returned::Words(lifted) | Returned::Members { lifted, .. } => &lifted.outputs,
             Returned::Fields(Shape::Outputs(outputs)) => outputs,
             Returned::Fields(_) => &[],
         }
@@ -273,16 +292,27 @@ impl Returned {
 
     /// What a call passes for the string or the list the result holds: a
     /// STRING, or an array per field of the list's elements.
-    fn places(&self) -> &[Var] {
+    fn places(&self) -> &[lift::Place] {
         match self {
             Returned::Words(lifted) => &lifted.places,
-            Returned::Fields(_) => &[],
+            Returned::Fields(_) | Returned::Members { .. } => &[],
+        }
+    }
+
+    /// The type of the FUNCTION's own value, when it has one: a scalar, or
+    /// a value of a STRUCT the generated code reads.
+    fn value(&self) -> Option<&str> {
+        match self {
+            Returned::Fields(Shape::Return(st)) => Some(st),
+            Returned::Words(lifted) | Returned::Members { lifted, .. } => lifted.returns.as_deref(),
+            Returned::Fields(_) => None,
         }
     }
 }
 
 /// What the type `def` is declared as in ST, where it is: an alias of a
-/// scalar that is no `use`, an enum, a variant's cases, flags.
+/// scalar or of a STRUCT that is no `use`, an enum, a variant, flags, a
+/// record, a tuple WIT names.
 fn declared(
     resolve: &Resolve,
     def: &wit_parser::TypeDef,
@@ -290,17 +320,36 @@ fn declared(
 ) -> Option<&'static str> {
     match &def.kind {
         TypeDefKind::Type(Type::Id(other)) if resolve.types[*other].owner != def.owner => None,
-        TypeDefKind::Type(inner) => shapes::scalar(resolve, *inner, here).map(|_| "type"),
+        TypeDefKind::Type(inner) => (shapes::scalar(resolve, *inner, here).is_some()
+            || types::structured(resolve, *inner).is_some())
+        .then_some("type"),
         TypeDefKind::Enum(_) => Some("enum"),
         TypeDefKind::Variant(_) => Some("variant"),
         TypeDefKind::Flags(flags) => shapes::flags_base(flags).map(|_| "flags"),
+        TypeDefKind::Record(_) => Some("record"),
+        TypeDefKind::Tuple(_) => Some("tuple"),
         _ => None,
     }
 }
 
+/// The STRUCT `name` of `members`, each after what WIT says of it.
+fn structure(out: &mut Out, name: &str, members: &[types::Member]) {
+    out.line(&format!("TYPE {name} : STRUCT"));
+    out.depth += 1;
+    for member in members {
+        if let Some(docs) = &member.docs {
+            out.comment(docs);
+        }
+        out.line(&format!("{} : {};", member.name, member.ty));
+    }
+    out.depth -= 1;
+    out.line("END_STRUCT END_TYPE");
+    out.line("");
+}
+
 /// The typed enum `name` on `base`, each of its `values` written `NAME :=
-/// number`.
-fn named_values(out: &mut Out, name: &str, base: &str, values: &[String]) {
+/// number`, starting at its first value or at `start`.
+fn named_values(out: &mut Out, name: &str, base: &str, values: &[String], start: Option<&str>) {
     out.line(&format!("TYPE {name} : {base} ("));
     out.depth += 1;
     let last = values.len().saturating_sub(1);
@@ -308,7 +357,10 @@ fn named_values(out: &mut Out, name: &str, base: &str, values: &[String]) {
         out.line(&format!("{value}{}", if at == last { "" } else { "," }));
     }
     out.depth -= 1;
-    out.line("); END_TYPE");
+    match start {
+        Some(start) => out.line(&format!(") := {start}; END_TYPE")),
+        None => out.line("); END_TYPE"),
+    }
     out.line("");
 }
 
@@ -363,28 +415,58 @@ impl Generator<'_> {
         // Each ST name the interface's namespace holds, by what it names:
         // the names WIT gives first, each type's, then each function's.
         let mut taken: HashMap<String, String> = HashMap::new();
+        // The types' names, which a function takes a `_` after.
+        let mut type_names: Vec<String> = Vec::new();
         for (name, &ty) in &interface.types {
             if let Some(kind) = declared(resolve, &resolve.types[ty], here) {
                 let st_name = names::upper(name);
                 let what = format!("the {kind} `{name}`");
-                if let Err(other) = claim(&mut taken, &st_name, &what) {
-                    return Err(format!(
-                        "{other} and {what} would both be `{st_name}` in `{module}`"
+                let mut st_names = vec![(st_name, what.clone())];
+                // A variant whose cases hold values names its cases apart.
+                if let TypeDefKind::Variant(variant) = &resolve.types[ty].kind
+                    && shapes::carries(variant)
+                {
+                    st_names.push((
+                        names::upper(&format!("{name}-kind")),
+                        format!("the cases of `{name}`"),
                     ));
+                }
+                for (st_name, what) in st_names {
+                    if let Err(other) = claim(&mut taken, &st_name, &what) {
+                        return Err(format!(
+                            "{other} and {what} would both be `{st_name}` in `{module}`"
+                        ));
+                    }
+                    type_names.push(st_name);
                 }
             }
         }
-        // A function ST takes for a type or for an earlier function.
+        // A function ST takes for an earlier one, or for what the generator
+        // makes. One named as a type takes a `_` after its name: a program
+        // names a type in its declarations, and WIT names both.
         let mut met: HashMap<&str, String> = HashMap::new();
+        let mut pous: HashMap<&str, String> = HashMap::new();
         for function in interface.functions.values() {
             let Some(pou) = pou_name(resolve, function) else {
                 continue;
             };
-            if let Err(other) = claim(&mut taken, &pou, &format!("`{}`", function.name)) {
-                met.insert(
-                    function.name.as_str(),
-                    format!("it would be `{pou}`, which {other} is already"),
-                );
+            let pou = match type_names
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(&pou))
+            {
+                true => format!("{pou}_"),
+                false => pou,
+            };
+            match claim(&mut taken, &pou, &format!("`{}`", function.name)) {
+                Ok(()) => {
+                    pous.insert(function.name.as_str(), pou);
+                }
+                Err(other) => {
+                    met.insert(
+                        function.name.as_str(),
+                        format!("it would be `{pou}`, which {other} is already"),
+                    );
+                }
             }
         }
         for (name, &ty) in &interface.types {
@@ -392,24 +474,40 @@ impl Generator<'_> {
             match &def.kind {
                 // A `use`: the generated code names the type where it is defined.
                 TypeDefKind::Type(Type::Id(other)) if resolve.types[*other].owner != def.owner => {}
-                TypeDefKind::Type(inner) => match shapes::scalar(resolve, *inner, here) {
-                    Some(st) => {
-                        let st_name = names::upper(name);
-                        out.docs(&def.docs);
-                        out.line(&format!("TYPE {st_name} : {st}; END_TYPE"));
-                        out.line("");
+                TypeDefKind::Type(inner) => {
+                    match shapes::scalar(resolve, *inner, here).or_else(|| {
+                        types::structured(resolve, *inner)
+                            .filter(|&id| types::declared(resolve, id, here).is_ok())
+                            .map(|id| shapes::type_name(resolve, id, here))
+                    }) {
+                        Some(st) => {
+                            let st_name = names::upper(name);
+                            out.docs(&def.docs);
+                            out.line(&format!("TYPE {st_name} : {st}; END_TYPE"));
+                            out.line("");
+                        }
+                        // A type whose STRUCT is left out, which says why.
+                        None if let Some(id) = types::structured(resolve, *inner) => {
+                            skipped.push(Skipped {
+                                item: format!("`{name}`"),
+                                reason: format!(
+                                    "it names `{}`, which is left out",
+                                    types::wit_name(resolve, id)
+                                ),
+                            })
+                        }
+                        // A string, an option or a result: the functions that
+                        // take or give it say what they can.
+                        None if passed(resolve, *inner) => {}
+                        None => skipped.push(Skipped {
+                            item: format!("`{name}`"),
+                            reason: format!(
+                                "it names {}, which ST has no type for yet",
+                                shapes::what(resolve, *inner)
+                            ),
+                        }),
                     }
-                    // A string, or what is passed field by field: the
-                    // functions that take or give it say what they can.
-                    None if passed(resolve, *inner) => {}
-                    None => skipped.push(Skipped {
-                        item: format!("`{name}`"),
-                        reason: format!(
-                            "it names {}, which ST has no type for yet",
-                            shapes::what(resolve, *inner)
-                        ),
-                    }),
-                },
+                }
                 TypeDefKind::Enum(enumeration) => {
                     let cases: Vec<String> = enumeration
                         .cases
@@ -419,10 +517,17 @@ impl Generator<'_> {
                         .collect();
                     let st_name = names::upper(name);
                     out.docs(&def.docs);
-                    named_values(&mut out, &st_name, tag_base(enumeration.tag()), &cases);
+                    named_values(
+                        &mut out,
+                        &st_name,
+                        tag_base(enumeration.tag()),
+                        &cases,
+                        None,
+                    );
                 }
-                // A variant's cases, by name: what a case holds comes back
-                // beside it, read by the function that returns the variant.
+                // A variant's cases, by name; one whose cases hold values
+                // is a STRUCT of its case, `kind`, and of what each case
+                // holds.
                 TypeDefKind::Variant(variant) => {
                     let cases: Vec<String> = variant
                         .cases
@@ -431,8 +536,31 @@ impl Generator<'_> {
                         .map(|(at, case)| format!("{} := {at}", names::upper(&case.name)))
                         .collect();
                     let st_name = names::upper(name);
-                    out.docs(&def.docs);
-                    named_values(&mut out, &st_name, tag_base(variant.tag()), &cases);
+                    match shapes::carries(variant) {
+                        false => {
+                            out.docs(&def.docs);
+                            named_values(&mut out, &st_name, tag_base(variant.tag()), &cases, None);
+                        }
+                        true => match types::members(resolve, ty, here) {
+                            Ok(members) => {
+                                let kind = names::upper(&format!("{name}-kind"));
+                                out.prose(&format!("The cases of `{name}`."));
+                                named_values(
+                                    &mut out,
+                                    &kind,
+                                    tag_base(variant.tag()),
+                                    &cases,
+                                    None,
+                                );
+                                out.docs(&def.docs);
+                                structure(&mut out, &st_name, &members);
+                            }
+                            Err(reason) => skipped.push(Skipped {
+                                item: format!("`{name}`"),
+                                reason,
+                            }),
+                        },
+                    }
                     for case in &variant.cases {
                         let Some(held) = case.ty else { continue };
                         if let Some(what) = lift::unreadable(resolve, &self.sizes, held, here) {
@@ -461,7 +589,10 @@ impl Generator<'_> {
                         .collect();
                     let st_name = names::upper(name);
                     out.docs(&def.docs);
-                    named_values(&mut out, &st_name, base, &values);
+                    // No flag set: a value of flags starts at zero, and not
+                    // at its first flag, as a value of an enum starts at
+                    // its first value.
+                    named_values(&mut out, &st_name, base, &values, Some("0"));
                 }
                 TypeDefKind::Resource => {
                     let drop = own(
@@ -486,10 +617,21 @@ impl Generator<'_> {
                     out.line("END_FUNCTION");
                     out.line("");
                 }
-                // Passed field by field, or a handle, which is a UDINT.
-                TypeDefKind::Record(_)
-                | TypeDefKind::Tuple(_)
-                | TypeDefKind::Option(_)
+                // A STRUCT of its fields, or of its items.
+                TypeDefKind::Record(_) | TypeDefKind::Tuple(_) => {
+                    match types::members(resolve, ty, here) {
+                        Ok(members) => {
+                            out.docs(&def.docs);
+                            structure(&mut out, &names::upper(name), &members);
+                        }
+                        Err(reason) => skipped.push(Skipped {
+                            item: format!("`{name}`"),
+                            reason,
+                        }),
+                    }
+                }
+                // Passed value by value, or a handle, which is a UDINT.
+                TypeDefKind::Option(_)
                 | TypeDefKind::Result(_)
                 | TypeDefKind::Handle(_)
                 | TypeDefKind::Future(_)
@@ -510,7 +652,14 @@ impl Generator<'_> {
         for function in interface.functions.values() {
             let written = match met.remove(function.name.as_str()) {
                 Some(reason) => Err(reason),
-                None => self.function(&mut out, &module, function, here, &mut taken),
+                None => self.function(
+                    &mut out,
+                    &module,
+                    function,
+                    pous.get(function.name.as_str()),
+                    here,
+                    &mut taken,
+                ),
             };
             match written {
                 Ok(converted) => converts |= converted,
@@ -568,21 +717,22 @@ impl Generator<'_> {
     }
 
     /// The declaration of `function`, imported from `module`, written to
-    /// `out` under the name `taken` holds for it, and whether its code
-    /// converts a value, with `Std.Convert`. Its import may be apart from
-    /// it: `<NAME>_RAW`, whose parameters `<NAME>` packs and
-    /// whose result it reads, which `taken` then holds too. `Err` says why
-    /// it cannot be.
+    /// `out` under the name `pou` that `taken` holds for it (`None` for a
+    /// property), and whether its code converts a value, with
+    /// `Std.Convert`. Its import may be apart from it: `<NAME>_RAW`, whose
+    /// parameters `<NAME>` packs or passes field by field and whose result
+    /// it reads, which `taken` then holds too. `Err` says why it cannot be.
     fn function(
         &self,
         out: &mut Out,
         module: &str,
         function: &Function,
+        pou: Option<&String>,
         here: Option<TypeOwner>,
         taken: &mut HashMap<String, String>,
     ) -> Result<bool, String> {
         let resolve = self.resolve;
-        let Some(pou) = pou_name(resolve, function) else {
+        let Some(pou) = pou.cloned() else {
             return Err("it is a property, which rk does not import".to_string());
         };
         let asynchronous = function.kind.is_async();
@@ -618,37 +768,83 @@ impl Generator<'_> {
                 format!("its result holds {what}, which an import cannot give back yet")
             };
             let direct = shapes::result(resolve, function.result, asynchronous, here, &scope);
-            let returned = match (direct, function.result) {
-                (Ok(shape), _) => Returned::Fields(shape),
+            // A value of a STRUCT laid out as a record of scalars comes back
+            // in the import's outputs, as a record does.
+            let scalars = match (&direct, function.result) {
+                (Err(_), Some(ty)) => lift::record_of_scalars(resolve, ty, here),
+                _ => None,
+            };
+            let returned = match (direct, function.result, scalars) {
+                (Ok(shape), _, _) => Returned::Fields(shape),
+                (Err(_), Some(ty), Some(scalars)) => {
+                    let lifted = lift::lift(
+                        resolve,
+                        &self.sizes,
+                        ty,
+                        here,
+                        &scope,
+                        false,
+                        (!asynchronous).then_some(pou.as_str()),
+                    )
+                    .map_err(cannot)?;
+                    // The import's outputs keep clear of the variables of
+                    // the import and of its POU: a parameter's, a block's
+                    // output or its `DONE`.
+                    let mut held: Vec<String> = lowered
+                        .params
+                        .iter()
+                        .chain(&lowered.inputs)
+                        .chain(&lifted.outputs)
+                        .map(|var| var.name.clone())
+                        .collect();
+                    if asynchronous {
+                        held.push("DONE".to_string());
+                    }
+                    let (raw, targets) = lifted.as_outputs(scalars, held).into_iter().unzip();
+                    Returned::Members {
+                        lifted,
+                        raw,
+                        targets,
+                    }
+                }
                 // What no record of outputs is laid out as is read out of
                 // the words it comes back in, where the canonical ABI
                 // writes it in memory: an async call's result always,
                 // another's past one value.
                 // A string comes back to a call that waits for it: the
                 // host writes it into the STRING the call passes.
-                (Err(_), Some(ty)) if asynchronous || signature.retptr => Returned::Words(
-                    lift::lift(resolve, &self.sizes, ty, here, &scope, !asynchronous)
-                        .map_err(cannot)?,
+                (Err(_), Some(ty), None) if asynchronous || signature.retptr => Returned::Words(
+                    lift::lift(
+                        resolve,
+                        &self.sizes,
+                        ty,
+                        here,
+                        &scope,
+                        !asynchronous,
+                        (!asynchronous).then_some(pou.as_str()),
+                    )
+                    .map_err(cannot)?,
                 ),
-                // One value, inside records or tuples that hold it alone:
-                // the canonical ABI returns it as it is, and the import
-                // gives it as the one output it would be read into.
-                (Err(what), Some(ty)) => {
-                    match lift::lift(resolve, &self.sizes, ty, here, &scope, false)
+                // One value, inside tuples that hold it alone: the canonical
+                // ABI returns it as it is, and the import gives it as the
+                // one output it would be read into.
+                (Err(what), Some(ty), None) => {
+                    match lift::lift(resolve, &self.sizes, ty, here, &scope, false, None)
                         .map_err(cannot)?
                     {
-                        lifted if lifted.outputs.len() == 1 => {
+                        lifted if lifted.outputs.len() == 1 && !lifted.structured => {
                             Returned::Fields(Shape::Outputs(lifted.outputs))
                         }
                         _ => return Err(cannot(what)),
                     }
                 }
-                (Err(what), None) => return Err(cannot(what)),
+                (Err(what), None, _) => return Err(cannot(what)),
             };
-            let apart = lowered.packs() || matches!(returned, Returned::Words(_));
+            let apart = lowered.apart()
+                || matches!(returned, Returned::Words(_) | Returned::Members { .. });
             let mut own = Vec::new();
             // A FUNCTION's value has its name, which no variable of it can.
-            if let Returned::Fields(Shape::Return(_)) = returned {
+            if returned.value().is_some() {
                 own.push(pou.clone());
                 if apart {
                     own.push(raw.clone());
@@ -662,8 +858,11 @@ impl Generator<'_> {
                     own.push("call".to_string());
                 }
                 own.extend(lowered.words().into_iter().map(|var| var.name));
-                if let Returned::Words(lifted) = &returned {
-                    own.extend(lifted.words(words_back).into_iter().map(|var| var.name));
+                match &returned {
+                    Returned::Words(lifted) => {
+                        own.extend(lifted.words(words_back).into_iter().map(|var| var.name))
+                    }
+                    Returned::Members { .. } | Returned::Fields(_) => {}
                 }
             }
             let named = || {
@@ -671,7 +870,7 @@ impl Generator<'_> {
                     .inputs
                     .iter()
                     .chain(returned.outputs())
-                    .chain(returned.places())
+                    .chain(returned.places().iter().map(|place| &place.var))
             };
             own.retain(|name| {
                 !scope.holds(name) && named().any(|var| var.name.eq_ignore_ascii_case(name))
@@ -687,13 +886,23 @@ impl Generator<'_> {
         let outputs = returned.outputs();
         let given: Vec<Var> = match &returned {
             Returned::Words(lifted) => lifted.words(words_back),
+            Returned::Members { raw, .. } => raw.clone(),
             Returned::Fields(_) => outputs.to_vec(),
         };
-        let apart = lowered.packs() || matches!(returned, Returned::Words(_));
+        let apart =
+            lowered.apart() || matches!(returned, Returned::Words(_) | Returned::Members { .. });
         // The STRING the host writes the result's string into: the
-        // caller's, which the import's wrapper passes on.
-        let text: Vec<Var> = returned.places().to_vec();
+        // caller's, which the import's wrapper passes on, or a member of
+        // the STRUCT the FUNCTION gives back.
+        let places: Vec<lift::Place> = returned.places().to_vec();
+        let text: Vec<Var> = places.iter().map(|place| place.var.clone()).collect();
+        let own_text: Vec<Var> = places
+            .iter()
+            .filter(|place| place.source.is_none())
+            .map(|place| place.var.clone())
+            .collect();
         let mut variables: Vec<&str> = lowered.inputs.iter().map(|var| var.name.as_str()).collect();
+        variables.extend(lowered.sources.iter().map(|(param, _)| param.as_str()));
         if asynchronous {
             variables.push("DONE");
         }
@@ -705,7 +914,7 @@ impl Generator<'_> {
                 variables.push("call");
             }
             variables.extend(words.iter().map(|var| var.name.as_str()));
-            if let Returned::Words(_) = returned {
+            if let Returned::Words(_) | Returned::Members { .. } = returned {
                 variables.extend(given.iter().map(|var| var.name.as_str()));
             }
         }
@@ -721,18 +930,44 @@ impl Generator<'_> {
         }
 
         let name = &function.name;
+        // The import's own value: a scalar it returns as it is.
         let value = match &returned {
             Returned::Fields(Shape::Return(st)) => format!(" : {st}"),
             _ => String::new(),
         };
+        // The FUNCTION's: that scalar, or a STRUCT it reads.
+        let pou_value = returned
+            .value()
+            .map(|st| format!(" : {st}"))
+            .unwrap_or_default();
         let import = if apart {
             taken.insert(raw.to_ascii_uppercase(), format!("the import of `{name}`"));
             raw
         } else {
             pou.clone()
         };
+        // What the FUNCTION does to the import's parameters: packs values
+        // into words, or passes the fields of a STRUCT one by one.
+        let packs = match lowered.packs() {
+            true => "packs",
+            false => "passes field by field",
+        };
+        // The values of a result the import gives as they are, and where
+        // the POU puts them: in its own value, or in its output.
+        let (values, members) = match (given.len(), outputs.first()) {
+            (1, None) => ("the one value of its result", "its member".to_string()),
+            (_, None) => ("the values of its result", "its members".to_string()),
+            (1, Some(output)) => (
+                "the one value of its result",
+                format!("the member of `{}`", output.name),
+            ),
+            (_, Some(output)) => (
+                "the values of its result",
+                format!("the members of `{}`", output.name),
+            ),
+        };
         if apart {
-            out.prose(&match (lowered.packs(), &returned) {
+            out.prose(&match (lowered.apart(), &returned) {
                 (false, _) if text.len() == 1 && text[0].ty == "STRING" => format!(
                     "`{name}` as the host gives it: its result in words of 8 bytes, as the canonical ABI lays it out, which `{pou}` reads, and its string in `{}`, where the host writes it.",
                     text[0].name
@@ -744,14 +979,20 @@ impl Generator<'_> {
                         .collect::<Vec<_>>()
                         .join(", ")
                 ),
+                (false, Returned::Members { .. }) => format!(
+                    "`{name}` as the host gives it: {values}, which `{pou}` puts in {members}."
+                ),
                 (false, _) => format!(
                     "`{name}` as the host gives it: its result in words of 8 bytes, as the canonical ABI lays it out, which `{pou}` reads."
                 ),
                 (true, Returned::Fields(_)) => format!(
-                    "`{name}` as the host takes it: its parameters as the canonical ABI passes them, which `{pou}` packs."
+                    "`{name}` as the host takes it: its parameters as the canonical ABI passes them, which `{pou}` {packs}."
+                ),
+                (true, Returned::Members { .. }) => format!(
+                    "`{name}` as the host has it: its parameters as the canonical ABI passes them, which `{pou}` {packs}, and {values}, which it puts in {members}."
                 ),
                 (true, Returned::Words(_)) => format!(
-                    "`{name}` as the host has it: its parameters as the canonical ABI passes them, which `{pou}` packs, and its result in words of 8 bytes, which it reads."
+                    "`{name}` as the host has it: its parameters as the canonical ABI passes them, which `{pou}` {packs}, and its result in words of 8 bytes, which it reads."
                 ),
             });
         } else {
@@ -787,14 +1028,14 @@ impl Generator<'_> {
         let passed: Vec<String> = lowered
             .params
             .iter()
-            .map(|var| format!("{0} := {0}", var.name))
+            .map(|var| format!("{} := {}", var.name, lowered.source(&var.name)))
             .collect();
         out.docs(&function.docs);
         match asynchronous {
             false => {
-                out.line(&format!("FUNCTION {pou}{value}"));
+                out.line(&format!("FUNCTION {pou}{pou_value}"));
                 out.vars("VAR_INPUT", &lowered.inputs);
-                out.vars("VAR_IN_OUT", &text);
+                out.vars("VAR_IN_OUT", &own_text);
                 out.vars("VAR_OUTPUT", outputs);
                 let mut locals = words;
                 if let Returned::Words(_) = returned {
@@ -803,8 +1044,17 @@ impl Generator<'_> {
                 out.vars("VAR", &locals);
                 out.depth += 1;
                 lowered.write(out);
-                let written = text.iter().map(|var| format!("{0} := {0}", var.name));
-                let received = given.iter().map(|var| format!("{0} => {0}", var.name));
+                let written = places.iter().map(|place| {
+                    format!(
+                        "{} := {}",
+                        place.var.name,
+                        place.source.as_deref().unwrap_or(&place.var.name)
+                    )
+                });
+                let received = given.iter().enumerate().map(|(at, var)| match &returned {
+                    Returned::Members { targets, .. } => format!("{} => {}", var.name, targets[at]),
+                    _ => format!("{0} => {0}", var.name),
+                });
                 let arguments: Vec<String> =
                     passed.into_iter().chain(written).chain(received).collect();
                 match value.is_empty() {
@@ -838,6 +1088,11 @@ impl Generator<'_> {
                     out.depth += 1;
                     match &returned {
                         Returned::Words(lifted) => lifted.write(out, "call.w"),
+                        Returned::Members { raw, targets, .. } => {
+                            for (raw, target) in raw.iter().zip(targets) {
+                                out.line(&format!("{target} := call.{};", raw.name));
+                            }
+                        }
                         Returned::Fields(_) => {
                             for output in outputs {
                                 out.line(&format!("{0} := call.{0};", output.name));
@@ -910,11 +1165,12 @@ impl Generator<'_> {
     }
 }
 
-/// The outputs and the body of a block that reads its result out of the
-/// words of `raw`, the block of its import, called with `passed`: `DONE`
-/// and the values `lifted` reads, which take theirs in the call that sees
-/// the import's call finish.
-fn reader(out: &mut Out, raw: &str, passed: &str, lifted: &lift::Lifted) {
+/// The outputs and the body of a block that gives back what `raw`, the
+/// block of its import, called with `passed`, gives: `DONE` and the values
+/// `lifted` reads out of the words of `raw`, or, where `copied` names
+/// them, takes from the outputs of `raw` into their members. Each takes
+/// its value in the call that sees the import's call finish.
+fn reader(out: &mut Out, raw: &str, passed: &str, lifted: &lift::Lifted, copied: &[(Var, String)]) {
     out.vars(
         "VAR_OUTPUT",
         &[vec![done()], lifted.outputs.clone()].concat(),
@@ -933,7 +1189,14 @@ fn reader(out: &mut Out, raw: &str, passed: &str, lifted: &lift::Lifted) {
     out.line("DONE := call.DONE;");
     out.line("IF call.DONE THEN");
     out.depth += 1;
-    lifted.write(out, "call.w");
+    match copied {
+        [] => lifted.write(out, "call.w"),
+        copied => {
+            for (output, target) in copied {
+                out.line(&format!("{target} := call.{};", output.name));
+            }
+        }
+    }
     out.depth -= 1;
     out.line("END_IF;");
     out.depth -= 1;
@@ -995,19 +1258,13 @@ fn own(taken: &mut HashMap<String, String>, name: String, what: &str) -> String 
 }
 
 /// Whether what `ty` names is passed without a type of its own: a string,
-/// or field by field, a variant that holds values among them.
+/// or value by value, an option or a result.
 fn passed(resolve: &Resolve, ty: Type) -> bool {
     match shapes::resolved(resolve, ty) {
         Type::String => true,
         Type::Id(_) => matches!(
             shapes::definition(resolve, ty),
-            Some(
-                TypeDefKind::Record(_)
-                    | TypeDefKind::Tuple(_)
-                    | TypeDefKind::Option(_)
-                    | TypeDefKind::Result(_)
-                    | TypeDefKind::Variant(_)
-            )
+            Some(TypeDefKind::Option(_) | TypeDefKind::Result(_))
         ),
         _ => false,
     }
@@ -1394,11 +1651,17 @@ fn built_in_set(
             let lifted = |what| match payload {
                 Some(ty) => {
                     let scope = Scope::holding(&["DONE", "call"]);
-                    lift::lift(resolve, sizes, ty, owner, &scope, false)
+                    lift::lift(resolve, sizes, ty, owner, &scope, false, None)
                 }
                 None => Err(what),
             };
             let direct = shapes::result(resolve, payload, true, owner, &Scope::holding(&["DONE"]));
+            // A value of a STRUCT laid out as a record of scalars comes
+            // back in the import's outputs, as a record does.
+            let scalars = match (&direct, payload) {
+                (Err(_), Some(ty)) => lift::record_of_scalars(resolve, ty, owner),
+                _ => None,
+            };
             match direct.map_err(lifted) {
                 Ok(shape) => {
                     let mut outputs = vec![done()];
@@ -1418,24 +1681,49 @@ fn built_in_set(
                 Err(Ok(lifted)) => {
                     let raw = pou("READ_RAW");
                     let read = pou("READ");
-                    out.prose(&format!(
-                        "The future's read as the host gives it: its value in words of 8 bytes, as the canonical ABI lays it out, which `{read}` reads."
-                    ));
+                    // The outputs keep clear of the block's names.
+                    let copied = match scalars {
+                        Some(scalars) => {
+                            let held = ["DONE", end]
+                                .into_iter()
+                                .map(str::to_string)
+                                .chain(lifted.outputs.iter().map(|var| var.name.clone()))
+                                .collect();
+                            lifted.as_outputs(scalars, held)
+                        }
+                        None => Vec::new(),
+                    };
+                    let value = lifted.outputs.first().map(|var| var.name.as_str());
+                    out.prose(&match (copied.len(), value) {
+                        (0, _) | (_, None) => format!(
+                            "The future's read as the host gives it: its value in words of 8 bytes, as the canonical ABI lays it out, which `{read}` reads."
+                        ),
+                        (1, Some(value)) => format!(
+                            "The future's read as the host gives it: the one value the future holds, which `{read}` puts in the member of `{value}`."
+                        ),
+                        (_, Some(value)) => format!(
+                            "The future's read as the host gives it: the values the future holds, which `{read}` puts in the members of `{value}`."
+                        ),
+                    });
+                    let given: Vec<Var> = match copied.is_empty() {
+                        true => lifted.words(1),
+                        false => copied.iter().map(|(output, _)| output.clone()).collect(),
+                    };
                     out.line(&format!("{{extern async {}}}", pragma("read")));
                     out.line(&format!("FUNCTION_BLOCK {raw}"));
                     out.vars("VAR_INPUT", &[handle(end)]);
-                    out.vars("VAR_OUTPUT", &[vec![done()], lifted.words(1)].concat());
+                    out.vars("VAR_OUTPUT", &[vec![done()], given].concat());
                     out.line("END_FUNCTION_BLOCK");
                     out.line("");
                     out.prose(reads);
                     out.line(&format!("FUNCTION_BLOCK {read}"));
                     out.vars("VAR_INPUT", &[handle(end)]);
-                    reader(out, &raw, &format!("{end} := {end}"), &lifted);
+                    reader(out, &raw, &format!("{end} := {end}"), &lifted, &copied);
                     out.line("END_FUNCTION_BLOCK");
                     out.line("");
                     written.push(raw);
                     written.push(read);
-                    *converts |= lifted.converts();
+                    *converts |= copied.is_empty() && lifted.converts();
                 }
                 Err(Err(what)) => skipped.push(Skipped {
                     item: format!("`{name}_READ`"),

@@ -3,12 +3,15 @@
 
 //! A result the generated code takes apart itself, as wit-bindgen's does.
 //! The canonical ABI lays a variant out as its case, then one place the
-//! values of all its cases share: no record of outputs is laid out so. A
-//! result that holds one, a result with a value and an error among them,
-//! comes back whole in words of 8 bytes, the bytes as the host wrote them,
-//! and the code written here reads each value where WIT's layout puts it:
-//! a flag or a case first, then what the case that came holds. What the
-//! other cases would hold stays at zero.
+//! values of all its cases share: no record of outputs is laid out so, nor
+//! as a record of records, each record aligned on its own. A result that
+//! holds one, a result with a value and an error among them, comes back
+//! whole in words of 8 bytes, the bytes as the host wrote them, and the
+//! code written here reads each value where WIT's layout puts it, into an
+//! output or into its member of a STRUCT: a flag or a case first, then
+//! what the case that came holds. What the other cases would hold stays at
+//! zero. A record of scalars is read by no code: the import gives its
+//! values as outputs, which go to their members ([`Lifted::as_outputs`]).
 //!
 //! A case whose value ST cannot hold yet, a string or a list, keeps its
 //! name and comes back without the value.
@@ -21,11 +24,12 @@
 //! or one list comes back so, the one a result holds outside its error and
 //! outside a variant's cases.
 
-use wit_parser::{Int, Resolve, SizeAlign, Type, TypeDefKind, TypeOwner};
+use wit_parser::{Int, Resolve, SizeAlign, Type, TypeDefKind, TypeId, TypeOwner};
 
 use crate::Out;
 use crate::names::{self, Scope};
 use crate::shapes::{self, Var};
+use crate::types;
 
 /// How a value is read out of a word or packed into one, by its size in
 /// bytes.
@@ -215,6 +219,41 @@ impl<L> Step<L> {
     }
 }
 
+/// Where the walk reads a value into, or packs one from: a variable of its
+/// own, at the top of a result or of the parameters, or a member of a value
+/// ST has a STRUCT for, by its path (`value.ipv4`).
+#[derive(Debug, Clone)]
+pub(crate) enum At {
+    Top,
+    Member(String),
+}
+
+impl At {
+    /// The place of the value named after `prefix` in a STRUCT: its member.
+    pub(crate) fn member(path: &str, prefix: &str) -> String {
+        format!("{path}.{}", names::lower(prefix))
+    }
+}
+
+/// What a value named after `prefix` is called where nothing names it:
+/// `value`.
+pub(crate) fn or_value(prefix: &str) -> String {
+    match prefix {
+        "" => "value".to_string(),
+        prefix => prefix.to_string(),
+    }
+}
+
+/// Where the host writes a block of the result: a STRING, or an array of
+/// a list. A variable of the import, `var`, which a call passes `source`
+/// for: a member of a STRUCT the call gives, or else the call's own
+/// variable of that name.
+#[derive(Debug, Clone)]
+pub struct Place {
+    pub var: Var,
+    pub source: Option<String>,
+}
+
 /// A result taken apart: its outputs, and the code that gives them their
 /// values.
 #[derive(Debug)]
@@ -222,21 +261,28 @@ pub struct Lifted {
     /// The outputs, in the order the type gives its values: a flag or a
     /// case before what it decides.
     pub outputs: Vec<Var>,
+    /// The type of the FUNCTION's own value, when the result is a value of
+    /// a STRUCT the FUNCTION returns whole.
+    pub returns: Option<String>,
     /// How many words of 8 bytes the result takes.
     words: usize,
-    /// The outputs that are only there when their flag or their case came,
+    /// The values that are only there when their flag or their case came,
     /// each with what it holds otherwise.
     zeroes: Vec<(String, &'static str)>,
     steps: Vec<Step<(String, Read)>>,
     /// Where the host writes what the result holds in blocks of its own:
     /// the STRING of its string, the caller's, empty when no string came,
     /// or the arrays of its list, one per field of an element.
-    pub places: Vec<Var>,
+    pub places: Vec<Place>,
+    /// Whether a value of a STRUCT comes back.
+    pub structured: bool,
 }
 
 /// `ty`, a function's result, taken apart, its outputs named in `scope`;
 /// `Err` says what in it cannot come back. A string can where `strings`
-/// says so: in the result of a call that waits for it.
+/// says so: in the result of a call that waits for it. A value of a STRUCT
+/// that is the whole result is the FUNCTION's own value, `whole`, where it
+/// has one.
 pub fn lift(
     resolve: &Resolve,
     sizes: &SizeAlign,
@@ -244,6 +290,7 @@ pub fn lift(
     here: Option<TypeOwner>,
     scope: &Scope,
     strings: bool,
+    whole: Option<&str>,
 ) -> Result<Lifted, &'static str> {
     let mut walk = Walk {
         resolve,
@@ -255,8 +302,11 @@ pub fn lift(
         strings,
         places: Vec::new(),
         taken: 0,
+        whole: whole.map(str::to_string),
+        returns: None,
+        structured: false,
     };
-    let steps = walk.value(ty, 0, "", false)?;
+    let steps = walk.value(ty, 0, "", false, &At::Top)?;
     // The host writes the blocks it is given, in order, into the STRING or
     // the arrays: any other block it could write, a string or a list where
     // nothing takes it, would land there first.
@@ -265,10 +315,12 @@ pub fn lift(
     }
     Ok(Lifted {
         outputs: walk.outputs,
+        returns: walk.returns,
         words: sizes.size(&ty).size_wasm32().div_ceil(8).max(1),
         zeroes: walk.zeroes,
         steps,
         places: walk.places,
+        structured: walk.structured,
     })
 }
 
@@ -311,12 +363,100 @@ pub fn unreadable(
         strings: false,
         places: Vec::new(),
         taken: 0,
+        whole: None,
+        returns: None,
+        structured: false,
     }
-    .value(ty, 0, "case", true)
+    .value(ty, 0, "case", true, &At::Top)
     .err()
 }
 
+/// The ST type of the one scalar `ty` holds when it is one value: a
+/// scalar, or a record or a tuple of one, which the canonical ABI returns
+/// as the value it holds.
+fn sole_scalar(resolve: &Resolve, ty: Type, here: Option<TypeOwner>) -> Option<String> {
+    if kind(resolve, ty).is_some() {
+        return shapes::scalar(resolve, ty, here);
+    }
+    match shapes::definition(resolve, ty)? {
+        TypeDefKind::Record(record) if record.fields.len() == 1 => {
+            sole_scalar(resolve, record.fields[0].ty, here)
+        }
+        TypeDefKind::Tuple(tuple) if tuple.types.len() == 1 => {
+            sole_scalar(resolve, tuple.types[0], here)
+        }
+        _ => None,
+    }
+}
+
+/// The ST types of the values of `ty`, a value of a STRUCT, when the
+/// canonical ABI lays it out as a record of scalars, which an import
+/// gives as its outputs: a record or a tuple of scalars, or one value
+/// inside records or tuples that hold it alone. A record of records is
+/// not one: each record inside is aligned on its own, and rounded up.
+pub fn record_of_scalars(
+    resolve: &Resolve,
+    ty: Type,
+    here: Option<TypeOwner>,
+) -> Option<Vec<String>> {
+    let id = types::structured(resolve, ty)?;
+    if let Some(st) = sole_scalar(resolve, ty, here) {
+        return Some(vec![st]);
+    }
+    let parts: Vec<Type> = match &resolve.types[types::target(resolve, id)].kind {
+        TypeDefKind::Record(record) => record.fields.iter().map(|field| field.ty).collect(),
+        TypeDefKind::Tuple(tuple) => tuple.types.clone(),
+        _ => return None,
+    };
+    parts
+        .into_iter()
+        .map(|ty| match kind(resolve, ty) {
+            Some(_) => shapes::scalar(resolve, ty, here),
+            None => None,
+        })
+        .collect()
+}
+
 impl Lifted {
+    /// The outputs an import gives a record of scalars as, the ST types of
+    /// its values `scalars` ([`record_of_scalars`]), each with the member
+    /// the generated code puts it in. Each is named after its member,
+    /// `seconds`, or `inner_x` for one inside a record of one, with a `_`
+    /// after it for as long as `held`, the names beside it, or an earlier
+    /// one has the name.
+    pub fn as_outputs(&self, scalars: Vec<String>, mut held: Vec<String>) -> Vec<(Var, String)> {
+        let targets: Vec<&str> = self
+            .steps
+            .iter()
+            .map(|step| match step {
+                Step::Leaf((target, _)) => target.as_str(),
+                _ => unreachable!("a record of scalars is read value by value"),
+            })
+            .collect();
+        assert_eq!(targets.len(), scalars.len(), "a member for each value");
+        targets
+            .into_iter()
+            .zip(scalars)
+            .map(|(target, st)| {
+                let (_, path) = target
+                    .split_once('.')
+                    .expect("a member of the value that comes back");
+                let mut name = names::lower(&path.replace('.', "_"));
+                while held.iter().any(|held| held.eq_ignore_ascii_case(&name)) {
+                    name.push('_');
+                }
+                held.push(name.clone());
+                let output = Var {
+                    name,
+                    ty: st,
+                    flat: 1,
+                    start: None,
+                };
+                (output, target.to_string())
+            })
+            .collect()
+    }
+
     /// The words the result comes back in, `w0`, `w1`: `at_least` of them,
     /// where the call takes more than the result fills.
     pub fn words(&self, at_least: usize) -> Vec<Var> {
@@ -484,9 +624,15 @@ struct Walk<'a> {
     strings: bool,
     /// The STRING the one string that comes back is written into, or the
     /// arrays of the one list.
-    places: Vec<Var>,
+    places: Vec<Place>,
     /// How many blocks those take, as [`blocks_in`] counts them.
     taken: usize,
+    /// The FUNCTION whose own value a STRUCT that is the whole result is.
+    whole: Option<String>,
+    /// The type of that value, once the walk has met it.
+    returns: Option<String>,
+    /// Whether a value of a STRUCT comes back.
+    structured: bool,
 }
 
 impl Walk<'_> {
@@ -516,51 +662,64 @@ impl Walk<'_> {
         name
     }
 
+    /// Where the value named after `prefix`, of the ST type `ty` and read
+    /// as `kind`, goes: an output of its own at the top, a member of the
+    /// STRUCT the walk is in otherwise. `inside` a flag or a case, it holds
+    /// zero when that did not come.
+    fn target(&mut self, prefix: &str, ty: String, kind: Kind, inside: bool, at: &At) -> String {
+        match at {
+            At::Top => self.output(&or_value(prefix), ty, kind, inside),
+            At::Member(path) => {
+                let member = At::member(path, prefix);
+                if inside {
+                    self.zeroes.push((member.clone(), kind.zero()));
+                }
+                member
+            }
+        }
+    }
+
     /// The steps that read `ty` at `offset` bytes into the result, its
-    /// values named after `prefix`: a scalar is `prefix` itself, `value`
-    /// where there is none; a record's field and a tuple's item add their
-    /// name or their place; an option adds `is-some`, and `value` for an
-    /// option it holds; a result adds `failed`, then `value` and `error`;
-    /// a variant is its case, then what each case holds under the case's
-    /// name. `inside` a flag or a case, a value is only there when that
-    /// came.
+    /// values named after `prefix` `at` the top or in a STRUCT: a scalar is
+    /// `prefix` itself, `value` where there is none; a value ST has a STRUCT
+    /// for is one output of it, or one member, its own values in its
+    /// members ([`Walk::members`]); a tuple's item adds its place; an option
+    /// adds `is-some`, and `value` for an option it holds; a result adds
+    /// `failed`, then `value` and `error`. `inside` a flag or a case, a
+    /// value is only there when that came.
     fn value(
         &mut self,
         ty: Type,
         offset: usize,
         prefix: &str,
         inside: bool,
+        at: &At,
     ) -> Result<Vec<Step<(String, Read)>>, &'static str> {
         let (resolve, sizes) = (self.resolve, self.sizes);
-        let or_value = |prefix: &str| match prefix {
-            "" => "value".to_string(),
-            prefix => prefix.to_string(),
-        };
         if let Some(kind) = kind(resolve, ty) {
             let st = shapes::scalar(resolve, ty, self.here)
                 .expect("a value read out of a word has a scalar type");
-            let name = self.output(&or_value(prefix), st, kind, inside);
-            return Ok(vec![Step::Leaf((name, Read { offset, kind }))]);
+            let target = self.target(prefix, st, kind, inside, at);
+            return Ok(vec![Step::Leaf((target, Read { offset, kind }))]);
         }
-        let flag = |walk: &mut Self, name: &str| {
-            let name = walk.output(name, "BOOL".to_string(), Kind::Bool, inside);
-            let read = Read {
-                offset,
-                kind: Kind::Bool,
-            };
-            (name.clone(), Step::Leaf((name, read)))
-        };
         // A string is not read: the host wrote it into the STRING the call
         // passed, which is empty when none came.
         if let Type::String = shapes::resolved(resolve, ty) {
             return match (self.strings, self.taken) {
                 (false, _) => Err("a string"),
                 (true, 0) => {
-                    self.places.push(Var {
-                        name: self.scope.variable(&or_value(prefix)),
-                        ty: "STRING".to_string(),
-                        flat: 0,
-                        start: None,
+                    let (name, source) = match at {
+                        At::Top => (or_value(prefix), None),
+                        At::Member(path) => (prefix.to_string(), Some(At::member(path, prefix))),
+                    };
+                    self.places.push(Place {
+                        var: Var {
+                            name: self.scope.variable(&name),
+                            ty: "STRING".to_string(),
+                            flat: 0,
+                            start: None,
+                        },
+                        source,
                     });
                     self.taken = 1;
                     Ok(Vec::new())
@@ -568,23 +727,68 @@ impl Walk<'_> {
                 (true, _) => Err("two strings or a string and a list"),
             };
         }
+        // A value ST has a STRUCT for comes back whole: the FUNCTION's own
+        // value when it is the result, an output or a member otherwise.
+        if let Some(id) = types::structured(resolve, ty) {
+            self.structured = true;
+            let path = match at {
+                At::Member(path) => At::member(path, prefix),
+                At::Top => {
+                    let st = shapes::type_name(resolve, id, self.here);
+                    match (&self.whole, prefix) {
+                        (Some(pou), "") => {
+                            self.returns = Some(st);
+                            pou.clone()
+                        }
+                        _ => {
+                            let name = self.scope.variable(&or_value(prefix));
+                            self.outputs.push(Var {
+                                name: name.clone(),
+                                ty: st,
+                                flat: 1,
+                                start: None,
+                            });
+                            name
+                        }
+                    }
+                }
+            };
+            // What the walk cannot read says so first: a list, say.
+            let steps = self.members(id, offset, inside, &path)?;
+            types::declared(resolve, id, self.here)?;
+            return Ok(steps);
+        }
+        let flag = |walk: &mut Self, name: &str| {
+            let target = walk.target(name, "BOOL".to_string(), Kind::Bool, inside, at);
+            let read = Read {
+                offset,
+                kind: Kind::Bool,
+            };
+            (target.clone(), Step::Leaf((target, read)))
+        };
         let Type::Id(id) = shapes::resolved(resolve, ty) else {
             return Err(shapes::what(resolve, ty));
         };
         match &resolve.types[id].kind {
             // A list: its elements in the caller's arrays, one per field,
-            // and how many came, its length, which the words hold.
+            // and how many came, its length, which the words hold. A STRUCT
+            // holds no list.
             TypeDefKind::List(element) => {
-                let arrays = match self.strings {
-                    true => list_arrays(resolve, self.here, *element, prefix).ok_or("a list")?,
-                    false => return Err("a list"),
+                let arrays = match (self.strings, at) {
+                    (true, At::Top) => {
+                        list_arrays(resolve, self.here, *element, prefix).ok_or("a list")?
+                    }
+                    _ => return Err("a list"),
                 };
                 for (name, element) in arrays {
-                    self.places.push(Var {
-                        name: self.scope.variable(&name),
-                        ty: format!("ARRAY[*] OF {element}"),
-                        flat: 0,
-                        start: None,
+                    self.places.push(Place {
+                        var: Var {
+                            name: self.scope.variable(&name),
+                            ty: format!("ARRAY[*] OF {element}"),
+                            flat: 0,
+                            start: None,
+                        },
+                        source: None,
                     });
                 }
                 self.taken = 2;
@@ -600,32 +804,20 @@ impl Walk<'_> {
                 };
                 Ok(vec![Step::Leaf((count, read))])
             }
-            TypeDefKind::Record(record) => {
-                let types: Vec<Type> = record.fields.iter().map(|field| field.ty).collect();
-                let mut steps = Vec::new();
-                for (field, (at, _)) in record.fields.iter().zip(sizes.field_offsets(&types)) {
-                    steps.extend(self.value(
-                        field.ty,
-                        offset + at.size_wasm32(),
-                        &join(prefix, &field.name),
-                        inside,
-                    )?);
-                }
-                Ok(steps)
-            }
             TypeDefKind::Tuple(tuple) => {
                 let mut steps = Vec::new();
                 let offsets = sizes.field_offsets(&tuple.types);
-                for (index, (at, item)) in offsets.into_iter().enumerate() {
-                    let part = match prefix {
-                        "" => format!("item{index}"),
+                for (index, (place, item)) in offsets.into_iter().enumerate() {
+                    let part = match (prefix, at) {
+                        ("", At::Top) => format!("item{index}"),
                         _ => index.to_string(),
                     };
                     steps.extend(self.value(
                         *item,
-                        offset + at.size_wasm32(),
+                        offset + place.size_wasm32(),
                         &join(prefix, &part),
                         inside,
+                        at,
                     )?);
                 }
                 Ok(steps)
@@ -636,8 +828,13 @@ impl Walk<'_> {
                         .payload_offset(Int::U8, [None, Some(some)])
                         .size_wasm32();
                 let (name, set) = flag(self, &join(prefix, "is-some"));
-                let then =
-                    self.value(*some, held, &held_by_option(resolve, prefix, *some), true)?;
+                let then = self.value(
+                    *some,
+                    held,
+                    &held_by_option(resolve, prefix, *some),
+                    true,
+                    at,
+                )?;
                 Ok(vec![
                     set,
                     Step::Either {
@@ -654,7 +851,7 @@ impl Walk<'_> {
                         .size_wasm32();
                 let (name, set) = flag(self, &join(prefix, "failed"));
                 let side = |walk: &mut Self, ty: Option<Type>, part: &str| match ty {
-                    Some(ty) => walk.value(ty, held, &join(prefix, part), true),
+                    Some(ty) => walk.value(ty, held, &join(prefix, part), true, at),
                     None => Ok(Vec::new()),
                 };
                 let ok = side(self, result.ok, "value")?;
@@ -668,23 +865,71 @@ impl Walk<'_> {
                     },
                 ])
             }
+            _ => Err(shapes::what(resolve, ty)),
+        }
+    }
+
+    /// The steps that read the members of the STRUCT of `id`, at `offset`
+    /// bytes into the result, into the value at `path`: a record's fields,
+    /// a tuple's items, `item0`, `item1`, or a variant's case, `kind`, then
+    /// what each case holds under the case's name. A case whose value ST
+    /// cannot hold yet keeps its name alone: the file says so where the
+    /// variant is.
+    fn members(
+        &mut self,
+        id: TypeId,
+        offset: usize,
+        inside: bool,
+        path: &str,
+    ) -> Result<Vec<Step<(String, Read)>>, &'static str> {
+        let (resolve, sizes) = (self.resolve, self.sizes);
+        let id = types::target(resolve, id);
+        let at = At::Member(path.to_string());
+        let mut steps = Vec::new();
+        match &resolve.types[id].kind {
+            TypeDefKind::Record(record) => {
+                let fields: Vec<Type> = record.fields.iter().map(|field| field.ty).collect();
+                for (field, (place, _)) in record.fields.iter().zip(sizes.field_offsets(&fields)) {
+                    steps.extend(self.value(
+                        field.ty,
+                        offset + place.size_wasm32(),
+                        &field.name,
+                        inside,
+                        &at,
+                    )?);
+                }
+                Ok(steps)
+            }
+            TypeDefKind::Tuple(tuple) => {
+                let offsets = sizes.field_offsets(&tuple.types);
+                for (index, (place, item)) in offsets.into_iter().enumerate() {
+                    steps.extend(self.value(
+                        *item,
+                        offset + place.size_wasm32(),
+                        &format!("item{index}"),
+                        inside,
+                        &at,
+                    )?);
+                }
+                Ok(steps)
+            }
             TypeDefKind::Variant(variant) => {
-                let st = shapes::type_name(resolve, id, self.here);
+                let st = types::kind_name(resolve, id, self.here);
                 let kind = tag_kind(variant.tag());
                 let held = offset
                     + sizes
                         .payload_offset(variant.tag(), variant.cases.iter().map(|c| c.ty.as_ref()))
                         .size_wasm32();
-                let selector = self.output(&or_value(prefix), st.clone(), kind, inside);
+                let selector = At::member(path, "kind");
+                if inside {
+                    self.zeroes.push((selector.clone(), kind.zero()));
+                }
                 let mut arms = Vec::new();
                 for case in &variant.cases {
                     let Some(ty) = case.ty else { continue };
-                    // A case whose value cannot come back keeps its name
-                    // alone: the file says so where the variant is.
                     let (outputs, zeroes) = (self.outputs.len(), self.zeroes.len());
-                    let walked = self.without_strings(|walk| {
-                        walk.value(ty, held, &join(prefix, &case.name), true)
-                    });
+                    let walked =
+                        self.without_strings(|walk| walk.value(ty, held, &case.name, true, &at));
                     match walked {
                         Ok(steps) if steps.is_empty() => {}
                         Ok(steps) => {
@@ -701,7 +946,7 @@ impl Walk<'_> {
                     Step::Cases { selector, arms },
                 ])
             }
-            _ => Err(shapes::what(resolve, ty)),
+            _ => Err(shapes::what(resolve, Type::Id(id))),
         }
     }
 }

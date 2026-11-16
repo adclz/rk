@@ -10,16 +10,23 @@
 //! code written here packs each value into them: a flag or a case first,
 //! then what that case holds.
 //!
-//! The inputs a call gives are the values themselves, named as a result's
-//! outputs are. One that is only passed with its case starts at zero, so a
-//! call names the case it passes and no other.
+//! The inputs a call gives are the values themselves: a value ST has a
+//! STRUCT for is one input, whose members are packed (`target.kind`,
+//! `target.circle`), and an option or a result no name holds is its flag
+//! and what it holds, named as a result's outputs are. One that is only
+//! passed with its flag starts at zero, so a call names only what it
+//! passes. A STRUCT the canonical ABI passes as values, a record of
+//! scalars or strings, is passed field by field instead, each field a
+//! parameter of the import named after the input and the field
+//! (`when_seconds := when.seconds`).
 
 use wit_parser::abi::{FlatTypes, WasmType};
-use wit_parser::{Function, Int, Resolve, SizeAlign, Type, TypeDefKind, TypeOwner};
+use wit_parser::{Function, Int, Resolve, SizeAlign, Type, TypeDefKind, TypeId, TypeOwner};
 
-use crate::lift::{self, Kind, Step, held_by_option, join, kind, tag_kind};
+use crate::lift::{self, At, Kind, Step, held_by_option, join, kind, tag_kind};
 use crate::names::{self, Scope};
 use crate::shapes::{self, Var};
+use crate::types;
 use crate::{MAX_FLAT_ASYNC_PARAMS, Out};
 
 /// A word of the import's parameters that values are packed into.
@@ -125,6 +132,10 @@ pub struct Lowered {
     /// The import's parameters, in order: an input passed as it is, or a
     /// word values are packed into.
     pub params: Vec<Var>,
+    /// Where a call takes each parameter of the import from that is no
+    /// input of its own: a member of a STRUCT the call is given, a field
+    /// of a record passed as values.
+    pub sources: Vec<(String, String)>,
     /// How many values the canonical ABI flattens the parameters into.
     pub flat: usize,
     slots: Vec<Slot>,
@@ -144,6 +155,22 @@ impl Lowered {
     /// then not the inputs a call gives.
     pub fn packs(&self) -> bool {
         !self.slots.is_empty()
+    }
+
+    /// Whether the import's parameters are not the inputs a call gives:
+    /// values packed into words, or the fields of a STRUCT passed as
+    /// values.
+    pub fn apart(&self) -> bool {
+        self.packs() || !self.sources.is_empty()
+    }
+
+    /// What a call passes for the import's parameter `name`: the member it
+    /// is taken from, or the call's own input of that name.
+    pub fn source<'a>(&'a self, name: &'a str) -> &'a str {
+        self.sources
+            .iter()
+            .find(|(param, _)| param == name)
+            .map_or(name, |(_, source)| source)
     }
 
     /// The words values are packed into.
@@ -203,15 +230,39 @@ pub fn lower(
             lowered.flat += var.flat;
         }
         let as_it_is = match single {
-            Some(var) => Some(vec![var]),
-            None if !in_memory => shapes::input(resolve, &param.name, param.ty, here, scope).ok(),
+            Some(var) => Some(vec![(var.clone(), var.name)]),
+            None if !in_memory => values(
+                resolve,
+                here,
+                scope,
+                &param.name,
+                &param.name,
+                param.ty,
+                &At::Top,
+            ),
             None => None,
         };
-        if let Some(vars) = as_it_is {
+        if let Some(values) = as_it_is {
+            let vars: Vec<Var> = values.iter().map(|(var, _)| var.clone()).collect();
             if !in_memory {
                 lowered.flat += vars.iter().map(|var| var.flat).sum::<usize>();
             }
-            lowered.inputs.extend(vars.iter().cloned());
+            // A value of a STRUCT is one input, each field of which the
+            // import takes as it is.
+            match types::structured(resolve, param.ty) {
+                Some(id) => {
+                    lowered.inputs.push(Var {
+                        name: scope.variable(&param.name),
+                        ty: shapes::type_name(resolve, id, here),
+                        flat: 1,
+                        start: None,
+                    });
+                    lowered
+                        .sources
+                        .extend(values.into_iter().map(|(var, source)| (var.name, source)));
+                }
+                None => lowered.inputs.extend(vars.iter().cloned()),
+            }
             lowered.params.extend(vars);
             continue;
         }
@@ -224,7 +275,7 @@ pub fn lower(
             inputs: Vec::new(),
         };
         let (steps, count) = walk
-            .value(param.ty, offset, 0, &param.name, false)
+            .value(param.ty, offset, 0, &param.name, false, &At::Top)
             .map_err(|what| {
                 format!(
                     "its parameter `{}` holds {what}, which an import cannot take yet",
@@ -330,6 +381,84 @@ pub fn lower(
     Ok(lowered)
 }
 
+/// The values `ty` is passed as when the canonical ABI passes each as it
+/// is, each with where a call takes it from: a scalar or a string is one,
+/// the import's variable `name`; a record or a tuple is its fields' or its
+/// items', named after it (`what_text`), taken from the members of the
+/// STRUCT that holds them, the value named after `prefix` `at` the top or in
+/// a STRUCT. `None` for what holds other values, which are packed.
+fn values(
+    resolve: &Resolve,
+    here: Option<TypeOwner>,
+    scope: &Scope,
+    name: &str,
+    prefix: &str,
+    ty: Type,
+    at: &At,
+) -> Option<Vec<(Var, String)>> {
+    if let Some(var) = shapes::single(resolve, name, ty, here, scope) {
+        let source = match at {
+            At::Top => var.name.clone(),
+            At::Member(path) => At::member(path, prefix),
+        };
+        return Some(vec![(var, source)]);
+    }
+    if let Some(id) = types::structured(resolve, ty) {
+        // A type with no STRUCT is refused where it is packed.
+        types::declared(resolve, id, here).ok()?;
+        let path = match at {
+            At::Top => scope.variable(name),
+            At::Member(path) => At::member(path, prefix),
+        };
+        let fields: Vec<(String, Type)> = match &resolve.types[types::target(resolve, id)].kind {
+            TypeDefKind::Record(record) => record
+                .fields
+                .iter()
+                .map(|field| (field.name.clone(), field.ty))
+                .collect(),
+            TypeDefKind::Tuple(tuple) => tuple
+                .types
+                .iter()
+                .enumerate()
+                .map(|(index, ty)| (format!("item{index}"), *ty))
+                .collect(),
+            _ => return None,
+        };
+        let mut values_of = Vec::new();
+        for (field, ty) in fields {
+            values_of.extend(values(
+                resolve,
+                here,
+                scope,
+                &join(name, &field),
+                &field,
+                ty,
+                &At::Member(path.clone()),
+            )?);
+        }
+        return Some(values_of);
+    }
+    match shapes::definition(resolve, ty) {
+        Some(TypeDefKind::Tuple(tuple)) => {
+            let mut values_of = Vec::new();
+            for (index, item) in tuple.types.iter().enumerate() {
+                let part = index.to_string();
+                values_of.extend(values(
+                    resolve,
+                    here,
+                    scope,
+                    &join(name, &part),
+                    &join(prefix, &part),
+                    *item,
+                    at,
+                )?);
+            }
+            Some(values_of)
+        }
+        _ => None,
+    }
+}
+
 /// A parameter's type walked value by value, its inputs as they come.
 struct Walk<'a> {
     resolve: &'a Resolve,
@@ -354,16 +483,26 @@ impl Walk<'_> {
         name
     }
 
+    /// Where the value named after `prefix`, of the ST type `ty` and held
+    /// as `kind`, is taken from: an input of its own at the top, a member
+    /// of the STRUCT the walk is in otherwise.
+    fn source(&mut self, prefix: &str, ty: String, kind: Kind, inside: bool, at: &At) -> String {
+        match at {
+            At::Top => self.input(prefix, ty, kind, inside),
+            At::Member(path) => At::member(path, prefix),
+        }
+    }
+
     /// The steps that pack `ty`, which the canonical ABI has `offset` bytes
     /// into the parameters in memory and `position` values after its
-    /// parameter's first, and how many values it is passed as. Its inputs
-    /// are named after `prefix`, as a result's outputs are: a scalar is
-    /// `prefix` itself; a record's field and a tuple's item add their name
-    /// or their place; an option adds `is-some`, and `value` for an option
-    /// it holds; a result adds `failed`, then `value` and `error`; a
-    /// variant is its case, then what each case holds under the case's
-    /// name. `inside` a flag or a case, a value is only passed when that
-    /// is.
+    /// parameter's first, and how many values it is passed as. Its values
+    /// are named after `prefix` `at` the top or in a STRUCT, as a result's
+    /// are: a scalar is `prefix` itself; a value ST has a STRUCT for is one
+    /// input of it, or one member, its own values in its members
+    /// ([`Walk::members`]); a tuple's item adds its place; an option adds
+    /// `is-some`, and `value` for an option it holds; a result adds
+    /// `failed`, then `value` and `error`. `inside` a flag or a case, a
+    /// value is only passed when that is.
     fn value(
         &mut self,
         ty: Type,
@@ -371,12 +510,13 @@ impl Walk<'_> {
         position: usize,
         prefix: &str,
         inside: bool,
+        at: &At,
     ) -> Result<(Vec<Step<Put>>, usize), &'static str> {
         let (resolve, sizes) = (self.resolve, self.sizes);
         if let Some(kind) = kind(resolve, ty) {
             let st = shapes::scalar(resolve, ty, self.here)
                 .expect("a value packed into a word has a scalar type");
-            let source = self.input(prefix, st, kind, inside);
+            let source = self.source(prefix, st, kind, inside, at);
             let put = Put {
                 source,
                 offset,
@@ -385,8 +525,29 @@ impl Walk<'_> {
             };
             return Ok((vec![Step::Leaf(put)], 1));
         }
+        // A value ST has a STRUCT for is passed whole: one input, or one
+        // member of the STRUCT it is in.
+        if let Some(id) = types::structured(resolve, ty) {
+            let path = match at {
+                At::Member(path) => At::member(path, prefix),
+                At::Top => {
+                    let name = self.scope.variable(prefix);
+                    self.inputs.push(Var {
+                        name: name.clone(),
+                        ty: shapes::type_name(resolve, id, self.here),
+                        flat: 1,
+                        start: None,
+                    });
+                    name
+                }
+            };
+            // What the walk cannot pack says so first: a list, say.
+            let packed = self.members(id, offset, position, inside, &path)?;
+            types::declared(resolve, id, self.here)?;
+            return Ok(packed);
+        }
         let flag = |walk: &mut Self, name: &str| {
-            let source = walk.input(name, "BOOL".to_string(), Kind::Bool, inside);
+            let source = walk.source(name, "BOOL".to_string(), Kind::Bool, inside, at);
             let put = Put {
                 source: source.clone(),
                 offset,
@@ -399,32 +560,17 @@ impl Walk<'_> {
             return Err(shapes::what(resolve, ty));
         };
         match &resolve.types[id].kind {
-            TypeDefKind::Record(record) => {
-                let types: Vec<Type> = record.fields.iter().map(|field| field.ty).collect();
-                let (mut steps, mut count) = (Vec::new(), 0);
-                for (field, (at, _)) in record.fields.iter().zip(sizes.field_offsets(&types)) {
-                    let (more, values) = self.value(
-                        field.ty,
-                        offset + at.size_wasm32(),
-                        position + count,
-                        &join(prefix, &field.name),
-                        inside,
-                    )?;
-                    steps.extend(more);
-                    count += values;
-                }
-                Ok((steps, count))
-            }
             TypeDefKind::Tuple(tuple) => {
                 let (mut steps, mut count) = (Vec::new(), 0);
                 let offsets = sizes.field_offsets(&tuple.types);
-                for (index, (at, item)) in offsets.into_iter().enumerate() {
+                for (index, (place, item)) in offsets.into_iter().enumerate() {
                     let (more, values) = self.value(
                         *item,
-                        offset + at.size_wasm32(),
+                        offset + place.size_wasm32(),
                         position + count,
                         &join(prefix, &index.to_string()),
                         inside,
+                        at,
                     )?;
                     steps.extend(more);
                     count += values;
@@ -443,6 +589,7 @@ impl Walk<'_> {
                     position + 1,
                     &held_by_option(resolve, prefix, *some),
                     true,
+                    at,
                 )?;
                 let either = Step::Either {
                     flag: name,
@@ -458,7 +605,7 @@ impl Walk<'_> {
                         .size_wasm32();
                 let (name, put) = flag(self, &join(prefix, "failed"));
                 let side = |walk: &mut Self, ty: Option<Type>, part: &str| match ty {
-                    Some(ty) => walk.value(ty, held, position + 1, &join(prefix, part), true),
+                    Some(ty) => walk.value(ty, held, position + 1, &join(prefix, part), true, at),
                     None => Ok((Vec::new(), 0)),
                 };
                 let (ok, ok_values) = side(self, result.ok, "value")?;
@@ -470,14 +617,69 @@ impl Walk<'_> {
                 };
                 Ok((vec![put, either], 1 + ok_values.max(error_values)))
             }
+            _ => Err(shapes::what(resolve, ty)),
+        }
+    }
+
+    /// The steps that pack the members of the STRUCT of `id`, the value at
+    /// `path`, which the canonical ABI has `offset` bytes into the
+    /// parameters in memory and `position` values after its parameter's
+    /// first, and how many values it is passed as: a record's fields, a
+    /// tuple's items, `item0`, `item1`, or a variant's case, `kind`, then
+    /// what each case holds under the case's name.
+    fn members(
+        &mut self,
+        id: TypeId,
+        offset: usize,
+        position: usize,
+        inside: bool,
+        path: &str,
+    ) -> Result<(Vec<Step<Put>>, usize), &'static str> {
+        let (resolve, sizes) = (self.resolve, self.sizes);
+        let id = types::target(resolve, id);
+        let at = At::Member(path.to_string());
+        let (mut steps, mut count) = (Vec::new(), 0);
+        match &resolve.types[id].kind {
+            TypeDefKind::Record(record) => {
+                let fields: Vec<Type> = record.fields.iter().map(|field| field.ty).collect();
+                for (field, (place, _)) in record.fields.iter().zip(sizes.field_offsets(&fields)) {
+                    let (more, values) = self.value(
+                        field.ty,
+                        offset + place.size_wasm32(),
+                        position + count,
+                        &field.name,
+                        inside,
+                        &at,
+                    )?;
+                    steps.extend(more);
+                    count += values;
+                }
+                Ok((steps, count))
+            }
+            TypeDefKind::Tuple(tuple) => {
+                let offsets = sizes.field_offsets(&tuple.types);
+                for (index, (place, item)) in offsets.into_iter().enumerate() {
+                    let (more, values) = self.value(
+                        *item,
+                        offset + place.size_wasm32(),
+                        position + count,
+                        &format!("item{index}"),
+                        inside,
+                        &at,
+                    )?;
+                    steps.extend(more);
+                    count += values;
+                }
+                Ok((steps, count))
+            }
             TypeDefKind::Variant(variant) => {
-                let st = shapes::type_name(resolve, id, self.here);
+                let st = types::kind_name(resolve, id, self.here);
                 let kind = tag_kind(variant.tag());
                 let held = offset
                     + sizes
                         .payload_offset(variant.tag(), variant.cases.iter().map(|c| c.ty.as_ref()))
                         .size_wasm32();
-                let selector = self.input(prefix, st.clone(), kind, inside);
+                let selector = At::member(path, "kind");
                 let put = Put {
                     source: selector.clone(),
                     offset,
@@ -487,17 +689,17 @@ impl Walk<'_> {
                 let (mut arms, mut widest) = (Vec::new(), 0);
                 for case in &variant.cases {
                     let Some(ty) = case.ty else { continue };
-                    let (steps, values) =
-                        self.value(ty, held, position + 1, &join(prefix, &case.name), true)?;
+                    let (more, values) =
+                        self.value(ty, held, position + 1, &case.name, true, &at)?;
                     widest = widest.max(values);
-                    if !steps.is_empty() {
-                        arms.push((format!("{st}#{}", names::upper(&case.name)), steps));
+                    if !more.is_empty() {
+                        arms.push((format!("{st}#{}", names::upper(&case.name)), more));
                     }
                 }
                 let cases = Step::Cases { selector, arms };
                 Ok((vec![Step::Leaf(put), cases], 1 + widest))
             }
-            _ => Err(shapes::what(resolve, ty)),
+            _ => Err(shapes::what(resolve, Type::Id(id))),
         }
     }
 }

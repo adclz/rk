@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! The ST shape of a WIT value: the variables a parameter becomes, and what
-//! a result comes back as. A scalar is one variable of its type; a record
-//! or a tuple passed in is one variable per field, as the canonical ABI
-//! flattens it; a record, a tuple, an option or a result that comes back is
-//! one output per field, which rk lays out as the canonical ABI lays out
-//! the value. What no record of outputs is laid out as, a variant or a
-//! result with a value and an error, is read by the generated code itself
-//! ([`crate::lift`]), and packed by it when it is passed in
-//! ([`crate::lower`]). Anything else is not generated yet, and says why.
+//! a result comes back as. A scalar is one variable of its type; a tuple
+//! passed in is one variable per item, as the canonical ABI flattens it; a
+//! tuple, an option or a result that comes back is one output per value,
+//! which rk lays out as the canonical ABI lays out the value. A value ST
+//! has a STRUCT for ([`crate::types`]), and what no record of outputs is
+//! laid out as, a variant or a result with a value and an error, is read
+//! by the generated code itself ([`crate::lift`]), and packed by it when it
+//! is passed in ([`crate::lower`]). Anything else is not generated yet, and
+//! says why.
 
 use wit_parser::{Handle, Resolve, Type, TypeDefKind, TypeId, TypeOwner};
 
@@ -37,7 +38,8 @@ pub enum Shape {
     Nothing,
     /// One scalar, the FUNCTION's own value.
     Return(String),
-    /// Outputs, one per field.
+    /// Outputs, one per value: a tuple's items, or a flag and what it
+    /// decides.
     Outputs(Vec<Var>),
 }
 
@@ -224,42 +226,6 @@ pub fn single(
     })
 }
 
-/// The variables a parameter `name` of type `ty` becomes when its values
-/// are passed one after the other: one, or one per field of a record or a
-/// tuple, `when_seconds`, the fields of a record it holds among them, as
-/// the canonical ABI flattens them. `Err` says what it is that cannot be
-/// passed so.
-pub fn input(
-    resolve: &Resolve,
-    name: &str,
-    ty: Type,
-    here: Option<TypeOwner>,
-    scope: &Scope,
-) -> Result<Vec<Var>, &'static str> {
-    if let Some(var) = single(resolve, name, ty, here, scope) {
-        return Ok(vec![var]);
-    }
-    let fields: Vec<(String, Type)> = match definition(resolve, ty) {
-        Some(TypeDefKind::Record(record)) => record
-            .fields
-            .iter()
-            .map(|field| (format!("{name}-{}", field.name), field.ty))
-            .collect(),
-        Some(TypeDefKind::Tuple(tuple)) => tuple
-            .types
-            .iter()
-            .enumerate()
-            .map(|(at, ty)| (format!("{name}-{at}"), *ty))
-            .collect(),
-        _ => return Err(what(resolve, ty)),
-    };
-    let mut vars = Vec::new();
-    for (field, ty) in fields {
-        vars.extend(input(resolve, &field, ty, here, scope)?);
-    }
-    Ok(vars)
-}
-
 /// What a function returns, `ty`, as ST gives it back: a FUNCTION's own
 /// value for a scalar, or outputs. A block has no value of its own:
 /// `in_block` gives a scalar back as the output `value`. `Err` says what it
@@ -301,12 +267,12 @@ pub fn result(
         flat: 1,
         start: None,
     };
+    // A value of a STRUCT comes back whole, read by the generated code
+    // ([`crate::lift`]).
+    if crate::types::structured(resolve, ty).is_some() {
+        return Err(what(resolve, ty));
+    }
     let outputs = match definition(resolve, ty) {
-        Some(TypeDefKind::Record(record)) => record
-            .fields
-            .iter()
-            .map(|field| out(&field.name, field.ty))
-            .collect::<Result<Vec<_>, _>>()?,
         Some(TypeDefKind::Tuple(tuple)) => tuple
             .types
             .iter()
