@@ -793,8 +793,8 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                     .call();
                 diag.with_note(
                     "a stream read takes the stream's reading end, a UDINT, and gives after DONE \
-                     the bytes, a STRING or an ARRAY OF BYTE, how many came, a UDINT, then \
-                     whether the writer left, a BOOL"
+                     what came, bytes in a STRING or an ARRAY OF BYTE and handles in an ARRAY \
+                     OF UDINT, how many came, a UDINT, then whether the writer left, a BOOL"
                         .to_string(),
                 );
                 diag.with_help(
@@ -980,8 +980,9 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 let (message, note, help) = match block {
                     true => (
                         "an {extern} pragma on a FUNCTION_BLOCK needs async",
-                        "a FUNCTION_BLOCK imports an async function, whose call its instance \
-                         holds from one scan to the next",
+                        "a FUNCTION_BLOCK imports the call of an async func, a stream's read \
+                         or write, or a future's read, which its instance holds from one scan \
+                         to the next",
                         "write {extern async 'module' 'name'}",
                     ),
                     false => (

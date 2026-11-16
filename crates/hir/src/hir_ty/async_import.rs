@@ -68,10 +68,10 @@ pub enum AsyncKind {
     /// left.
     StreamWrite,
     /// The component model's `stream.read`, imported as `[stream-read-N]f`:
-    /// a copy of bytes from the stream's reading end into the block's
-    /// buffer, a STRING or an ARRAY OF BYTE, which ends when the writer has
-    /// given some or left. It takes the end and gives the bytes, how many
-    /// came and whether the writer left.
+    /// a copy of bytes or handles from the stream's reading end into the
+    /// block's buffer ([`ReadBuffer`]), which ends when the writer has given
+    /// some or left. It takes the end and gives what came, how many and
+    /// whether the writer left.
     StreamRead,
     /// The component model's `future.read`, imported as `[future-read-N]f`:
     /// the one value the future's writer gives, written into the block's
@@ -160,9 +160,9 @@ pub fn stream_write_shaped(db: &dyn WorkspaceDataBase, import: &AsyncImport<'_>)
 }
 
 /// Whether `import`, a stream read, declares the built-in's variables: the
-/// stream's reading end, a UDINT, and after DONE the bytes, a STRING or a
-/// one-dimension ARRAY OF BYTE, how many came, a UDINT, then whether the
-/// writer left, a BOOL.
+/// stream's reading end, a UDINT, and after DONE what came, in a
+/// [`ReadBuffer`], how many came, a UDINT, then whether the writer left, a
+/// BOOL.
 pub fn stream_read_shaped(db: &dyn WorkspaceDataBase, import: &AsyncImport<'_>) -> bool {
     let is = |var: &VariableDecl<'_>, spec: ElementarySpec| {
         var.spec(db).infer(db).normalize(db) == Type::Elementary(spec)
@@ -176,25 +176,28 @@ pub fn stream_read_shaped(db: &dyn WorkspaceDataBase, import: &AsyncImport<'_>) 
         )
 }
 
-/// What a stream read's bytes land in.
+/// What a stream read's elements land in: bytes, or a resource's handles.
+/// The build checks that the stream carries what the buffer holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadBuffer {
-    /// A STRING, whose length becomes how many came.
+    /// A STRING, whose length becomes how many bytes came.
     String,
     /// A one-dimension ARRAY OF BYTE, a byte per element.
     Bytes,
+    /// A one-dimension ARRAY OF UDINT, a handle per element.
+    Handles,
 }
 
-/// What `var` takes a stream read's bytes in, when it can.
+/// What `var` takes a stream read's elements in, when it can.
 pub fn read_buffer(db: &dyn WorkspaceDataBase, var: VariableDecl<'_>) -> Option<ReadBuffer> {
     match var.spec(db).infer(db).normalize(db) {
         Type::Elementary(ElementarySpec::String) => Some(ReadBuffer::String),
-        Type::Array(array)
-            if array.subranges(db).len() == 1
-                && array.of_type(db).infer(db).normalize(db)
-                    == Type::Elementary(ElementarySpec::Byte) =>
-        {
-            Some(ReadBuffer::Bytes)
+        Type::Array(array) if array.subranges(db).len() == 1 => {
+            match array.of_type(db).infer(db).normalize(db) {
+                Type::Elementary(ElementarySpec::Byte) => Some(ReadBuffer::Bytes),
+                Type::Elementary(ElementarySpec::UDInt) => Some(ReadBuffer::Handles),
+                _ => None,
+            }
         }
         _ => None,
     }

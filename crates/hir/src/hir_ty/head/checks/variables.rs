@@ -462,8 +462,8 @@ impl<'db> InitInference<'db> {
         };
         let host_text =
             wasi_function.and_then(|func| func.variables(db).iter().copied().find(string_output));
-        // A stream read's bytes land in a STRING or an ARRAY OF BYTE, its
-        // buffer, which the block holds rather than the host returns: its
+        // A stream read's bytes or handles land in its buffer, a STRING or
+        // an array, which the block holds rather than the host returns: its
         // outputs are its built-in's, which E1516 checks.
         let stream_read = extern_block.is_some_and(|(fb, _)| {
             fb.extern_pragma(db).is_some_and(|(_, pragma)| {

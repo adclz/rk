@@ -276,9 +276,9 @@ fn async_parts<'db>(
     };
     let mut parts = vec![(import.done, Part::AsyncState, ASYNC_STATE)];
     // A stream write's or a stream read's result is its event's, its values
-    // are passed as they are, and a read's bytes land in its VAR_OUTPUT: it
-    // has its state alone. A future read's value lands in the result's area,
-    // as a call's result does.
+    // are passed as they are, and what a read takes lands in its VAR_OUTPUT:
+    // it has its state alone. A future read's value lands in the result's
+    // area, as a call's result does.
     if matches!(
         import.kind,
         crate::hir_ty::async_import::AsyncKind::StreamWrite
