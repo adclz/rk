@@ -227,9 +227,11 @@ A record of two fields or more is written by the host at an address the call pas
 
 A WASI import keeps the types WASI's WIT gives it, in their core form: `VAR_INPUT` are the parameters, and the `VAR_OUTPUT` and the return type the result, as above.
 A record of scalars comes back in `VAR_OUTPUT`, one for each of its fields in their order.
-The system clock's `now` is declared this way, with `seconds: LINT` and `nanoseconds: UDINT`, and the zone's `utc-offset` with `is_some: BOOL` and `value: LINT`: its `option<s64>` is laid out as a record of a byte that says whether the value is there, then the value.
+The system clock's `now` is imported this way, with `seconds: LINT` and `nanoseconds: UDINT`, and the zone's `utc-offset` with `is_some: BOOL` and `value: LINT`: its `option<s64>` is laid out as a record of a byte that says whether the value is there, then the value.
 A host that has no value writes the byte alone, and the call clears the record's place before the host is called, so `value` is then zero.
 The standard library's WASI declarations are written by rk-bindgen from WASI's WIT, in `stdlib/generated/`, and only the standard library reaches them.
+They give each record a `STRUCT` of its fields, and each variant whose cases hold values a `STRUCT` of its case, `kind`, and of what each case holds.
+WASI's `instant` is `Wasi.Clocks.SystemClock.INSTANT`: `NOW()` returns one, filled from the outputs of its import, `NOW_RAW`, and `UTC_OFFSET(when := instant, is_some => known, value => offset)` passes its fields one by one.
 A variant, and a result with a value and an error, are not laid out as a record: the values of all the cases share one place.
 Such a result is declared as `LWORD` outputs, which hold its bytes as the host wrote them, 8 to a word, and code rk-bindgen writes reads each value out of them: `failed := w0.%X0`, then `error := BYTE_TO_USINT(w0.%B4)`.
 A call that is not async declares two of them at least, since the canonical ABI returns one value as it is.
