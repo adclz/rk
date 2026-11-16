@@ -262,8 +262,10 @@ fn copy_event(f: &mut Function, call: &MirAsyncCall, poll: u32) {
 }
 
 /// Pushes what the copy's built-in takes: a write's end and bytes; a stream
-/// read's end, where the bytes go and how many fit; a future read's end and
-/// where the value goes, that area cleared first, as a call's result's is.
+/// read's end, where the elements go and how many fit, bytes in a STRING or
+/// an array's elements, each as wide as the stream's; a future read's end
+/// and where the value goes, that area cleared first, as a call's result's
+/// is.
 fn start_copy(f: &mut Function, call: &MirAsyncCall) {
     let end = |f: &mut Function| {
         let (end, _) = call.params[0];
@@ -283,8 +285,8 @@ fn start_copy(f: &mut Function, call: &MirAsyncCall) {
                     f.instruction(&I::I32Const(array.total_elements as i32));
                 }
                 _ => panic!(
-                    "internal compiler error: a stream read's bytes land in a STRING or an \
-                     ARRAY OF BYTE (E1516)"
+                    "internal compiler error: a stream read's elements land in a STRING or an \
+                     ARRAY (E1516)"
                 ),
             }
         }
@@ -321,10 +323,10 @@ fn copy_ended(f: &mut Function, call: &MirAsyncCall) {
 
 /// A copy's outcome, which `outcome` pushes, `count << 4 | result`, written
 /// into the VAR_OUTPUTs after DONE, and DONE. A stream write gives how many
-/// bytes went and whether the reader left. A stream read gives the bytes,
-/// how many came and whether the writer left: a STRING's length becomes the
-/// count, and an ARRAY OF BYTE holds them already, a byte per element. A
-/// future read gives its value's fields.
+/// bytes went and whether the reader left. A stream read gives what came,
+/// how many and whether the writer left: a STRING's length becomes the
+/// count, and an array holds them already, a byte or a handle an element.
+/// A future read gives its value's fields.
 fn copied(f: &mut Function, call: &MirAsyncCall, outcome: impl Fn(&mut Function)) {
     let count = |f: &mut Function| {
         outcome(f);
@@ -355,8 +357,8 @@ fn copied(f: &mut Function, call: &MirAsyncCall, outcome: impl Fn(&mut Function)
                 MirType::String { .. } => set_word(f, *data, count),
                 MirType::Array(_) => {}
                 _ => panic!(
-                    "internal compiler error: a stream read's bytes land in a STRING or an \
-                     ARRAY OF BYTE (E1516)"
+                    "internal compiler error: a stream read's elements land in a STRING or an \
+                     ARRAY (E1516)"
                 ),
             }
             left(f, *closed, closed_ty);
