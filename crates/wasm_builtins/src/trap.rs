@@ -119,6 +119,36 @@ pub extern "C" fn rk_host_string_check(landed: u32) {
     }
 }
 
+/// What the text an import gave keeps of itself in the STRING the call
+/// passed for it, `string`, of `capacity` bytes: the host wrote one that
+/// fits into it, and one longer, of `length` bytes, at `refused` (`landed`
+/// is 2), whose first bytes are copied into it up to the last whole
+/// character, so that the text stays UTF-8. Nothing raises: an error's text
+/// is cut to fit.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_host_text_cut(
+    landed: u32,
+    length: u32,
+    string: u32,
+    capacity: u32,
+    refused: u32,
+) {
+    if landed != 2 {
+        return;
+    }
+    let text =
+        unsafe { core::slice::from_raw_parts(refused as usize as *const u8, length as usize) };
+    let mut cut = (capacity as usize).min(text.len());
+    // A byte `0b10xx_xxxx` goes on with a character, and starts none.
+    while cut > 0 && cut < text.len() && text[cut] & 0xC0 == 0x80 {
+        cut -= 1;
+    }
+    unsafe {
+        core::ptr::copy_nonoverlapping(text.as_ptr(), (string as usize + 4) as *mut u8, cut);
+        core::ptr::write_unaligned(string as usize as *mut u32, cut as u32);
+    }
+}
+
 /// Null check for a runtime dereference: raises when the pointer is 0,
 /// else returns it. Lowering wraps every user-written `^`; `rk.idx_check`
 /// validates the index and never sees the base.
