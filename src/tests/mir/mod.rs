@@ -7,6 +7,7 @@ mod default_params;
 mod diagnostics;
 mod extern_pragma;
 mod function_blocks;
+mod host_buffers;
 mod library_scope;
 mod namespaces;
 mod references;
