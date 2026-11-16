@@ -35,7 +35,8 @@ pub enum MemoryError {
     /// The range at that place in the list is outside the memory.
     #[component(name = "outside-memory")]
     OutsideMemory(u32),
-    /// The ranges together are more than the memory can hold.
+    /// The ranges together are more than the module holds for an answer, a
+    /// fixed area: read them in parts.
     #[component(name = "too-large")]
     TooLarge,
     /// The bytes would not all land in the variables.
