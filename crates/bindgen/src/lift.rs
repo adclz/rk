@@ -15,8 +15,11 @@
 //!
 //! A string is no value read out of the words: the host writes it where
 //! the guest says, and a call that waits for its result says the STRING its
-//! caller passed ([`Lifted::text`]). One string comes back so, the one a
-//! result holds outside its error and outside a variant's cases.
+//! caller passed ([`Lifted::places`]). Nor is a list: the host writes its
+//! elements into the caller's arrays, one per field of an element, an
+//! `ARRAY[*]` of any length, and the words give how many came. One string
+//! or one list comes back so, the one a result holds outside its error and
+//! outside a variant's cases.
 
 use wit_parser::{Int, Resolve, SizeAlign, Type, TypeDefKind, TypeOwner};
 
@@ -225,9 +228,10 @@ pub struct Lifted {
     /// each with what it holds otherwise.
     zeroes: Vec<(String, &'static str)>,
     steps: Vec<Step<(String, Read)>>,
-    /// The STRING the result's string is written into, by the host: the
-    /// caller's, empty when no string came.
-    pub text: Option<Var>,
+    /// Where the host writes what the result holds in blocks of its own:
+    /// the STRING of its string, the caller's, empty when no string came,
+    /// or the arrays of its list, one per field of an element.
+    pub places: Vec<Var>,
 }
 
 /// `ty`, a function's result, taken apart, its outputs named in `scope`;
@@ -249,13 +253,14 @@ pub fn lift(
         outputs: Vec::new(),
         zeroes: Vec::new(),
         strings,
-        text: None,
+        places: Vec::new(),
+        taken: 0,
     };
     let steps = walk.value(ty, 0, "", false)?;
-    // The host writes the first block it is given into the STRING: any
-    // other block it could write, a string or a list where no output takes
-    // it, would land there first.
-    if walk.text.is_some() && blocks_in(resolve, ty) > 1 {
+    // The host writes the blocks it is given, in order, into the STRING or
+    // the arrays: any other block it could write, a string or a list where
+    // nothing takes it, would land there first.
+    if walk.taken > 0 && blocks_in(resolve, ty) != walk.taken {
         return Err("two strings or a string and a list");
     }
     Ok(Lifted {
@@ -263,7 +268,7 @@ pub fn lift(
         words: sizes.size(&ty).size_wasm32().div_ceil(8).max(1),
         zeroes: walk.zeroes,
         steps,
-        text: walk.text,
+        places: walk.places,
     })
 }
 
@@ -304,7 +309,8 @@ pub fn unreadable(
         outputs: Vec::new(),
         zeroes: Vec::new(),
         strings: false,
-        text: None,
+        places: Vec::new(),
+        taken: 0,
     }
     .value(ty, 0, "case", true)
     .err()
@@ -420,6 +426,52 @@ pub(crate) fn held_by_option(resolve: &Resolve, prefix: &str, some: Type) -> Str
     }
 }
 
+/// The arrays the elements of a list of `element` go into, by name, each
+/// with its elements' ST type: one for a scalar or a string, named as the
+/// list is (`value` where nothing names it), and one per field of a record
+/// or a tuple of them, named as their outputs would be. A byte is a BYTE.
+/// `None` for an element that holds more.
+fn list_arrays(
+    resolve: &Resolve,
+    here: Option<TypeOwner>,
+    element: Type,
+    prefix: &str,
+) -> Option<Vec<(String, String)>> {
+    let one = |ty: Type| match shapes::resolved(resolve, ty) {
+        Type::U8 => Some("BYTE".to_string()),
+        Type::String => Some("STRING".to_string()),
+        _ => shapes::scalar(resolve, ty, here),
+    };
+    if let Some(st) = one(element) {
+        let name = match prefix {
+            "" => "value".to_string(),
+            prefix => prefix.to_string(),
+        };
+        return Some(vec![(name, st)]);
+    }
+    let fields: Vec<(String, Type)> = match shapes::definition(resolve, element)? {
+        TypeDefKind::Record(record) => record
+            .fields
+            .iter()
+            .map(|field| (join(prefix, &field.name), field.ty))
+            .collect(),
+        TypeDefKind::Tuple(tuple) => tuple
+            .types
+            .iter()
+            .enumerate()
+            .map(|(at, ty)| match prefix {
+                "" => (format!("item{at}"), *ty),
+                prefix => (join(prefix, &at.to_string()), *ty),
+            })
+            .collect(),
+        _ => return None,
+    };
+    fields
+        .into_iter()
+        .map(|(name, ty)| one(ty).map(|st| (name, st)))
+        .collect()
+}
+
 /// A result's type walked value by value, its outputs as they come.
 struct Walk<'a> {
     resolve: &'a Resolve,
@@ -428,10 +480,13 @@ struct Walk<'a> {
     scope: &'a Scope,
     outputs: Vec<Var>,
     zeroes: Vec<(String, &'static str)>,
-    /// Whether a string may come back where the walk is.
+    /// Whether a string or a list may come back where the walk is.
     strings: bool,
-    /// The STRING the one string that comes back is written into.
-    text: Option<Var>,
+    /// The STRING the one string that comes back is written into, or the
+    /// arrays of the one list.
+    places: Vec<Var>,
+    /// How many blocks those take, as [`blocks_in`] counts them.
+    taken: usize,
 }
 
 impl Walk<'_> {
@@ -498,24 +553,53 @@ impl Walk<'_> {
         // A string is not read: the host wrote it into the STRING the call
         // passed, which is empty when none came.
         if let Type::String = shapes::resolved(resolve, ty) {
-            return match (self.strings, &self.text) {
+            return match (self.strings, self.taken) {
                 (false, _) => Err("a string"),
-                (true, Some(_)) => Err("two strings"),
-                (true, None) => {
-                    self.text = Some(Var {
+                (true, 0) => {
+                    self.places.push(Var {
                         name: self.scope.variable(&or_value(prefix)),
                         ty: "STRING".to_string(),
                         flat: 0,
                         start: None,
                     });
+                    self.taken = 1;
                     Ok(Vec::new())
                 }
+                (true, _) => Err("two strings or a string and a list"),
             };
         }
         let Type::Id(id) = shapes::resolved(resolve, ty) else {
             return Err(shapes::what(resolve, ty));
         };
         match &resolve.types[id].kind {
+            // A list: its elements in the caller's arrays, one per field,
+            // and how many came, its length, which the words hold.
+            TypeDefKind::List(element) => {
+                let arrays = match self.strings {
+                    true => list_arrays(resolve, self.here, *element, prefix).ok_or("a list")?,
+                    false => return Err("a list"),
+                };
+                for (name, element) in arrays {
+                    self.places.push(Var {
+                        name: self.scope.variable(&name),
+                        ty: format!("ARRAY[*] OF {element}"),
+                        flat: 0,
+                        start: None,
+                    });
+                }
+                self.taken = 2;
+                let count = match prefix {
+                    "" => "count".to_string(),
+                    prefix => join(prefix, "count"),
+                };
+                let kind = Kind::Unsigned(4);
+                let count = self.output(&count, "UDINT".to_string(), kind, inside);
+                let read = Read {
+                    offset: offset + 4,
+                    kind,
+                };
+                Ok(vec![Step::Leaf((count, read))])
+            }
             TypeDefKind::Record(record) => {
                 let types: Vec<Type> = record.fields.iter().map(|field| field.ty).collect();
                 let mut steps = Vec::new();

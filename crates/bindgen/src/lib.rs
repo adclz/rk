@@ -271,11 +271,12 @@ impl Returned {
         }
     }
 
-    /// The STRING a call passes for the string the result holds.
-    fn text(&self) -> Option<&Var> {
+    /// What a call passes for the string or the list the result holds: a
+    /// STRING, or an array per field of the list's elements.
+    fn places(&self) -> &[Var] {
         match self {
-            Returned::Words(lifted) => lifted.text.as_ref(),
-            Returned::Fields(_) => None,
+            Returned::Words(lifted) => &lifted.places,
+            Returned::Fields(_) => &[],
         }
     }
 }
@@ -670,7 +671,7 @@ impl Generator<'_> {
                     .inputs
                     .iter()
                     .chain(returned.outputs())
-                    .chain(returned.text())
+                    .chain(returned.places())
             };
             own.retain(|name| {
                 !scope.holds(name) && named().any(|var| var.name.eq_ignore_ascii_case(name))
@@ -691,7 +692,7 @@ impl Generator<'_> {
         let apart = lowered.packs() || matches!(returned, Returned::Words(_));
         // The STRING the host writes the result's string into: the
         // caller's, which the import's wrapper passes on.
-        let text: Vec<Var> = returned.text().into_iter().cloned().collect();
+        let text: Vec<Var> = returned.places().to_vec();
         let mut variables: Vec<&str> = lowered.inputs.iter().map(|var| var.name.as_str()).collect();
         if asynchronous {
             variables.push("DONE");
@@ -732,9 +733,16 @@ impl Generator<'_> {
         };
         if apart {
             out.prose(&match (lowered.packs(), &returned) {
-                (false, _) if !text.is_empty() => format!(
+                (false, _) if text.len() == 1 && text[0].ty == "STRING" => format!(
                     "`{name}` as the host gives it: its result in words of 8 bytes, as the canonical ABI lays it out, which `{pou}` reads, and its string in `{}`, where the host writes it.",
                     text[0].name
+                ),
+                (false, _) if !text.is_empty() => format!(
+                    "`{name}` as the host gives it: its result in words of 8 bytes, as the canonical ABI lays it out, which `{pou}` reads, and its list in {}, where the host writes it.",
+                    text.iter()
+                        .map(|var| format!("`{}`", var.name))
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ),
                 (false, _) => format!(
                     "`{name}` as the host gives it: its result in words of 8 bytes, as the canonical ABI lays it out, which `{pou}` reads."
