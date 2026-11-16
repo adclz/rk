@@ -27,7 +27,7 @@ interface control {
 - `init` writes the starting value of every variable. A host calls it once, before anything else. Its error is the message of an exception a starting value raised.
 - `save-retain` gives the retain area, to keep across a power cycle, and `restore-retain` gives it back after `init` on a warm start.
 - `run-task` runs the task at that place in the `rk.schedule` section: `inputs` is copied into the input area, each program instance of the task runs, and the output area comes back. A host calls it for each task the section says is due, in the order the section lists them. The `located-map` section says where each address is in the two lists.
-- `read-memory` reads ranges of the memory between two scans, and `write-memory` forces bytes into the variables, at the addresses the `debug-symbols` section gives. Writing anywhere but the variables is refused.
+- `read-memory` reads ranges of the memory between two scans, and `write-memory` forces bytes into the variables, at the addresses the `debug-symbols` section gives. Writing anywhere but the variables is refused. A read larger than the module's scratch area, below, is `too-large`: a host reads the ranges in parts.
 - `run-test` runs the test at that place in the `test-manifest` section: a test FUNCTION whole, `passed` when it returns, or one cycle of a test FUNCTION_BLOCK, `running` until a cycle leaves its `DONE` TRUE. The block keeps its instance from one call to the next, and a host calls it again for its next cycle. A release build has no test.
 
 No function of the interface waits.
@@ -237,6 +237,14 @@ A variant passed in goes the other way: the code rk-bindgen writes packs its cas
 A string that comes back is written by the host straight into a `STRING` of the caller's, which the import declares as its one `STRING` `VAR_IN_OUT`, of any length: the time zone's `iana-id` is `IANA_ID(value := zone, is_some => known)`.
 That `VAR_IN_OUT` is no parameter of the import: the call tells the host to write its string there, and empties it first, so it is empty when no string came.
 A string longer than the `STRING` raises `a string the host gave is longer than its STRING`, and leaves it empty.
+A list that comes back is written into arrays of the caller's, which the import declares as its `ARRAY[*]` `VAR_IN_OUT`s of any length, one for each field of an element: the preopened directories are `GET_DIRECTORIES(item0 := handles, item1 := paths, count => n)`.
+The host writes a list of scalars into its array itself, and each string of a list into its element of a `STRING` array; the scalar fields of a list of records are copied into their arrays once the call returns.
+A list longer than one of its arrays raises `a list the host gave is longer than its array`.
+
+A module's memory is as large as it is built, and never grows.
+What a host passes, and what an import gives past the buffers of the call, lands in a scratch area the build sizes: the largest of what one call takes, then the largest `STRING` or list the program declares and 64 KiB more.
+A string or a list too long by up to that much raises as above; one longer still traps.
+
 A `REF_TO` input is an address, where a record can come back too.
 A STRUCT, an ARRAY or an instance input is refused (`E1502`): it would go as an address into rk's own layout, which no WASI function reads.
 
