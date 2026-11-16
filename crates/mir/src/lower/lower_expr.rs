@@ -2325,6 +2325,32 @@ impl<'db> ExprLowerCtx<'db> {
                     for value in values {
                         let value = *value;
                         let lowered = self.lower_expr(value)?;
+                        // An import's `ARRAY[*]`, where the host writes the
+                        // list it gives: the array's address, how many
+                        // elements it has, the bytes from one to the next
+                        // and a STRING element's capacity.
+                        if is_extern && var.conformand(self.db).is_some() {
+                            let MirExpr::Load(_, MirType::Array(array)) = &lowered else {
+                                return Err(LowerTypeError::UnsupportedType(
+                                    "an import's ARRAY[*] is bound to what is no array".to_string(),
+                                ));
+                            };
+                            let capacity = match array.element_type.as_ref() {
+                                MirType::String { capacity } => *capacity,
+                                _ => array.element_size,
+                            };
+                            let shape = [array.total_elements, array.element_size, capacity];
+                            args.push(to_byref(lowered)?);
+                            for value in shape {
+                                args.push(MirCallArg {
+                                    value: MirExpr::Constant(crate::expr::MirConstant::I32(
+                                        value as i32,
+                                    )),
+                                    kind: MirArgKind::ByValue,
+                                });
+                            }
+                            continue;
+                        }
                         if by_ref {
                             args.push(to_byref(lowered)?);
                             continue;

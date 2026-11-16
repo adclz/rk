@@ -9,6 +9,7 @@
 //! to it (`Sum$[0..9]`), so its bounds are constants in each copy.
 
 use db::WorkspaceDataBase;
+use hir::HasPragmas;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use hir::hir_def::expressions::expression::{
@@ -374,6 +375,13 @@ fn process_call<'db>(
     // The callee: a function or an instance method. A call through an
     // interface parameter runs the method of the implementer bound to it.
     let target = match fc.path(db).infer(db) {
+        // An import has no body to specialize: its `ARRAY[*]`s are the
+        // arrays its wrapper is told of at each call.
+        Type::Function(f) | Type::CallableType(CallableType::Function(f))
+            if f.extern_pragma(db).is_some() =>
+        {
+            return;
+        }
         Type::Function(f) => IfaceTarget::Function(f),
         Type::CallableType(CallableType::Function(f)) => IfaceTarget::Function(f),
         Type::MethodDecl(MethodRef::Declared(md))
