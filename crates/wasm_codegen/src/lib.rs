@@ -636,6 +636,8 @@ pub(crate) const NULL_CHECK: &str = "rk.null_check";
 /// Name of the builtin that raises when the string an import gave was
 /// longer than the STRING the call passed for it.
 const HOST_STRING_CHECK: &str = "rk.host_string_check";
+/// Cuts the text an import gave to its STRING, when it was longer.
+const HOST_TEXT_CUT: &str = "rk.host_text_cut";
 
 impl<'a> WasmGen<'a> {
     fn new(db: &'a dyn WorkspaceDataBase, module: &'a MirModule) -> Self {
@@ -1144,7 +1146,10 @@ impl<'a> WasmGen<'a> {
                 }
             }
             if control::gives_string(ext_fn) {
-                found.insert(HOST_STRING_CHECK.to_string());
+                found.insert(match control::cuts_text(ext_fn) {
+                    true => HOST_TEXT_CUT.to_string(),
+                    false => HOST_STRING_CHECK.to_string(),
+                });
             }
             // An import that gives a list: the bundle places its blocks,
             // then checks and spreads them.
@@ -1251,7 +1256,9 @@ impl<'a> WasmGen<'a> {
     /// not: the wrapper makes it the place of the host's next string
     /// ([`control::ControlArea::host_string`]) for the call alone, once
     /// the checks have passed, and raises after the call when the string
-    /// was longer than the STRING.
+    /// was longer than the STRING. One that gives a text, an error's or a
+    /// case's, does the same with its STRING `VAR_OUTPUT`, and cuts the
+    /// text to it instead of raising.
     ///
     /// One that gives a list takes each `ARRAY[*]` it goes into as its
     /// address, how many elements it has, the bytes from one to the next
@@ -1277,7 +1284,9 @@ impl<'a> WasmGen<'a> {
         let mut lists = Vec::new();
         let mut local = 0;
         for param in &ext_fn.params {
-            if param.kind == MirParamKind::InOut {
+            // The STRING `VAR_OUTPUT` a text goes into, the only output an
+            // import takes, comes as the STRING `VAR_IN_OUT` does.
+            if matches!(param.kind, MirParamKind::InOut | MirParamKind::Output) {
                 match &param.ty {
                     MirType::Pointer(inner) if matches!(inner.as_ref(), MirType::Array(_)) => {
                         let MirType::Array(array) = inner.as_ref() else {
@@ -1409,7 +1418,7 @@ impl<'a> WasmGen<'a> {
             f.instruction(&Instruction::I32Const(state));
             f.instruction(&Instruction::Call(builtin(control::LIST_END)));
         }
-        if let Some((_, at)) = host_string {
+        if let Some(((address, capacity), at)) = host_string {
             // The host's next string is no longer this one's, whatever
             // came.
             f.instruction(&Instruction::I32Const(at));
@@ -1423,7 +1432,24 @@ impl<'a> WasmGen<'a> {
                 control::HOST_STRING_LANDED,
                 2,
             )));
-            f.instruction(&Instruction::Call(builtin(HOST_STRING_CHECK)));
+            match control::cuts_text(ext_fn) {
+                // A text longer than its STRING: its first bytes, from
+                // where it landed.
+                true => {
+                    f.instruction(&Instruction::I32Const(at));
+                    f.instruction(&Instruction::I32Load(emit_expr::mem_arg(
+                        control::HOST_STRING_LENGTH,
+                        2,
+                    )));
+                    f.instruction(&Instruction::LocalGet(address));
+                    f.instruction(&Instruction::LocalGet(capacity));
+                    f.instruction(&Instruction::I32Const(area.refused as i32));
+                    f.instruction(&Instruction::Call(builtin(HOST_TEXT_CUT)));
+                }
+                false => {
+                    f.instruction(&Instruction::Call(builtin(HOST_STRING_CHECK)));
+                }
+            }
         }
         f.instruction(&Instruction::End);
 

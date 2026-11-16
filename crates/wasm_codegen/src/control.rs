@@ -97,7 +97,7 @@ pub(crate) struct ControlArea {
     /// FUNCTION, one slot each ([`crate::exports`]).
     pub outputs: u32,
     /// Where the host's next string goes, when an import gives one
-    /// ([`HOST_STRING_AT`]): three words an import's wrapper sets around
+    /// ([`HOST_STRING_AT`]): four words an import's wrapper sets around
     /// its call and `cabi_import_realloc` reads.
     pub host_string: Option<u32>,
     /// Where the host's next blocks go, when an import gives a list: the
@@ -111,12 +111,14 @@ pub(crate) struct ControlArea {
 
 /// The words of [`ControlArea::host_string`], by their offset: the STRING
 /// the host's next string goes into, 0 outside a call that gives one; how
-/// many bytes that STRING holds; and what became of the string, 0 while
-/// none came, [`LANDED`] once it is in the STRING, [`TOO_LONG_FOR_IT`]
-/// when it was longer.
+/// many bytes that STRING holds; what became of the string, 0 while none
+/// came, [`LANDED`] once it is in the STRING, [`TOO_LONG_FOR_IT`] when it
+/// was longer; and then how long it was, which a text that is cut to fit
+/// is copied from ([`ControlArea::refused`], where it landed).
 pub(crate) const HOST_STRING_AT: u64 = 0;
 pub(crate) const HOST_STRING_CAPACITY: u64 = 4;
 pub(crate) const HOST_STRING_LANDED: u64 = 8;
+pub(crate) const HOST_STRING_LENGTH: u64 = 12;
 const LANDED: i32 = 1;
 const TOO_LONG_FOR_IT: i32 = 2;
 
@@ -138,13 +140,23 @@ pub(crate) const LIST_HEADER: u32 = 12;
 pub(crate) const LIST_FIELD: u32 = 7;
 
 /// Whether `ext` gives a string, which the host writes into its STRING
-/// `VAR_IN_OUT`.
+/// `VAR_IN_OUT`, or a text, into its STRING `VAR_OUTPUT`.
 pub(crate) fn gives_string(ext: &mir::function::MirExternFunction) -> bool {
     ext.params.iter().any(|param| {
-        param.kind == mir::function::MirParamKind::InOut
-            && matches!(&param.ty, mir::types::MirType::Pointer(inner)
+        matches!(
+            param.kind,
+            mir::function::MirParamKind::InOut | mir::function::MirParamKind::Output
+        ) && matches!(&param.ty, mir::types::MirType::Pointer(inner)
                 if matches!(inner.as_ref(), mir::types::MirType::String { .. }))
     })
+}
+
+/// Whether what `ext` gives is a text, an error's or a case's, which is
+/// cut to fit its STRING rather than refused when longer.
+pub(crate) fn cuts_text(ext: &mir::function::MirExternFunction) -> bool {
+    ext.params
+        .iter()
+        .any(|param| param.kind == mir::function::MirParamKind::Output)
 }
 
 /// The elements of the arrays `ext` gives a list into, its `ARRAY[*]`
@@ -233,7 +245,7 @@ pub(crate) fn control_area(module: &MirModule, base: u32) -> ControlArea {
         .iter()
         .any(gives_string)
         .then_some(end.next_multiple_of(4));
-    let end = host_string.map_or(end, |at| at + 12);
+    let end = host_string.map_or(end, |at| at + 16);
     let fields = module
         .extern_functions
         .iter()
@@ -849,7 +861,9 @@ fn control_realloc(area: &ControlArea, arena: u32) -> Function {
 /// that gives a string, the first block the host asks for, a string's, is
 /// the STRING the call passed for it: the host writes the bytes there, and
 /// the block's size is the STRING's length. A string longer than the STRING
-/// is not read: the call raises once the host returns.
+/// lands with the blocks nobody reads, and how long it is is kept: once the
+/// host returns, the call raises, or for a text copies the first bytes that
+/// fit into the STRING.
 ///
 /// The host asks for a string's bytes once, at their exact size and with an
 /// alignment of 1, and never grows the block.
@@ -967,6 +981,10 @@ fn import_realloc(
     f.instruction(&Instruction::Return);
     f.instruction(&Instruction::Else);
     set_landed(&mut f, TOO_LONG_FOR_IT);
+    // How long it is: a text cut to fit is copied from where it lands.
+    f.instruction(&Instruction::I32Const(host_string as i32));
+    f.instruction(&Instruction::LocalGet(size));
+    f.instruction(&Instruction::I32Store(mem_arg(HOST_STRING_LENGTH, 2)));
     f.instruction(&Instruction::End);
     f.instruction(&Instruction::End);
     refuse_new(&mut f);
