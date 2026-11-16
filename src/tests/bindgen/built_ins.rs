@@ -8,7 +8,7 @@
 //! what carries it: `BYTES_STREAM`, `RESULT_FUTURE`. A stream of bytes is
 //! read into a STRING or an ARRAY OF BYTE and written from a STRING; a
 //! stream of anything else is made and dropped only; a future's value comes
-//! back as outputs, as a function's would.
+//! back as outputs, a record in the STRUCT of one, as a function's would.
 
 use db::RootDatabase;
 use insta::assert_snapshot;
@@ -501,6 +501,10 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
     NAMESPACE INTERNAL Wasi
     	NAMESPACE Example
     		NAMESPACE Feeds
+    			TYPE EVENT : STRUCT
+    				code : UDINT;
+    			END_STRUCT END_TYPE
+
     			/* Lets go of `handle`, a handle of `connection` the host gave. */
     			{extern 'wasi:example/feeds@0.3.0' '[resource-drop]connection'}
     			FUNCTION CONNECTION_DROP
@@ -618,9 +622,10 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
 }
 
 /// A future's value comes back as a function's would: nothing, a scalar,
-/// a flag and a side of a result, a flag and an option's value, a record's
-/// fields; a result with both sides in words, which its read is read out
-/// of. A string is not read yet.
+/// a flag and a side of a result, a flag and an option's value, a record
+/// in its STRUCT, whose fields the import gives as its outputs; a result
+/// with both sides in words, which its read is read out of. A string is
+/// not read yet.
 #[rstest]
 fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
@@ -651,6 +656,11 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			TYPE ERROR_CODE : USINT (
     				LOST := 0
     			); END_TYPE
+
+    			TYPE POINT : STRUCT
+    				x : LREAL;
+    				y : LREAL;
+    			END_STRUCT END_TYPE
 
     			{extern 'wasi:example/promises@0.3.0' 'ready'}
     			FUNCTION READY : UDINT
@@ -835,9 +845,10 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			/* Reads the value the future holds, which comes back after `DONE`. */
+    			/* The future's read as the host gives it: the values the future holds,
+    			   which `POINT_FUTURE_READ` puts in the members of `value`. */
     			{extern async 'wasi:example/promises@0.3.0' '[future-read-0]where-is'}
-    			FUNCTION_BLOCK POINT_FUTURE_READ
+    			FUNCTION_BLOCK POINT_FUTURE_READ_RAW
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
@@ -846,6 +857,26 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     				x : LREAL;
     				y : LREAL;
     			END_VAR
+    			END_FUNCTION_BLOCK
+
+    			/* Reads the value the future holds, which comes back after `DONE`. */
+    			FUNCTION_BLOCK POINT_FUTURE_READ
+    			VAR_INPUT
+    				future : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				value : POINT;
+    			END_VAR
+    			VAR
+    				call : POINT_FUTURE_READ_RAW;
+    			END_VAR
+    				call(future := future);
+    				DONE := call.DONE;
+    				IF call.DONE THEN
+    					value.x := call.x;
+    					value.y := call.y;
+    				END_IF;
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the future's reading end, `future`. */
@@ -1018,17 +1049,17 @@ fn a_built_in_named_like_a_function_gives_way(mut with_db: RootDatabase) {
     let (mir, module) = built(&mut with_db, &bindings.files, &[]);
     assert_abi(&bindings, &mir, &module);
     assert_snapshot!(summary(&bindings.files), @r"
-    wasi-example-feeds.st: EVENT_STREAM_NEW, FEED, EVENT_STREAM_NEW_, EVENT_STREAM_DROP_READABLE, EVENT_STREAM_DROP_WRITABLE
+    wasi-example-feeds.st: EVENT, EVENT_STREAM_NEW, FEED, EVENT_STREAM_NEW_, EVENT_STREAM_DROP_READABLE, EVENT_STREAM_DROP_WRITABLE
         left out `EVENT_STREAM_READ` and `EVENT_STREAM_WRITE`: a stream's read or write moves bytes only
         left out `EVENT_STREAM_CANCEL_READ` and `EVENT_STREAM_CANCEL_WRITE`: a cancel blocks the scan
     ");
 }
 
 /// A future's value whose fields are named as the names its block has:
-/// `done` beside the block's `DONE`, and, where the value is read out of
-/// words, `call` beside the block that holds the import's. Each takes a
-/// `_` after it; the `call` of a value that comes back as outputs keeps
-/// its name.
+/// `done` beside the block's `DONE`, and `call` beside the block that
+/// holds the import's. Each is a member of the value under its own name.
+/// Where the import gives the fields as its outputs, `done` takes a `_`
+/// there, beside the import's own `DONE`, and `call` keeps its name.
 #[rstest]
 fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
@@ -1052,10 +1083,27 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     		NAMESPACE Progress
     			USING Std.Convert;
 
-    			TYPE PHASE : USINT (
+    			TYPE STATE : STRUCT
+    				done : BOOL;
+    				call : UDINT;
+    			END_STRUCT END_TYPE
+
+    			/* The cases of `phase`. */
+    			TYPE PHASE_KIND : USINT (
     				IDLE := 0,
     				MOVED := 1
     			); END_TYPE
+
+    			TYPE PHASE : STRUCT
+    				kind : PHASE_KIND;
+    				moved : UDINT;
+    			END_STRUCT END_TYPE
+
+    			TYPE REPORT : STRUCT
+    				done : BOOL;
+    				call : UDINT;
+    				phase : PHASE;
+    			END_STRUCT END_TYPE
 
     			{extern 'wasi:example/progress@0.3.0' 'watch'}
     			FUNCTION WATCH : UDINT
@@ -1071,9 +1119,10 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     			END_VAR
     			END_FUNCTION
 
-    			/* Reads the value the future holds, which comes back after `DONE`. */
+    			/* The future's read as the host gives it: the values the future holds,
+    			   which `STATE_FUTURE_READ` puts in the members of `value`. */
     			{extern async 'wasi:example/progress@0.3.0' '[future-read-0]watch'}
-    			FUNCTION_BLOCK STATE_FUTURE_READ
+    			FUNCTION_BLOCK STATE_FUTURE_READ_RAW
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
@@ -1082,6 +1131,26 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     				done_ : BOOL;
     				call : UDINT;
     			END_VAR
+    			END_FUNCTION_BLOCK
+
+    			/* Reads the value the future holds, which comes back after `DONE`. */
+    			FUNCTION_BLOCK STATE_FUTURE_READ
+    			VAR_INPUT
+    				future : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				value : STATE;
+    			END_VAR
+    			VAR
+    				call : STATE_FUTURE_READ_RAW;
+    			END_VAR
+    				call(future := future);
+    				DONE := call.DONE;
+    				IF call.DONE THEN
+    					value.done := call.done_;
+    					value.call := call.call;
+    				END_IF;
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the future's reading end, `future`. */
@@ -1135,10 +1204,7 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     			END_VAR
     			VAR_OUTPUT
     				DONE : BOOL;
-    				done_ : BOOL;
-    				call_ : UDINT;
-    				phase : PHASE;
-    				phase_moved : UDINT;
+    				value : REPORT;
     			END_VAR
     			VAR
     				call : REPORT_FUTURE_READ_RAW;
@@ -1146,13 +1212,13 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     				call(future := future);
     				DONE := call.DONE;
     				IF call.DONE THEN
-    					phase_moved := 0;
-    					done_ := call.w0.%X0;
-    					call_ := DWORD_TO_UDINT(call.w0.%D1);
-    					phase := BYTE_TO_USINT(call.w1.%B0);
-    					CASE phase OF
-    						PHASE#MOVED:
-    							phase_moved := DWORD_TO_UDINT(call.w1.%D1);
+    					value.phase.moved := 0;
+    					value.done := call.w0.%X0;
+    					value.call := DWORD_TO_UDINT(call.w0.%D1);
+    					value.phase.kind := BYTE_TO_USINT(call.w1.%B0);
+    					CASE value.phase.kind OF
+    						PHASE_KIND#MOVED:
+    							value.phase.moved := DWORD_TO_UDINT(call.w1.%D1);
     					END_CASE;
     				END_IF;
     			END_FUNCTION_BLOCK

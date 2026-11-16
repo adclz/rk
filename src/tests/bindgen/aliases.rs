@@ -108,7 +108,8 @@ fn a_used_type_is_named_where_it_is_defined(mut with_db: RootDatabase) {
     ");
 }
 
-/// An alias of a record, a tuple, an option, a result or a string writes
+/// An alias of a record is a TYPE of its STRUCT, and a tuple WIT names a
+/// STRUCT of its items. An alias of an option, a result or a string writes
 /// no TYPE: the functions that take or give one pass it as they would pass
 /// what it names. An alias of a list writes none either, and is listed as
 /// left out; a function that gives one gives its elements into arrays.
@@ -142,8 +143,23 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
     		NAMESPACE Shapes
     			USING Std.Convert;
 
+    			TYPE POINT : STRUCT
+    				x : LREAL;
+    				y : LREAL;
+    			END_STRUCT END_TYPE
+
+    			TYPE SPOT : POINT; END_TYPE
+
+    			TYPE PAIR : STRUCT
+    				item0 : UDINT;
+    				item1 : UDINT;
+    			END_STRUCT END_TYPE
+
+    			/* `move-to` as the host has it: its parameters as the canonical ABI passes
+    			   them, which `MOVE_TO` passes field by field, and the values of its
+    			   result, which it puts in its members. */
     			{extern 'wasi:example/shapes@0.3.0' 'move-to'}
-    			FUNCTION MOVE_TO
+    			FUNCTION PRIVATE MOVE_TO_RAW
     			VAR_INPUT
     				where_x : LREAL;
     				where_y : LREAL;
@@ -152,6 +168,13 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
     				item0 : UDINT;
     				item1 : UDINT;
     			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION MOVE_TO : PAIR
+    			VAR_INPUT
+    				where : SPOT;
+    			END_VAR
+    				MOVE_TO_RAW(where_x := where.x, where_y := where.y, item0 => MOVE_TO.item0, item1 => MOVE_TO.item1);
     			END_FUNCTION
 
     			{extern 'wasi:example/shapes@0.3.0' 'find'}

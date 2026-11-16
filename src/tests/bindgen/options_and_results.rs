@@ -216,6 +216,11 @@ fn what_two_outputs_cannot_hold_comes_back_in_words(mut with_db: RootDatabase) {
     				GONE := 1
     			); END_TYPE
 
+    			TYPE POINT : STRUCT
+    				x : LREAL;
+    				y : LREAL;
+    			END_STRUCT END_TYPE
+
     			/* `both` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `BOTH` reads. */
     			{extern 'wasi:example/both-sides@0.3.0' 'both'}
@@ -261,8 +266,7 @@ fn what_two_outputs_cannot_hold_comes_back_in_words(mut with_db: RootDatabase) {
     			FUNCTION WHERE_IS
     			VAR_OUTPUT
     				is_some : BOOL;
-    				value_x : LREAL;
-    				value_y : LREAL;
+    				value : POINT;
     			END_VAR
     			VAR
     				w0 : LWORD;
@@ -270,12 +274,12 @@ fn what_two_outputs_cannot_hold_comes_back_in_words(mut with_db: RootDatabase) {
     				w2 : LWORD;
     			END_VAR
     				WHERE_IS_RAW(w0 => w0, w1 => w1, w2 => w2);
-    				value_x := 0.0;
-    				value_y := 0.0;
+    				value.x := 0.0;
+    				value.y := 0.0;
     				is_some := w0.%X0;
     				IF is_some THEN
-    					value_x := LWORD_TO_LREAL(w1);
-    					value_y := LWORD_TO_LREAL(w2);
+    					value.x := LWORD_TO_LREAL(w1);
+    					value.y := LWORD_TO_LREAL(w2);
     				END_IF;
     			END_FUNCTION
 
@@ -295,8 +299,7 @@ fn what_two_outputs_cannot_hold_comes_back_in_words(mut with_db: RootDatabase) {
     			VAR_OUTPUT
     				failed : BOOL;
     				value_is_some : BOOL;
-    				value_x : LREAL;
-    				value_y : LREAL;
+    				value : POINT;
     				error : ERROR_CODE;
     			END_VAR
     			VAR
@@ -307,8 +310,8 @@ fn what_two_outputs_cannot_hold_comes_back_in_words(mut with_db: RootDatabase) {
     			END_VAR
     				DEEP_RAW(w0 => w0, w1 => w1, w2 => w2, w3 => w3);
     				value_is_some := FALSE;
-    				value_x := 0.0;
-    				value_y := 0.0;
+    				value.x := 0.0;
+    				value.y := 0.0;
     				error := 0;
     				failed := w0.%X0;
     				IF failed THEN
@@ -316,8 +319,8 @@ fn what_two_outputs_cannot_hold_comes_back_in_words(mut with_db: RootDatabase) {
     				ELSE
     					value_is_some := w1.%X0;
     					IF value_is_some THEN
-    						value_x := LWORD_TO_LREAL(w2);
-    						value_y := LWORD_TO_LREAL(w3);
+    						value.x := LWORD_TO_LREAL(w2);
+    						value.y := LWORD_TO_LREAL(w3);
     					END_IF;
     				END_IF;
     			END_FUNCTION

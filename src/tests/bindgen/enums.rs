@@ -45,6 +45,11 @@ fn an_enum_goes_in_and_comes_back(mut with_db: RootDatabase) {
     				GREEN := 2
     			); END_TYPE
 
+    			TYPE LAMP : STRUCT
+    				shown : COLOR;
+    				lit : BOOL;
+    			END_STRUCT END_TYPE
+
     			{extern 'wasi:example/lights@0.3.0' 'set'}
     			FUNCTION SET : COLOR
     			VAR_INPUT
@@ -52,12 +57,18 @@ fn an_enum_goes_in_and_comes_back(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
+    			/* `look` as the host gives it: the values of its result, which `LOOK` puts
+    			   in its members. */
     			{extern 'wasi:example/lights@0.3.0' 'look'}
-    			FUNCTION LOOK
+    			FUNCTION PRIVATE LOOK_RAW
     			VAR_OUTPUT
     				shown : COLOR;
     				lit : BOOL;
     			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION LOOK : LAMP
+    				LOOK_RAW(shown => LOOK.shown, lit => LOOK.lit);
     			END_FUNCTION
 
     			{extern 'wasi:example/lights@0.3.0' 'guess'}
@@ -76,12 +87,21 @@ fn an_enum_goes_in_and_comes_back(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
+    			/* `place` as the host takes it: its parameters as the canonical ABI passes
+    			   them, which `PLACE` passes field by field. */
     			{extern 'wasi:example/lights@0.3.0' 'place'}
-    			FUNCTION PLACE
+    			FUNCTION PRIVATE PLACE_RAW
     			VAR_INPUT
     				at_shown : COLOR;
     				at_lit : BOOL;
     			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION PLACE
+    			VAR_INPUT
+    				at_ : LAMP;
+    			END_VAR
+    				PLACE_RAW(at_shown := at_.shown, at_lit := at_.lit);
     			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE

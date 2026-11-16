@@ -66,6 +66,12 @@ fn a_list_comes_back_in_the_arrays_the_call_passes(mut with_db: RootDatabase) {
     				BLUE := 2
     			); END_TYPE
 
+    			TYPE READING : STRUCT
+    				id : UDINT;
+    				name : STRING[256];
+    				ok : BOOL;
+    			END_STRUCT END_TYPE
+
     			/* `bytes` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `BYTES` reads, and its list in `value`,
     			   where the host writes it. */

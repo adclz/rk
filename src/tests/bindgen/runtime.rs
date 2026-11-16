@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! Generated declarations at run time, on wasmtime: the clocks through
-//! aliases, a record's outputs and an option's, a wait through an async
-//! block, on the host `rk test` runs tests on; standard input copied to
-//! standard output through the streams' and futures' built-ins, random
+//! aliases, a record's STRUCT and an option's outputs, a wait through an
+//! async block, on the host `rk test` runs tests on; standard input copied
+//! to standard output through the streams' and futures' built-ins, random
 //! numbers through a tuple's outputs, the errors of WASI's sockets, read
 //! out of the words they come back in, and the addresses its sockets are
 //! bound and connected to, packed into the words they are passed in, on a
@@ -54,8 +54,9 @@ fn tested(db: &mut RootDatabase, bindings: &Bindings, source: &str) -> String {
 }
 
 /// The clocks, read through the generated declarations: `NOW` returns a
-/// `MARK`, an alias; the wall clock comes back as a record's outputs; the
-/// zone's offset as an option's.
+/// `MARK`, an alias; the wall clock returns an `INSTANT`, the STRUCT of its
+/// record, which the zone's offset takes, its offset coming back as an
+/// option's outputs.
 #[rstest]
 fn the_clocks_read_through_generated_declarations(mut with_db: RootDatabase) {
     let bindings = generated(&world_of(&[
@@ -68,8 +69,7 @@ fn the_clocks_read_through_generated_declarations(mut with_db: RootDatabase) {
         FUNCTION test_the_clocks
         VAR
             first, second, resolution : ULINT;
-            seconds : LINT;
-            nanoseconds : UDINT;
+            instant : Wasi.Clocks.SystemClock.INSTANT;
             known : BOOL;
             offset : LINT;
         END_VAR
@@ -78,14 +78,10 @@ fn the_clocks_read_through_generated_declarations(mut with_db: RootDatabase) {
             IF second < first THEN __RAISE('the monotonic clock went back'); END_IF;
             resolution := Wasi.Clocks.MonotonicClock.GET_RESOLUTION();
             IF resolution = 0 THEN __RAISE('the monotonic clock has no resolution'); END_IF;
-            Wasi.Clocks.SystemClock.NOW(seconds => seconds, nanoseconds => nanoseconds);
-            IF seconds < 1700000000 THEN __RAISE('the wall clock is before 2023'); END_IF;
-            IF nanoseconds >= 1000000000 THEN __RAISE('nanoseconds past a second'); END_IF;
-            Wasi.Clocks.Timezone.UTC_OFFSET(
-                when_seconds := seconds,
-                when_nanoseconds := nanoseconds,
-                is_some => known,
-                value => offset);
+            instant := Wasi.Clocks.SystemClock.NOW();
+            IF instant.seconds < 1700000000 THEN __RAISE('the wall clock is before 2023'); END_IF;
+            IF instant.nanoseconds >= 1000000000 THEN __RAISE('nanoseconds past a second'); END_IF;
+            Wasi.Clocks.Timezone.UTC_OFFSET(when := instant, is_some => known, value => offset);
             IF known AND (offset >= 86400000000000 OR offset <= -86400000000000) THEN
                 __RAISE('an offset past a day');
             END_IF;
@@ -362,7 +358,6 @@ fn the_errors_of_wasi_s_sockets_are_read_out_of_words(mut with_db: RootDatabase)
             socket, readable, writable, sent : UDINT;
             error : Wasi.Sockets.Types.ERROR_CODE;
             address : Wasi.Sockets.Types.IP_SOCKET_ADDRESS;
-            port : UINT;
             limit : USINT;
             size : ULINT;
             read : Wasi.Sockets.Types.RESULT_FUTURE_READ;
@@ -373,31 +368,31 @@ fn the_errors_of_wasi_s_sockets_are_read_out_of_words(mut with_db: RootDatabase)
                 Wasi.Sockets.Types.TCP_SOCKET_CREATE(
                     address_family := Wasi.Sockets.Types.IP_ADDRESS_FAMILY#IPV4,
                     failed => failed, value => socket, error => error);
-                IF failed OR error <> 0 THEN output := -1; RETURN; END_IF;
+                IF failed OR error.kind <> 0 THEN output := -1; RETURN; END_IF;
                 // A socket that is not bound has no address.
                 Wasi.Sockets.Types.TCP_SOCKET_GET_LOCAL_ADDRESS(self := socket,
-                    failed => failed, value => address, value_ipv4_port => port,
-                    error => error);
-                IF NOT failed OR error <> Wasi.Sockets.Types.ERROR_CODE#INVALID_STATE
-                    OR address <> 0 OR port <> 0
+                    failed => failed, value => address, error => error);
+                IF NOT failed OR error.kind <> Wasi.Sockets.Types.ERROR_CODE_KIND#INVALID_STATE
+                    OR address.kind <> 0 OR address.ipv4.port <> 0
                 THEN
                     output := -2; RETURN;
                 END_IF;
                 // A hop limit of 0 is refused.
                 Wasi.Sockets.Types.TCP_SOCKET_SET_HOP_LIMIT(self := socket, value := 0,
                     failed => failed, error => error);
-                IF NOT failed OR error <> Wasi.Sockets.Types.ERROR_CODE#INVALID_ARGUMENT THEN
+                IF NOT failed OR error.kind <> Wasi.Sockets.Types.ERROR_CODE_KIND#INVALID_ARGUMENT
+                THEN
                     output := -3; RETURN;
                 END_IF;
                 Wasi.Sockets.Types.TCP_SOCKET_SET_HOP_LIMIT(self := socket, value := 42,
                     failed => failed, error => error);
-                IF failed OR error <> 0 THEN output := -4; RETURN; END_IF;
+                IF failed OR error.kind <> 0 THEN output := -4; RETURN; END_IF;
                 Wasi.Sockets.Types.TCP_SOCKET_GET_HOP_LIMIT(self := socket,
                     failed => failed, value => limit, error => error);
-                IF failed OR limit <> 42 OR error <> 0 THEN output := -5; RETURN; END_IF;
+                IF failed OR limit <> 42 OR error.kind <> 0 THEN output := -5; RETURN; END_IF;
                 Wasi.Sockets.Types.TCP_SOCKET_GET_RECEIVE_BUFFER_SIZE(self := socket,
                     failed => failed, value => size, error => error);
-                IF failed OR size = 0 OR error <> 0 THEN output := -6; RETURN; END_IF;
+                IF failed OR size = 0 OR error.kind <> 0 THEN output := -6; RETURN; END_IF;
                 // A send on a socket that is not connected: its future fails.
                 Wasi.Sockets.Types.BYTES_STREAM_NEW(readable => readable, writable => writable);
                 sent := Wasi.Sockets.Types.TCP_SOCKET_SEND(self := socket, data := readable);
@@ -407,7 +402,7 @@ fn the_errors_of_wasi_s_sockets_are_read_out_of_words(mut with_db: RootDatabase)
                 IF read.DONE THEN
                     step := 9;
                     IF NOT read.failed
-                        OR read.error <> Wasi.Sockets.Types.ERROR_CODE#INVALID_STATE
+                        OR read.error.kind <> Wasi.Sockets.Types.ERROR_CODE_KIND#INVALID_STATE
                     THEN
                         output := -7; RETURN;
                     END_IF;
@@ -449,11 +444,14 @@ fn an_address_passed_to_wasi_s_sockets_comes_back(mut with_db: RootDatabase) {
             failed : BOOL;
             datagrams, listener, accepted, client : UDINT;
             error : Wasi.Sockets.Types.ERROR_CODE;
-            address : Wasi.Sockets.Types.IP_SOCKET_ADDRESS;
-            port, listening : UINT;
-            first, second, third, last : USINT;
+            loopback, address : Wasi.Sockets.Types.IP_SOCKET_ADDRESS;
+            listening : UINT;
             connect : Wasi.Sockets.Types.TCP_SOCKET_CONNECT;
         END_VAR
+            // 127.0.0.1, port 0: the host picks one.
+            loopback.kind := Wasi.Sockets.Types.IP_SOCKET_ADDRESS_KIND#IPV4;
+            loopback.ipv4.address.item0 := 127;
+            loopback.ipv4.address.item3 := 1;
             CASE step OF
             0:
                 step := 9;
@@ -461,18 +459,15 @@ fn an_address_passed_to_wasi_s_sockets_comes_back(mut with_db: RootDatabase) {
                     address_family := Wasi.Sockets.Types.IP_ADDRESS_FAMILY#IPV4,
                     failed => failed, value => datagrams);
                 IF failed THEN output := -1; RETURN; END_IF;
-                // Port 0: the host picks one.
-                Wasi.Sockets.Types.UDP_SOCKET_BIND(self := datagrams,
-                    local_address := Wasi.Sockets.Types.IP_SOCKET_ADDRESS#IPV4,
-                    local_address_ipv4_address_0 := 127, local_address_ipv4_address_3 := 1,
+                Wasi.Sockets.Types.UDP_SOCKET_BIND(self := datagrams, local_address := loopback,
                     failed => failed, error => error);
                 IF failed THEN output := -2; RETURN; END_IF;
                 Wasi.Sockets.Types.UDP_SOCKET_GET_LOCAL_ADDRESS(self := datagrams,
-                    failed => failed, value => address, value_ipv4_port => port,
-                    value_ipv4_address_0 => first, value_ipv4_address_1 => second,
-                    value_ipv4_address_2 => third, value_ipv4_address_3 => last);
-                IF failed OR address <> Wasi.Sockets.Types.IP_SOCKET_ADDRESS#IPV4 OR port = 0
-                    OR first <> 127 OR second <> 0 OR third <> 0 OR last <> 1
+                    failed => failed, value => address);
+                IF failed OR address.kind <> Wasi.Sockets.Types.IP_SOCKET_ADDRESS_KIND#IPV4
+                    OR address.ipv4.port = 0 OR address.ipv4.address.item0 <> 127
+                    OR address.ipv4.address.item1 <> 0 OR address.ipv4.address.item2 <> 0
+                    OR address.ipv4.address.item3 <> 1
                 THEN
                     output := -3; RETURN;
                 END_IF;
@@ -481,13 +476,12 @@ fn an_address_passed_to_wasi_s_sockets_comes_back(mut with_db: RootDatabase) {
                     address_family := Wasi.Sockets.Types.IP_ADDRESS_FAMILY#IPV4,
                     failed => failed, value => listener);
                 IF failed THEN output := -4; RETURN; END_IF;
-                Wasi.Sockets.Types.TCP_SOCKET_BIND(self := listener,
-                    local_address := Wasi.Sockets.Types.IP_SOCKET_ADDRESS#IPV4,
-                    local_address_ipv4_address_0 := 127, local_address_ipv4_address_3 := 1,
+                Wasi.Sockets.Types.TCP_SOCKET_BIND(self := listener, local_address := loopback,
                     failed => failed, error => error);
                 IF failed THEN output := -5; RETURN; END_IF;
                 Wasi.Sockets.Types.TCP_SOCKET_GET_LOCAL_ADDRESS(self := listener,
-                    failed => failed, value_ipv4_port => listening);
+                    failed => failed, value => address);
+                listening := address.ipv4.port;
                 IF failed OR listening = 0 THEN output := -6; RETURN; END_IF;
                 Wasi.Sockets.Types.TCP_SOCKET_LISTEN(self := listener,
                     failed => failed, value => accepted);
@@ -498,25 +492,22 @@ fn an_address_passed_to_wasi_s_sockets_comes_back(mut with_db: RootDatabase) {
                 IF failed THEN output := -8; RETURN; END_IF;
                 // Bound here, or the host binds it to any address as it
                 // connects, which this host does not allow.
-                Wasi.Sockets.Types.TCP_SOCKET_BIND(self := client,
-                    local_address := Wasi.Sockets.Types.IP_SOCKET_ADDRESS#IPV4,
-                    local_address_ipv4_address_0 := 127, local_address_ipv4_address_3 := 1,
+                Wasi.Sockets.Types.TCP_SOCKET_BIND(self := client, local_address := loopback,
                     failed => failed, error => error);
                 IF failed THEN output := -11; RETURN; END_IF;
                 step := 1;
             1:
-                connect(self := client,
-                    remote_address := Wasi.Sockets.Types.IP_SOCKET_ADDRESS#IPV4,
-                    remote_address_ipv4_port := listening,
-                    remote_address_ipv4_address_0 := 127, remote_address_ipv4_address_3 := 1);
+                address := loopback;
+                address.ipv4.port := listening;
+                connect(self := client, remote_address := address);
                 IF connect.DONE THEN
                     step := 9;
                     IF connect.failed THEN output := -9; RETURN; END_IF;
                     Wasi.Sockets.Types.TCP_SOCKET_GET_REMOTE_ADDRESS(self := client,
-                        failed => failed, value => address, value_ipv4_port => port,
-                        value_ipv4_address_0 => first, value_ipv4_address_3 => last);
-                    IF failed OR address <> Wasi.Sockets.Types.IP_SOCKET_ADDRESS#IPV4
-                        OR port <> listening OR first <> 127 OR last <> 1
+                        failed => failed, value => address);
+                    IF failed OR address.kind <> Wasi.Sockets.Types.IP_SOCKET_ADDRESS_KIND#IPV4
+                        OR address.ipv4.port <> listening OR address.ipv4.address.item0 <> 127
+                        OR address.ipv4.address.item3 <> 1
                     THEN
                         output := -10; RETURN;
                     END_IF;

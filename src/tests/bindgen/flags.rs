@@ -14,8 +14,9 @@ use crate::tests::cli::component_host::Host;
 use crate::tests::utils::with_db;
 
 /// Flags of 8 at most are named values of a BYTE, of 16 of a WORD, of 32
-/// of a DWORD, the first flag the lowest bit. They pass and come back as
-/// one value, and a record's is one of its outputs.
+/// of a DWORD, the first flag the lowest bit, and start with none set.
+/// They pass and come back as one value, and a record's is one of its
+/// members.
 #[rstest]
 fn flags_are_named_bits(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
@@ -45,7 +46,7 @@ fn flags_are_named_bits(mut with_db: RootDatabase) {
     				DIRECTORY := 16#02,
     				EXCLUSIVE := 16#04,
     				TRUNCATE := 16#08
-    			); END_TYPE
+    			) := 0; END_TYPE
 
     			TYPE MODES : WORD (
     				M0 := 16#0001,
@@ -57,7 +58,7 @@ fn flags_are_named_bits(mut with_db: RootDatabase) {
     				M6 := 16#0040,
     				M7 := 16#0080,
     				M8 := 16#0100
-    			); END_TYPE
+    			) := 0; END_TYPE
 
     			TYPE RIGHTS : DWORD (
     				R0 := 16#00000001,
@@ -77,7 +78,13 @@ fn flags_are_named_bits(mut with_db: RootDatabase) {
     				R14 := 16#00004000,
     				R15 := 16#00008000,
     				R16 := 16#00010000
-    			); END_TYPE
+    			) := 0; END_TYPE
+
+    			TYPE ENTRY : STRUCT
+    				how : OPEN_FLAGS;
+    				size : ULINT;
+    				modes : MODES;
+    			END_STRUCT END_TYPE
 
     			{extern 'wasi:example/files@0.3.0' 'open'}
     			FUNCTION OPEN : RIGHTS
@@ -87,13 +94,19 @@ fn flags_are_named_bits(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
+    			/* `last` as the host gives it: the values of its result, which `LAST` puts
+    			   in its members. */
     			{extern 'wasi:example/files@0.3.0' 'last'}
-    			FUNCTION LAST
+    			FUNCTION PRIVATE LAST_RAW
     			VAR_OUTPUT
     				how : OPEN_FLAGS;
     				size : ULINT;
     				modes : MODES;
     			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION LAST : ENTRY
+    				LAST_RAW(how => LAST.how, size => LAST.size, modes => LAST.modes);
     			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE
@@ -154,29 +167,32 @@ fn marks_host(linker: &mut Linker<Host>) {
 }
 
 /// Flags passed to a host and given back by it, by name on both sides: a
-/// flag is the same bit for the generated code and for wasmtime. 1 when
-/// each came back as the host gave it.
+/// flag is the same bit for the generated code and for wasmtime; and a
+/// value of flags, alone or a member, starts with none set. 1 when each
+/// came back as the host gave it.
 #[rstest]
 fn flags_pass_and_come_back_bit_for_bit(mut with_db: RootDatabase) {
     let program = r#"
         PROGRAM P
         VAR_EXTERNAL output : DINT; END_VAR
         VAR
-            style : Wasi.Example.Marks.STYLE;
-            wide : Wasi.Example.Marks.WIDE;
-            size : UDINT;
+            style, fresh : Wasi.Example.Marks.STYLE;
+            pen : Wasi.Example.Marks.PEN;
         END_VAR
             output := 1;
+            // No flag set: flags start at zero, not at their first flag.
+            IF fresh <> 0 OR pen.style <> 0 THEN output := -4; RETURN; END_IF;
             style := Wasi.Example.Marks.INVERT(style := Wasi.Example.Marks.STYLE#DASHED);
             IF style <> (Wasi.Example.Marks.STYLE#BOLD OR Wasi.Example.Marks.STYLE#FILLED) THEN
                 output := -1;
             END_IF;
             style := Wasi.Example.Marks.INVERT(style := 0);
             IF style <> 16#07 THEN output := -2; END_IF;
-            Wasi.Example.Marks.PEN_OF(
-                given := Wasi.Example.Marks.WIDE#W0 OR Wasi.Example.Marks.WIDE#W9,
-                style => style, size => size, wide => wide);
-            IF style <> Wasi.Example.Marks.STYLE#DASHED OR size <> 7 OR wide <> 16#0201 THEN
+            pen := Wasi.Example.Marks.PEN_OF(
+                given := Wasi.Example.Marks.WIDE#W0 OR Wasi.Example.Marks.WIDE#W9);
+            IF pen.style <> Wasi.Example.Marks.STYLE#DASHED OR pen.size <> 7
+                OR pen.wide <> 16#0201
+            THEN
                 output := -3;
             END_IF;
         END_PROGRAM

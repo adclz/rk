@@ -3,13 +3,14 @@
 
 //! How WIT names are written in ST: a namespace in words that start with a
 //! capital, a POU, a type or an enum's value in capitals joined by `_`, a
-//! variable in lowercase; a keyword of ST takes a `_` after it, wherever it
-//! stands. The names WIT gives come first: of two written alike in one
-//! namespace the later function is left out, a name the generator makes
-//! takes a `_`, and so does a variable that would be its POU's name or one
-//! the generated code uses there. Two variables WIT names alike in one POU
-//! leave the function out, and two interfaces of one namespace or one file
-//! stop the generator.
+//! variable or a member in lowercase; a keyword of ST takes a `_` after it,
+//! wherever it stands. The names WIT gives come first: of two written alike
+//! in one namespace the later function is left out, a function named as a
+//! type and a name the generator makes take a `_`, and so does a variable
+//! that would be its POU's name or one the generated code uses there. Two
+//! variables WIT names alike in one POU leave the function out, two members
+//! alike leave their type out, and two interfaces of one namespace or one
+//! file stop the generator.
 
 use db::RootDatabase;
 use insta::assert_snapshot;
@@ -110,6 +111,11 @@ fn a_keyword_takes_an_underscore_wherever_it_stands(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
+    			TYPE POINT : STRUCT
+    				step_ : UDINT;
+    				of_ : UDINT;
+    			END_STRUCT END_TYPE
+
     			{extern 'wasi:example/exit@0.3.0' '[method]task.step'}
     			FUNCTION TASK_STEP : TIME_
     			VAR_INPUT
@@ -117,8 +123,10 @@ fn a_keyword_takes_an_underscore_wherever_it_stands(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
+    			/* `exit` as the host gives it: the values of its result, which `EXIT_`
+    			   puts in its members. */
     			{extern 'wasi:example/exit@0.3.0' 'exit'}
-    			FUNCTION EXIT_
+    			FUNCTION PRIVATE EXIT__RAW
     			VAR_INPUT
     				by_ : ANSWER;
     				at_ : TIME_;
@@ -127,6 +135,14 @@ fn a_keyword_takes_an_underscore_wherever_it_stands(mut with_db: RootDatabase) {
     				step_ : UDINT;
     				of_ : UDINT;
     			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION EXIT_ : POINT
+    			VAR_INPUT
+    				by_ : ANSWER;
+    				at_ : TIME_;
+    			END_VAR
+    				EXIT__RAW(by_ := by_, at_ := at_, step_ => EXIT_.step_, of_ => EXIT_.of_);
     			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE
@@ -186,19 +202,44 @@ fn a_name_the_generator_makes_gives_way(mut with_db: RootDatabase) {
         world example {
             import clash;
         }
-    "#), @"wasi-example-clash.st: B_DROP_, SHAPE, B_DROP, OPEN_RAW_, OPEN, OPEN_RAW");
+    "#), @"wasi-example-clash.st: B_DROP_, SHAPE_KIND, SHAPE, B_DROP, OPEN_RAW_, OPEN, OPEN_RAW");
+}
+
+/// A function named as a type takes a `_` after its name, which a program
+/// gives the type: the method `stat` of `file` beside the record
+/// `file-stat`, and `shape-kind` beside the enum of the cases of `shape`.
+#[rstest]
+fn a_function_named_as_a_type_takes_an_underscore(mut with_db: RootDatabase) {
+    assert_snapshot!(declared(&mut with_db, r#"
+        package wasi:example@0.3.0;
+
+        interface clash {
+            record file-stat { size: u64 }
+            resource file {
+                stat: func() -> file-stat;
+            }
+            variant shape { none, circle(f32) }
+            shape-kind: func() -> u32;
+        }
+
+        world example {
+            import clash;
+        }
+    "#), @"wasi-example-clash.st: FILE_STAT, FILE_DROP, SHAPE_KIND, SHAPE, FILE_STAT__RAW, FILE_STAT_, SHAPE_KIND_");
 }
 
 /// A variable that would be the name of its FUNCTION's value, or a name
 /// the generated code uses in its POU, takes a `_` after it, as a keyword
-/// does: a parameter named as its function, by itself or once its record's
-/// field is added; a block's field `done` beside its `DONE`; a parameter
-/// `a0` beside the word a variant is packed into, and one named as the
-/// import that takes the words; a parameter `w0` beside the word a result
-/// is read out of; a parameter `call` of a block that holds its import's.
-/// Where nothing has the name, the variable keeps it:
-/// `status` gives a `done`, `plain` takes an `a0`, a `w0` and a `call`,
-/// and `tally`, which returns no value of its own, gives a `tally`.
+/// does: a parameter named as its function; a block's parameter `done`
+/// beside its `DONE`; a parameter `a0` beside the word a variant is packed
+/// into, and one named as the import that takes the words; a parameter `w0`
+/// beside the word a result is read out of; a parameter `call` of a block
+/// that holds its import's. Where nothing has the name, the variable keeps
+/// it: `plain` takes an `a0`, a `w0` and a `call`. A member of a STRUCT
+/// keeps its name whatever the POU's: a record passed whole is one input,
+/// `get`, whose fields its import takes as `get_x` and `get_y`, and the
+/// `done` of the record `run` gives, the `done` of `status`'s and the
+/// `tally` of `tally`'s are members of the value each returns.
 #[rstest]
 fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
@@ -212,7 +253,7 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
             f: func(f: u32) -> u32;
             get-x: func(get: point) -> u32;
             exit: func(exit: u32) -> u32;
-            run: async func() -> finished;
+            run: async func(done: u32) -> finished;
             aim: func(a0: u32, target: shape);
             scan: func(scan-raw: u32, target: shape) -> u32;
             probe: func(w0: u32) -> shape;
@@ -232,10 +273,30 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     		NAMESPACE Clash
     			USING Std.Convert;
 
-    			TYPE SHAPE : USINT (
+    			TYPE POINT : STRUCT
+    				x : UDINT;
+    				y : UDINT;
+    			END_STRUCT END_TYPE
+
+    			TYPE FINISHED : STRUCT
+    				done : BOOL;
+    			END_STRUCT END_TYPE
+
+    			TYPE COUNTED : STRUCT
+    				tally : UDINT;
+    				total : UDINT;
+    			END_STRUCT END_TYPE
+
+    			/* The cases of `shape`. */
+    			TYPE SHAPE_KIND : USINT (
     				NONE := 0,
     				CIRCLE := 1
     			); END_TYPE
+
+    			TYPE SHAPE : STRUCT
+    				kind : SHAPE_KIND;
+    				circle : REAL;
+    			END_STRUCT END_TYPE
 
     			{extern 'wasi:example/clash@0.3.0' 'f'}
     			FUNCTION F : UDINT
@@ -244,12 +305,21 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
+    			/* `get-x` as the host takes it: its parameters as the canonical ABI passes
+    			   them, which `GET_X` passes field by field. */
     			{extern 'wasi:example/clash@0.3.0' 'get-x'}
-    			FUNCTION GET_X : UDINT
+    			FUNCTION PRIVATE GET_X_RAW : UDINT
     			VAR_INPUT
-    				get_x_ : UDINT;
+    				get_x : UDINT;
     				get_y : UDINT;
     			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION GET_X : UDINT
+    			VAR_INPUT
+    				get : POINT;
+    			END_VAR
+    				GET_X := GET_X_RAW(get_x := get.x, get_y := get.y);
     			END_FUNCTION
 
     			{extern 'wasi:example/clash@0.3.0' 'exit'}
@@ -259,12 +329,35 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
+    			/* `run` as the host gives it: the one value of its result, which `RUN`
+    			   puts in the member of `value`. */
     			{extern async 'wasi:example/clash@0.3.0' 'run'}
-    			FUNCTION_BLOCK RUN
+    			FUNCTION_BLOCK RUN_RAW
+    			VAR_INPUT
+    				done_ : UDINT;
+    			END_VAR
     			VAR_OUTPUT
     				DONE : BOOL;
-    				done_ : BOOL;
+    				done__ : BOOL;
     			END_VAR
+    			END_FUNCTION_BLOCK
+
+    			FUNCTION_BLOCK RUN
+    			VAR_INPUT
+    				done_ : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				value : FINISHED;
+    			END_VAR
+    			VAR
+    				call : RUN_RAW;
+    			END_VAR
+    				call(done_ := done_);
+    				DONE := call.DONE;
+    				IF call.DONE THEN
+    					value.done := call.done__;
+    				END_IF;
     			END_FUNCTION_BLOCK
 
     			/* `aim` as the host takes it: its parameters as the canonical ABI passes
@@ -282,7 +375,6 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     			VAR_INPUT
     				a0_ : UDINT;
     				target : SHAPE;
-    				target_circle : REAL := 0.0;
     			END_VAR
     			VAR
     				a0 : DWORD;
@@ -290,10 +382,10 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     			END_VAR
     				a0 := 0;
     				a1 := 0.0;
-    				a0.%B0 := USINT_TO_BYTE(target);
-    				CASE target OF
-    					SHAPE#CIRCLE:
-    						a1 := target_circle;
+    				a0.%B0 := USINT_TO_BYTE(target.kind);
+    				CASE target.kind OF
+    					SHAPE_KIND#CIRCLE:
+    						a1 := target.circle;
     				END_CASE;
     				AIM_RAW(a0_ := a0_, a0 := a0, a1 := a1);
     			END_FUNCTION
@@ -313,7 +405,6 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     			VAR_INPUT
     				scan_raw_ : UDINT;
     				target : SHAPE;
-    				target_circle : REAL := 0.0;
     			END_VAR
     			VAR
     				a0 : DWORD;
@@ -321,10 +412,10 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     			END_VAR
     				a0 := 0;
     				a1 := 0.0;
-    				a0.%B0 := USINT_TO_BYTE(target);
-    				CASE target OF
-    					SHAPE#CIRCLE:
-    						a1 := target_circle;
+    				a0.%B0 := USINT_TO_BYTE(target.kind);
+    				CASE target.kind OF
+    					SHAPE_KIND#CIRCLE:
+    						a1 := target.circle;
     				END_CASE;
     				SCAN := SCAN_RAW(scan_raw_ := scan_raw_, a0 := a0, a1 := a1);
     			END_FUNCTION
@@ -342,24 +433,20 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			FUNCTION PROBE
+    			FUNCTION PROBE : SHAPE
     			VAR_INPUT
     				w0_ : UDINT;
-    			END_VAR
-    			VAR_OUTPUT
-    				value : SHAPE;
-    				circle : REAL;
     			END_VAR
     			VAR
     				w0 : LWORD;
     				w1 : LWORD;
     			END_VAR
     				PROBE_RAW(w0_ := w0_, w0 => w0, w1 => w1);
-    				circle := 0.0;
-    				value := BYTE_TO_USINT(w0.%B0);
-    				CASE value OF
-    					SHAPE#CIRCLE:
-    						circle := DWORD_TO_REAL(w0.%D1);
+    				PROBE.circle := 0.0;
+    				PROBE.kind := BYTE_TO_USINT(w0.%B0);
+    				CASE PROBE.kind OF
+    					SHAPE_KIND#CIRCLE:
+    						PROBE.circle := DWORD_TO_REAL(w0.%D1);
     				END_CASE;
     			END_FUNCTION
 
@@ -383,7 +470,6 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     			VAR_OUTPUT
     				DONE : BOOL;
     				value : SHAPE;
-    				circle : REAL;
     			END_VAR
     			VAR
     				call : LATER_RAW;
@@ -391,20 +477,26 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     				call(call_ := call_);
     				DONE := call.DONE;
     				IF call.DONE THEN
-    					circle := 0.0;
-    					value := BYTE_TO_USINT(call.w0.%B0);
-    					CASE value OF
-    						SHAPE#CIRCLE:
-    							circle := DWORD_TO_REAL(call.w0.%D1);
+    					value.circle := 0.0;
+    					value.kind := BYTE_TO_USINT(call.w0.%B0);
+    					CASE value.kind OF
+    						SHAPE_KIND#CIRCLE:
+    							value.circle := DWORD_TO_REAL(call.w0.%D1);
     					END_CASE;
     				END_IF;
     			END_FUNCTION_BLOCK
 
+    			/* `status` as the host gives it: the one value of its result, which
+    			   `STATUS` puts in its member. */
     			{extern 'wasi:example/clash@0.3.0' 'status'}
-    			FUNCTION STATUS
+    			FUNCTION PRIVATE STATUS_RAW
     			VAR_OUTPUT
     				done : BOOL;
     			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION STATUS : FINISHED
+    				STATUS_RAW(done => STATUS.done);
     			END_FUNCTION
 
     			{extern 'wasi:example/clash@0.3.0' 'plain'}
@@ -416,12 +508,18 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
+    			/* `tally` as the host gives it: the values of its result, which `TALLY`
+    			   puts in its members. */
     			{extern 'wasi:example/clash@0.3.0' 'tally'}
-    			FUNCTION TALLY
+    			FUNCTION PRIVATE TALLY_RAW
     			VAR_OUTPUT
     				tally : UDINT;
     				total : UDINT;
     			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION TALLY : COUNTED
+    				TALLY_RAW(tally => TALLY.tally, total => TALLY.total);
     			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE
@@ -538,6 +636,10 @@ fn two_variables_written_alike_leave_the_function_out(mut with_db: RootDatabase)
     NAMESPACE INTERNAL Wasi
     	NAMESPACE Example
     		NAMESPACE Clash
+    			TYPE P_ : STRUCT
+    				x : UDINT;
+    			END_STRUCT END_TYPE
+
     			{extern 'wasi:example/clash@0.3.0' 'fine'}
     			FUNCTION FINE : UDINT
     			VAR_INPUT
@@ -551,6 +653,162 @@ fn two_variables_written_alike_leave_the_function_out(mut with_db: RootDatabase)
        - `lookup`: two of its variables would be `value`, which ST takes for
          one.
        - `place`: two of its variables would be `p_x`, which ST takes for one. */
+    ");
+}
+
+/// An output of an import named after a member of the STRUCT that comes
+/// back takes a `_` while a variable beside it has the name: `moved`'s
+/// `spot` beside the input `spot` of `move-to`, `held`'s `value` beside
+/// the output `value` of the block `fetch`.
+#[rstest]
+fn an_output_of_the_import_keeps_clear_of_the_variables_beside_it(mut with_db: RootDatabase) {
+    assert_snapshot!(checked(&mut with_db, r#"
+        package wasi:example@0.3.0;
+
+        interface clash {
+            record point { x: u32, y: u32 }
+            record moved { spot: u32, far: bool }
+            record held { value: u32, n: u32 }
+            move-to: func(spot: point) -> moved;
+            fetch: async func() -> held;
+        }
+
+        world example {
+            import clash;
+        }
+    "#), @r"
+    // wasi-example-clash.st
+    NAMESPACE INTERNAL Wasi
+    	NAMESPACE Example
+    		NAMESPACE Clash
+    			TYPE POINT : STRUCT
+    				x : UDINT;
+    				y : UDINT;
+    			END_STRUCT END_TYPE
+
+    			TYPE MOVED : STRUCT
+    				spot : UDINT;
+    				far : BOOL;
+    			END_STRUCT END_TYPE
+
+    			TYPE HELD : STRUCT
+    				value : UDINT;
+    				n_ : UDINT;
+    			END_STRUCT END_TYPE
+
+    			/* `move-to` as the host has it: its parameters as the canonical ABI passes
+    			   them, which `MOVE_TO` passes field by field, and the values of its
+    			   result, which it puts in its members. */
+    			{extern 'wasi:example/clash@0.3.0' 'move-to'}
+    			FUNCTION PRIVATE MOVE_TO_RAW
+    			VAR_INPUT
+    				spot_x : UDINT;
+    				spot_y : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				spot_ : UDINT;
+    				far : BOOL;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION MOVE_TO : MOVED
+    			VAR_INPUT
+    				spot : POINT;
+    			END_VAR
+    				MOVE_TO_RAW(spot_x := spot.x, spot_y := spot.y, spot_ => MOVE_TO.spot, far => MOVE_TO.far);
+    			END_FUNCTION
+
+    			/* `fetch` as the host gives it: the values of its result, which `FETCH`
+    			   puts in the members of `value`. */
+    			{extern async 'wasi:example/clash@0.3.0' 'fetch'}
+    			FUNCTION_BLOCK FETCH_RAW
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				value_ : UDINT;
+    				n_ : UDINT;
+    			END_VAR
+    			END_FUNCTION_BLOCK
+
+    			FUNCTION_BLOCK FETCH
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				value : HELD;
+    			END_VAR
+    			VAR
+    				call : FETCH_RAW;
+    			END_VAR
+    				call();
+    				DONE := call.DONE;
+    				IF call.DONE THEN
+    					value.value := call.value_;
+    					value.n_ := call.n_;
+    				END_IF;
+    			END_FUNCTION_BLOCK
+    		END_NAMESPACE
+    	END_NAMESPACE
+    END_NAMESPACE
+    ");
+}
+
+/// Two members of one STRUCT that ST writes alike: a case `kind` beside
+/// the member that holds the case, the flag of an option `x` beside a
+/// field `x-is-some`, and the first item of a tuple `a` beside a field
+/// `a-0`. The type is left out, saying why, and so are an alias of it, a
+/// STRUCT that holds it, and the functions that take or give it, one that
+/// would pass it field by field among them.
+#[rstest]
+fn two_members_written_alike_leave_the_type_out(mut with_db: RootDatabase) {
+    assert_snapshot!(checked(&mut with_db, r#"
+        package wasi:example@0.3.0;
+
+        interface clash {
+            variant token { kind(u8), other }
+            record flagged { x: option<u32>, x-is-some: bool }
+            type same = token;
+            record holder { t: token, n: u32 }
+            record spread { a: tuple<u32, u32>, a-0: u32 }
+            next: func() -> token;
+            put: func(t: token);
+            flag: func() -> flagged;
+            hold: func(h: holder);
+            again: func() -> same;
+            send: func(s: spread);
+            fine: func() -> u32;
+        }
+
+        world example {
+            import clash;
+        }
+    "#), @r"
+    // wasi-example-clash.st
+    NAMESPACE INTERNAL Wasi
+    	NAMESPACE Example
+    		NAMESPACE Clash
+    			{extern 'wasi:example/clash@0.3.0' 'fine'}
+    			FUNCTION FINE : UDINT
+    			END_FUNCTION
+    		END_NAMESPACE
+    	END_NAMESPACE
+    END_NAMESPACE
+    /* Not generated:
+       - `token`: two of its members would be `kind`, which ST takes for one.
+       - `flagged`: two of its members would be `x_is_some`, which ST takes for
+         one.
+       - `same`: it names `token`, which is left out.
+       - `holder`: it holds `token`, which is left out.
+       - `spread`: two of its members would be `a_0`, which ST takes for one.
+       - `next`: its result holds a value whose STRUCT is left out, which an
+         import cannot give back yet.
+       - `put`: its parameter `t` holds a value whose STRUCT is left out, which
+         an import cannot take yet.
+       - `flag`: its result holds a value whose STRUCT is left out, which an
+         import cannot give back yet.
+       - `hold`: its parameter `h` holds a value whose STRUCT is left out,
+         which an import cannot take yet.
+       - `again`: its result holds a value whose STRUCT is left out, which an
+         import cannot give back yet.
+       - `send`: its parameter `s` holds a value whose STRUCT is left out,
+         which an import cannot take yet. */
     ");
 }
 

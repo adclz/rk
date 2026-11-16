@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! A string that comes back: the host writes it into the STRING the call
-//! passes, a `VAR_IN_OUT` of any length, which is empty when no string
-//! came. One longer than its STRING raises. One string comes back so, from
+//! passes, a `VAR_IN_OUT` of any length, or a record's into its member, a
+//! STRING of 256 bytes, which is empty when no string came. One longer than
+//! its STRING raises. One string comes back so, from
 //! a call that waits for its result: the one the result holds outside its
 //! error and outside a variant's cases.
 
@@ -56,21 +57,38 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
     		NAMESPACE Texts
     			USING Std.Convert;
 
+    			TYPE LABELLED : STRUCT
+    				id : UDINT;
+    				name : STRING[256];
+    			END_STRUCT END_TYPE
+
     			TYPE COLOR : USINT (
     				RED := 0,
     				GREEN := 1,
     				BLUE := 2
     			); END_TYPE
 
-    			TYPE FAULT : USINT (
+    			/* The cases of `fault`. */
+    			TYPE FAULT_KIND : USINT (
     				BUSY := 0,
     				OTHER := 1
     			); END_TYPE
 
-    			TYPE CHUNK : USINT (
+    			TYPE FAULT : STRUCT
+    				kind : FAULT_KIND;
+    				other_is_some : BOOL;
+    				other : STRING[256];
+    			END_STRUCT END_TYPE
+
+    			/* The cases of `chunk`. */
+    			TYPE CHUNK_KIND : USINT (
     				EMPTY := 0,
     				BYTES := 1
     			); END_TYPE
+
+    			TYPE CHUNK : STRUCT
+    				kind : CHUNK_KIND;
+    			END_STRUCT END_TYPE
 
     			/* `text` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `TEXT` reads, and its string in
@@ -155,22 +173,16 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
     			END_VAR
     			END_FUNCTION
 
-    			FUNCTION DESCRIBED
+    			FUNCTION DESCRIBED : LABELLED
     			VAR_INPUT
     				which : UDINT;
-    			END_VAR
-    			VAR_IN_OUT
-    				name : STRING;
-    			END_VAR
-    			VAR_OUTPUT
-    				id : UDINT;
     			END_VAR
     			VAR
     				w0 : LWORD;
     				w1 : LWORD;
     			END_VAR
-    				DESCRIBED_RAW(which := which, name := name, w0 => w0, w1 => w1);
-    				id := DWORD_TO_UDINT(w0.%D0);
+    				DESCRIBED_RAW(which := which, name := DESCRIBED.name, w0 => w0, w1 => w1);
+    				DESCRIBED.id := DWORD_TO_UDINT(w0.%D0);
     			END_FUNCTION
 
     			/* `settled` as the host gives it: its result in words of 8 bytes, as the
@@ -237,10 +249,10 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
     			END_VAR
     				FAILING_RAW(w0 => w0, w1 => w1, w2 => w2);
     				value := 0;
-    				error := 0;
+    				error.kind := 0;
     				failed := w0.%X0;
     				IF failed THEN
-    					error := BYTE_TO_USINT(w0.%B4);
+    					error.kind := BYTE_TO_USINT(w0.%B4);
     				ELSE
     					value := DWORD_TO_UDINT(w0.%D1);
     				END_IF;
@@ -387,7 +399,8 @@ const READ: &str = r#"
         tiny : STRING[4];
         long : STRING[300];
         raised, known, failed : BOOL;
-        id, value : UDINT;
+        value : UDINT;
+        labelled : Wasi.Example.Texts.LABELLED;
         error : Wasi.Example.Texts.COLOR;
         fault : Wasi.Example.Texts.FAULT;
     END_VAR
@@ -426,8 +439,9 @@ const READ: &str = r#"
         Wasi.Example.Texts.MAYBE(which := 0, value := s, is_some => known);
         IF known OR s <> '' THEN check := -10; RETURN; END_IF;
 
-        Wasi.Example.Texts.DESCRIBED(which := 6, name := s, id => id);
-        IF id <> 7 OR s <> 'motor' THEN check := -11; RETURN; END_IF;
+        // A record's string, in its STRING member.
+        labelled := Wasi.Example.Texts.DESCRIBED(which := 6);
+        IF labelled.id <> 7 OR labelled.name <> 'motor' THEN check := -11; RETURN; END_IF;
 
         Wasi.Example.Texts.SETTLED(which := 0, value := s, failed => failed, error => error);
         IF failed OR s <> 'fine' OR error <> 0 THEN check := -12; RETURN; END_IF;
@@ -439,7 +453,9 @@ const READ: &str = r#"
         exact := 'kept!';
         long := 'kept';
         Wasi.Example.Texts.FAILING(failed => failed, value => value, error => fault);
-        IF NOT failed OR fault <> 1 THEN check := -14; RETURN; END_IF;
+        IF NOT failed OR fault.kind <> Wasi.Example.Texts.FAULT_KIND#OTHER THEN
+            check := -14; RETURN;
+        END_IF;
         IF s <> 'kept' OR exact <> 'kept!' OR long <> 'kept' THEN check := -15; RETURN; END_IF;
         check := 1;
     END_FUNCTION
@@ -477,11 +493,12 @@ const READ: &str = r#"
 
 /// The host writes each string into the STRING the call passed: one that
 /// fits, one of the STRING's very length, an empty one, one of several
-/// bytes a character and one of 300 bytes; an option's, a record's and a
-/// result's. No string leaves the STRING empty, one too long raises, and a
-/// text the host gives outside such a call is written into no STRING. Of
-/// two strings, which a declaration written by hand may let come, the
-/// first is the STRING's.
+/// bytes a character and one of 300 bytes; an option's, a result's, and a
+/// record's, in the STRING member of the STRUCT the call returns. No
+/// string leaves the STRING empty, one too long raises, and a text the
+/// host gives outside such a call is written into no STRING. Of two
+/// strings, which a declaration written by hand may let come, the first is
+/// the STRING's.
 #[rstest]
 fn the_host_writes_a_string_into_the_string_passed(mut with_db: RootDatabase) {
     let mut plc = hosted(&mut with_db, TEXTS, READ, texts_host);
@@ -519,7 +536,9 @@ const BOUNDS: &str = r#"
         FOR i := 1 TO 20000 DO
             Wasi.Example.Texts.FAILING(failed => failed, value => value, error => fault);
         END_FOR;
-        IF NOT failed OR fault <> 1 THEN check := -2; RETURN; END_IF;
+        IF NOT failed OR fault.kind <> Wasi.Example.Texts.FAULT_KIND#OTHER THEN
+            check := -2; RETURN;
+        END_IF;
         check := 1;
     END_FUNCTION
 

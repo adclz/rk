@@ -51,11 +51,18 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     		NAMESPACE Sockets
     			USING Std.Convert;
 
-    			TYPE ERROR_CODE : USINT (
+    			/* The cases of `error-code`. */
+    			TYPE ERROR_CODE_KIND : USINT (
     				ACCESS_DENIED := 0,
     				NOT_SUPPORTED := 1,
     				OTHER := 2
     			); END_TYPE
+
+    			TYPE ERROR_CODE : STRUCT
+    				kind : ERROR_CODE_KIND;
+    				other_is_some : BOOL;
+    				other : STRING[256];
+    			END_STRUCT END_TYPE
 
     			/* Lets go of `handle`, a handle of `socket` the host gave. */
     			{extern 'wasi:example/sockets@0.3.0' '[resource-drop]socket'}
@@ -96,10 +103,10 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     			END_VAR
     				SOCKET_HOP_LIMIT_RAW(self := self, w0 => w0, w1 => w1, w2 => w2);
     				value := 0;
-    				error := 0;
+    				error.kind := 0;
     				failed := w0.%X0;
     				IF failed THEN
-    					error := BYTE_TO_USINT(w0.%B4);
+    					error.kind := BYTE_TO_USINT(w0.%B4);
     				ELSE
     					value := BYTE_TO_USINT(w0.%B4);
     				END_IF;
@@ -136,10 +143,10 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     			END_VAR
     				SOCKET_BUFFER_SIZE_RAW(self := self, w0 => w0, w1 => w1, w2 => w2);
     				value := 0;
-    				error := 0;
+    				error.kind := 0;
     				failed := w0.%X0;
     				IF failed THEN
-    					error := BYTE_TO_USINT(w1.%B0);
+    					error.kind := BYTE_TO_USINT(w1.%B0);
     				ELSE
     					value := LWORD_TO_ULINT(w1);
     				END_IF;
@@ -176,10 +183,10 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     				w2 : LWORD;
     			END_VAR
     				SOCKET_SET_HOP_LIMIT_RAW(self := self, value := value, w0 => w0, w1 => w1, w2 => w2);
-    				error := 0;
+    				error.kind := 0;
     				failed := w0.%X0;
     				IF failed THEN
-    					error := BYTE_TO_USINT(w0.%B4);
+    					error.kind := BYTE_TO_USINT(w0.%B4);
     				END_IF;
     			END_FUNCTION
 
@@ -207,10 +214,10 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     			END_VAR
     				OPEN_RAW(w0 => w0, w1 => w1, w2 => w2);
     				value := 0;
-    				error := 0;
+    				error.kind := 0;
     				failed := w0.%X0;
     				IF failed THEN
-    					error := BYTE_TO_USINT(w0.%B4);
+    					error.kind := BYTE_TO_USINT(w0.%B4);
     				ELSE
     					value := DWORD_TO_UDINT(w0.%D1);
     				END_IF;
@@ -255,7 +262,13 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     		NAMESPACE Shapes
     			USING Std.Convert;
 
-    			TYPE SHAPE : USINT (
+    			TYPE POINT : STRUCT
+    				x : DINT;
+    				y : DINT;
+    			END_STRUCT END_TYPE
+
+    			/* The cases of `shape`. */
+    			TYPE SHAPE_KIND : USINT (
     				NOTHING := 0,
     				CIRCLE := 1,
     				SQUARE := 2,
@@ -263,6 +276,16 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     				PAIR := 4,
     				NAMED := 5
     			); END_TYPE
+
+    			TYPE SHAPE : STRUCT
+    				kind : SHAPE_KIND;
+    				circle : REAL;
+    				square : UINT;
+    				at_ : POINT;
+    				pair_0 : USINT;
+    				pair_1 : ULINT;
+    				named : STRING[256];
+    			END_STRUCT END_TYPE
 
     			/* `pick` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `PICK` reads. */
@@ -275,40 +298,31 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			FUNCTION PICK
-    			VAR_OUTPUT
-    				value : SHAPE;
-    				circle : REAL;
-    				square : UINT;
-    				at_x : DINT;
-    				at_y : DINT;
-    				pair_0 : USINT;
-    				pair_1 : ULINT;
-    			END_VAR
+    			FUNCTION PICK : SHAPE
     			VAR
     				w0 : LWORD;
     				w1 : LWORD;
     				w2 : LWORD;
     			END_VAR
     				PICK_RAW(w0 => w0, w1 => w1, w2 => w2);
-    				circle := 0.0;
-    				square := 0;
-    				at_x := 0;
-    				at_y := 0;
-    				pair_0 := 0;
-    				pair_1 := 0;
-    				value := BYTE_TO_USINT(w0.%B0);
-    				CASE value OF
-    					SHAPE#CIRCLE:
-    						circle := DWORD_TO_REAL(w1.%D0);
-    					SHAPE#SQUARE:
-    						square := WORD_TO_UINT(w1.%W0);
-    					SHAPE#AT_:
-    						at_x := DWORD_TO_DINT(w1.%D0);
-    						at_y := DWORD_TO_DINT(w1.%D1);
-    					SHAPE#PAIR:
-    						pair_0 := BYTE_TO_USINT(w1.%B0);
-    						pair_1 := LWORD_TO_ULINT(w2);
+    				PICK.circle := 0.0;
+    				PICK.square := 0;
+    				PICK.at_.x := 0;
+    				PICK.at_.y := 0;
+    				PICK.pair_0 := 0;
+    				PICK.pair_1 := 0;
+    				PICK.kind := BYTE_TO_USINT(w0.%B0);
+    				CASE PICK.kind OF
+    					SHAPE_KIND#CIRCLE:
+    						PICK.circle := DWORD_TO_REAL(w1.%D0);
+    					SHAPE_KIND#SQUARE:
+    						PICK.square := WORD_TO_UINT(w1.%W0);
+    					SHAPE_KIND#AT_:
+    						PICK.at_.x := DWORD_TO_DINT(w1.%D0);
+    						PICK.at_.y := DWORD_TO_DINT(w1.%D1);
+    					SHAPE_KIND#PAIR:
+    						PICK.pair_0 := BYTE_TO_USINT(w1.%B0);
+    						PICK.pair_1 := LWORD_TO_ULINT(w2);
     				END_CASE;
     			END_FUNCTION
 
@@ -334,12 +348,6 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     			VAR_OUTPUT
     				is_some : BOOL;
     				value : SHAPE;
-    				value_circle : REAL;
-    				value_square : UINT;
-    				value_at_x : DINT;
-    				value_at_y : DINT;
-    				value_pair_0 : USINT;
-    				value_pair_1 : ULINT;
     			END_VAR
     			VAR
     				w0 : LWORD;
@@ -348,27 +356,27 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     				w3 : LWORD;
     			END_VAR
     				FIND_RAW(id := id, w0 => w0, w1 => w1, w2 => w2, w3 => w3);
-    				value := 0;
-    				value_circle := 0.0;
-    				value_square := 0;
-    				value_at_x := 0;
-    				value_at_y := 0;
-    				value_pair_0 := 0;
-    				value_pair_1 := 0;
+    				value.kind := 0;
+    				value.circle := 0.0;
+    				value.square := 0;
+    				value.at_.x := 0;
+    				value.at_.y := 0;
+    				value.pair_0 := 0;
+    				value.pair_1 := 0;
     				is_some := w0.%X0;
     				IF is_some THEN
-    					value := BYTE_TO_USINT(w1.%B0);
-    					CASE value OF
-    						SHAPE#CIRCLE:
-    							value_circle := DWORD_TO_REAL(w2.%D0);
-    						SHAPE#SQUARE:
-    							value_square := WORD_TO_UINT(w2.%W0);
-    						SHAPE#AT_:
-    							value_at_x := DWORD_TO_DINT(w2.%D0);
-    							value_at_y := DWORD_TO_DINT(w2.%D1);
-    						SHAPE#PAIR:
-    							value_pair_0 := BYTE_TO_USINT(w2.%B0);
-    							value_pair_1 := LWORD_TO_ULINT(w3);
+    					value.kind := BYTE_TO_USINT(w1.%B0);
+    					CASE value.kind OF
+    						SHAPE_KIND#CIRCLE:
+    							value.circle := DWORD_TO_REAL(w2.%D0);
+    						SHAPE_KIND#SQUARE:
+    							value.square := WORD_TO_UINT(w2.%W0);
+    						SHAPE_KIND#AT_:
+    							value.at_.x := DWORD_TO_DINT(w2.%D0);
+    							value.at_.y := DWORD_TO_DINT(w2.%D1);
+    						SHAPE_KIND#PAIR:
+    							value.pair_0 := BYTE_TO_USINT(w2.%B0);
+    							value.pair_1 := LWORD_TO_ULINT(w3);
     					END_CASE;
     				END_IF;
     			END_FUNCTION
@@ -389,12 +397,6 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     			VAR_OUTPUT
     				failed : BOOL;
     				value : SHAPE;
-    				value_circle : REAL;
-    				value_square : UINT;
-    				value_at_x : DINT;
-    				value_at_y : DINT;
-    				value_pair_0 : USINT;
-    				value_pair_1 : ULINT;
     				error : UDINT;
     			END_VAR
     			VAR
@@ -404,30 +406,30 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     				w3 : LWORD;
     			END_VAR
     				MEASURE_RAW(w0 => w0, w1 => w1, w2 => w2, w3 => w3);
-    				value := 0;
-    				value_circle := 0.0;
-    				value_square := 0;
-    				value_at_x := 0;
-    				value_at_y := 0;
-    				value_pair_0 := 0;
-    				value_pair_1 := 0;
+    				value.kind := 0;
+    				value.circle := 0.0;
+    				value.square := 0;
+    				value.at_.x := 0;
+    				value.at_.y := 0;
+    				value.pair_0 := 0;
+    				value.pair_1 := 0;
     				error := 0;
     				failed := w0.%X0;
     				IF failed THEN
     					error := DWORD_TO_UDINT(w1.%D0);
     				ELSE
-    					value := BYTE_TO_USINT(w1.%B0);
-    					CASE value OF
-    						SHAPE#CIRCLE:
-    							value_circle := DWORD_TO_REAL(w2.%D0);
-    						SHAPE#SQUARE:
-    							value_square := WORD_TO_UINT(w2.%W0);
-    						SHAPE#AT_:
-    							value_at_x := DWORD_TO_DINT(w2.%D0);
-    							value_at_y := DWORD_TO_DINT(w2.%D1);
-    						SHAPE#PAIR:
-    							value_pair_0 := BYTE_TO_USINT(w2.%B0);
-    							value_pair_1 := LWORD_TO_ULINT(w3);
+    					value.kind := BYTE_TO_USINT(w1.%B0);
+    					CASE value.kind OF
+    						SHAPE_KIND#CIRCLE:
+    							value.circle := DWORD_TO_REAL(w2.%D0);
+    						SHAPE_KIND#SQUARE:
+    							value.square := WORD_TO_UINT(w2.%W0);
+    						SHAPE_KIND#AT_:
+    							value.at_.x := DWORD_TO_DINT(w2.%D0);
+    							value.at_.y := DWORD_TO_DINT(w2.%D1);
+    						SHAPE_KIND#PAIR:
+    							value.pair_0 := BYTE_TO_USINT(w2.%B0);
+    							value.pair_1 := LWORD_TO_ULINT(w3);
     					END_CASE;
     				END_IF;
     			END_FUNCTION
@@ -467,16 +469,35 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     NAMESPACE INTERNAL Wasi
     	NAMESPACE Example
     		NAMESPACE Types
-    			TYPE ERROR_CODE : USINT (
+    			/* The cases of `error-code`. */
+    			TYPE ERROR_CODE_KIND : USINT (
     				BUSY := 0,
     				LIMIT := 1,
     				OTHER := 2
     			); END_TYPE
 
-    			TYPE ADDRESS : USINT (
+    			TYPE ERROR_CODE : STRUCT
+    				kind : ERROR_CODE_KIND;
+    				limit : UDINT;
+    				other_is_some : BOOL;
+    				other : STRING[256];
+    			END_STRUCT END_TYPE
+
+    			/* The cases of `address`. */
+    			TYPE ADDRESS_KIND : USINT (
     				V4 := 0,
     				V6 := 1
     			); END_TYPE
+
+    			TYPE ADDRESS : STRUCT
+    				kind : ADDRESS_KIND;
+    				v4_0 : USINT;
+    				v4_1 : USINT;
+    				v4_2 : USINT;
+    				v4_3 : USINT;
+    				v6_0 : UINT;
+    				v6_1 : UINT;
+    			END_STRUCT END_TYPE
     		END_NAMESPACE
     	END_NAMESPACE
     END_NAMESPACE
@@ -511,14 +532,7 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     			VAR_OUTPUT
     				failed : BOOL;
     				value : Wasi.Example.Types.ADDRESS;
-    				value_v4_0 : USINT;
-    				value_v4_1 : USINT;
-    				value_v4_2 : USINT;
-    				value_v4_3 : USINT;
-    				value_v6_0 : UINT;
-    				value_v6_1 : UINT;
     				error : Wasi.Example.Types.ERROR_CODE;
-    				error_limit : UDINT;
     			END_VAR
     			VAR
     				w0 : LWORD;
@@ -526,33 +540,33 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     				w2 : LWORD;
     			END_VAR
     				RESOLVE_RAW(id := id, w0 => w0, w1 => w1, w2 => w2);
-    				value := 0;
-    				value_v4_0 := 0;
-    				value_v4_1 := 0;
-    				value_v4_2 := 0;
-    				value_v4_3 := 0;
-    				value_v6_0 := 0;
-    				value_v6_1 := 0;
-    				error := 0;
-    				error_limit := 0;
+    				value.kind := 0;
+    				value.v4_0 := 0;
+    				value.v4_1 := 0;
+    				value.v4_2 := 0;
+    				value.v4_3 := 0;
+    				value.v6_0 := 0;
+    				value.v6_1 := 0;
+    				error.kind := 0;
+    				error.limit := 0;
     				failed := w0.%X0;
     				IF failed THEN
-    					error := BYTE_TO_USINT(w0.%B4);
-    					CASE error OF
-    						Wasi.Example.Types.ERROR_CODE#LIMIT:
-    							error_limit := DWORD_TO_UDINT(w1.%D0);
+    					error.kind := BYTE_TO_USINT(w0.%B4);
+    					CASE error.kind OF
+    						Wasi.Example.Types.ERROR_CODE_KIND#LIMIT:
+    							error.limit := DWORD_TO_UDINT(w1.%D0);
     					END_CASE;
     				ELSE
-    					value := BYTE_TO_USINT(w0.%B4);
-    					CASE value OF
-    						Wasi.Example.Types.ADDRESS#V4:
-    							value_v4_0 := BYTE_TO_USINT(w0.%B6);
-    							value_v4_1 := BYTE_TO_USINT(w0.%B7);
-    							value_v4_2 := BYTE_TO_USINT(w1.%B0);
-    							value_v4_3 := BYTE_TO_USINT(w1.%B1);
-    						Wasi.Example.Types.ADDRESS#V6:
-    							value_v6_0 := WORD_TO_UINT(w0.%W3);
-    							value_v6_1 := WORD_TO_UINT(w1.%W0);
+    					value.kind := BYTE_TO_USINT(w0.%B4);
+    					CASE value.kind OF
+    						Wasi.Example.Types.ADDRESS_KIND#V4:
+    							value.v4_0 := BYTE_TO_USINT(w0.%B6);
+    							value.v4_1 := BYTE_TO_USINT(w0.%B7);
+    							value.v4_2 := BYTE_TO_USINT(w1.%B0);
+    							value.v4_3 := BYTE_TO_USINT(w1.%B1);
+    						Wasi.Example.Types.ADDRESS_KIND#V6:
+    							value.v6_0 := WORD_TO_UINT(w0.%W3);
+    							value.v6_1 := WORD_TO_UINT(w1.%W0);
     					END_CASE;
     				END_IF;
     			END_FUNCTION
@@ -578,12 +592,6 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     				DONE : BOOL;
     				is_some : BOOL;
     				value : Wasi.Example.Types.ADDRESS;
-    				value_v4_0 : USINT;
-    				value_v4_1 : USINT;
-    				value_v4_2 : USINT;
-    				value_v4_3 : USINT;
-    				value_v6_0 : UINT;
-    				value_v6_1 : UINT;
     			END_VAR
     			VAR
     				call : FIRST_RAW;
@@ -591,25 +599,25 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     				call(name := name);
     				DONE := call.DONE;
     				IF call.DONE THEN
-    					value := 0;
-    					value_v4_0 := 0;
-    					value_v4_1 := 0;
-    					value_v4_2 := 0;
-    					value_v4_3 := 0;
-    					value_v6_0 := 0;
-    					value_v6_1 := 0;
+    					value.kind := 0;
+    					value.v4_0 := 0;
+    					value.v4_1 := 0;
+    					value.v4_2 := 0;
+    					value.v4_3 := 0;
+    					value.v6_0 := 0;
+    					value.v6_1 := 0;
     					is_some := call.w0.%X0;
     					IF is_some THEN
-    						value := BYTE_TO_USINT(call.w0.%B2);
-    						CASE value OF
-    							Wasi.Example.Types.ADDRESS#V4:
-    								value_v4_0 := BYTE_TO_USINT(call.w0.%B4);
-    								value_v4_1 := BYTE_TO_USINT(call.w0.%B5);
-    								value_v4_2 := BYTE_TO_USINT(call.w0.%B6);
-    								value_v4_3 := BYTE_TO_USINT(call.w0.%B7);
-    							Wasi.Example.Types.ADDRESS#V6:
-    								value_v6_0 := WORD_TO_UINT(call.w0.%W2);
-    								value_v6_1 := WORD_TO_UINT(call.w0.%W3);
+    						value.kind := BYTE_TO_USINT(call.w0.%B2);
+    						CASE value.kind OF
+    							Wasi.Example.Types.ADDRESS_KIND#V4:
+    								value.v4_0 := BYTE_TO_USINT(call.w0.%B4);
+    								value.v4_1 := BYTE_TO_USINT(call.w0.%B5);
+    								value.v4_2 := BYTE_TO_USINT(call.w0.%B6);
+    								value.v4_3 := BYTE_TO_USINT(call.w0.%B7);
+    							Wasi.Example.Types.ADDRESS_KIND#V6:
+    								value.v6_0 := WORD_TO_UINT(call.w0.%W2);
+    								value.v6_1 := WORD_TO_UINT(call.w0.%W3);
     						END_CASE;
     					END_IF;
     				END_IF;
@@ -700,16 +708,32 @@ fn what_is_not_read_out_of_words(mut with_db: RootDatabase) {
     		NAMESPACE Unread
     			USING Std.Convert;
 
-    			TYPE FOUND : USINT (
+    			TYPE WRAPPED : STRUCT
+    				inner_0 : UDINT;
+    			END_STRUCT END_TYPE
+
+    			/* The cases of `found`. */
+    			TYPE FOUND_KIND : USINT (
     				NOTHING := 0,
     				BYTES := 1,
     				SIZE := 2
     			); END_TYPE
 
-    			TYPE CHOICE : USINT (
+    			TYPE FOUND : STRUCT
+    				kind : FOUND_KIND;
+    				size : ULINT;
+    			END_STRUCT END_TYPE
+
+    			/* The cases of `choice`. */
+    			TYPE CHOICE_KIND : USINT (
     				VALUE := 0,
     				NONE := 1
     			); END_TYPE
+
+    			TYPE CHOICE : STRUCT
+    				kind : CHOICE_KIND;
+    				value : UDINT;
+    			END_STRUCT END_TYPE
 
     			/* `find` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `FIND` reads. */
@@ -721,38 +745,62 @@ fn what_is_not_read_out_of_words(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			FUNCTION FIND
-    			VAR_OUTPUT
-    				value : FOUND;
-    				size : ULINT;
-    			END_VAR
+    			FUNCTION FIND : FOUND
     			VAR
     				w0 : LWORD;
     				w1 : LWORD;
     			END_VAR
     				FIND_RAW(w0 => w0, w1 => w1);
-    				size := 0;
-    				value := BYTE_TO_USINT(w0.%B0);
-    				CASE value OF
-    					FOUND#SIZE:
-    						size := LWORD_TO_ULINT(w1);
+    				FIND.size := 0;
+    				FIND.kind := BYTE_TO_USINT(w0.%B0);
+    				CASE FIND.kind OF
+    					FOUND_KIND#SIZE:
+    						FIND.size := LWORD_TO_ULINT(w1);
     				END_CASE;
     			END_FUNCTION
 
+    			/* `choose` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `CHOOSE` reads. */
+    			{extern 'wasi:example/unread@0.3.0' 'choose'}
+    			FUNCTION PRIVATE CHOOSE_RAW
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION CHOOSE : CHOICE
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    				CHOOSE_RAW(w0 => w0, w1 => w1);
+    				CHOOSE.value := 0;
+    				CHOOSE.kind := BYTE_TO_USINT(w0.%B0);
+    				CASE CHOOSE.kind OF
+    					CHOICE_KIND#VALUE:
+    						CHOOSE.value := DWORD_TO_UDINT(w0.%D1);
+    				END_CASE;
+    			END_FUNCTION
+
+    			/* `wrap` as the host gives it: the one value of its result, which `WRAP`
+    			   puts in its member. */
     			{extern 'wasi:example/unread@0.3.0' 'wrap'}
-    			FUNCTION WRAP
+    			FUNCTION PRIVATE WRAP_RAW
     			VAR_OUTPUT
     				inner_0 : UDINT;
     			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION WRAP : WRAPPED
+    				WRAP_RAW(inner_0 => WRAP.inner_0);
     			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
        - what `bytes` of `found` holds: a list, which an import cannot give
-         back yet.
-       - `choose`: two of its variables would be `value`, which ST takes for
-         one. */
+         back yet. */
     ");
 }
 
@@ -777,10 +825,10 @@ fn a_variant_of_more_than_256_cases_has_its_case_in_a_uint(mut with_db: RootData
     );
     let text = checked(&mut with_db, &wit);
     for line in [
-        "TYPE BIG : UINT (",
-        "value := WORD_TO_UINT(w0.%W0);",
-        "BIG#LAST:",
-        "last := DWORD_TO_UDINT(w0.%D1);",
+        "TYPE BIG_KIND : UINT (",
+        "PICK.kind := WORD_TO_UINT(w0.%W0);",
+        "BIG_KIND#LAST:",
+        "PICK.last := DWORD_TO_UDINT(w0.%D1);",
     ] {
         assert!(text.contains(line), "`{line}` in:\n{text}");
     }
@@ -817,12 +865,25 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
     		NAMESPACE Passing
     			USING Std.Convert;
 
-    			TYPE TARGET : USINT (
+    			TYPE POINT : STRUCT
+    				x : DINT;
+    				y : DINT;
+    			END_STRUCT END_TYPE
+
+    			/* The cases of `target`. */
+    			TYPE TARGET_KIND : USINT (
     				NOWHERE := 0,
     				AT_ := 1,
     				LEVEL := 2,
     				FAR := 3
     			); END_TYPE
+
+    			TYPE TARGET : STRUCT
+    				kind : TARGET_KIND;
+    				at_ : POINT;
+    				level : REAL;
+    				far : ULINT;
+    			END_STRUCT END_TYPE
 
     			/* `aim` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `AIM` packs. */
@@ -838,10 +899,6 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
     			FUNCTION AIM
     			VAR_INPUT
     				t : TARGET;
-    				t_at_x : DINT := 0;
-    				t_at_y : DINT := 0;
-    				t_level : REAL := 0.0;
-    				t_far : ULINT := 0;
     			END_VAR
     			VAR
     				a0 : DWORD;
@@ -851,15 +908,15 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
     				a0 := 0;
     				a1 := 0;
     				a2 := 0;
-    				a0.%B0 := USINT_TO_BYTE(t);
-    				CASE t OF
-    					TARGET#AT_:
-    						a1.%D0 := DINT_TO_DWORD(t_at_x);
-    						a2 := DINT_TO_DWORD(t_at_y);
-    					TARGET#LEVEL:
-    						a1.%D0 := REAL_TO_DWORD(t_level);
-    					TARGET#FAR:
-    						a1 := ULINT_TO_LWORD(t_far);
+    				a0.%B0 := USINT_TO_BYTE(t.kind);
+    				CASE t.kind OF
+    					TARGET_KIND#AT_:
+    						a1.%D0 := DINT_TO_DWORD(t.at_.x);
+    						a2 := DINT_TO_DWORD(t.at_.y);
+    					TARGET_KIND#LEVEL:
+    						a1.%D0 := REAL_TO_DWORD(t.level);
+    					TARGET_KIND#FAR:
+    						a1 := ULINT_TO_LWORD(t.far);
     				END_CASE;
     				AIM_RAW(a0 := a0, a1 := a1, a2 := a2);
     			END_FUNCTION
@@ -882,10 +939,6 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
     			FUNCTION_BLOCK AIM_LATER
     			VAR_INPUT
     				t : TARGET;
-    				t_at_x : DINT := 0;
-    				t_at_y : DINT := 0;
-    				t_level : REAL := 0.0;
-    				t_far : ULINT := 0;
     			END_VAR
     			VAR_OUTPUT
     				DONE : BOOL;
@@ -900,15 +953,15 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
     				a0 := 0;
     				a1 := 0;
     				a2 := 0;
-    				a0.%B0 := USINT_TO_BYTE(t);
-    				CASE t OF
-    					TARGET#AT_:
-    						a1.%D0 := DINT_TO_DWORD(t_at_x);
-    						a2 := DINT_TO_DWORD(t_at_y);
-    					TARGET#LEVEL:
-    						a1.%D0 := REAL_TO_DWORD(t_level);
-    					TARGET#FAR:
-    						a1 := ULINT_TO_LWORD(t_far);
+    				a0.%B0 := USINT_TO_BYTE(t.kind);
+    				CASE t.kind OF
+    					TARGET_KIND#AT_:
+    						a1.%D0 := DINT_TO_DWORD(t.at_.x);
+    						a2 := DINT_TO_DWORD(t.at_.y);
+    					TARGET_KIND#LEVEL:
+    						a1.%D0 := REAL_TO_DWORD(t.level);
+    					TARGET_KIND#FAR:
+    						a1 := ULINT_TO_LWORD(t.far);
     				END_CASE;
     				call(a0 := a0, a1 := a1, a2 := a2);
     				DONE := call.DONE;
@@ -936,10 +989,6 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
     			VAR_INPUT
     				id : USINT;
     				t : TARGET;
-    				t_at_x : DINT := 0;
-    				t_at_y : DINT := 0;
-    				t_level : REAL := 0.0;
-    				t_far : ULINT := 0;
     				name : STRING[4096];
     			END_VAR
     			VAR_OUTPUT
@@ -952,15 +1001,15 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
     			END_VAR
     				a0 := 0;
     				a1 := 0;
-    				a0.%B0 := USINT_TO_BYTE(t);
-    				CASE t OF
-    					TARGET#AT_:
-    						a1.%D0 := DINT_TO_DWORD(t_at_x);
-    						a1.%D1 := DINT_TO_DWORD(t_at_y);
-    					TARGET#LEVEL:
-    						a1.%D0 := REAL_TO_DWORD(t_level);
-    					TARGET#FAR:
-    						a1 := ULINT_TO_LWORD(t_far);
+    				a0.%B0 := USINT_TO_BYTE(t.kind);
+    				CASE t.kind OF
+    					TARGET_KIND#AT_:
+    						a1.%D0 := DINT_TO_DWORD(t.at_.x);
+    						a1.%D1 := DINT_TO_DWORD(t.at_.y);
+    					TARGET_KIND#LEVEL:
+    						a1.%D0 := REAL_TO_DWORD(t.level);
+    					TARGET_KIND#FAR:
+    						a1 := ULINT_TO_LWORD(t.far);
     				END_CASE;
     				call(id := id, a0 := a0, a1 := a1, name := name);
     				DONE := call.DONE;
@@ -985,15 +1034,7 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
     			FUNCTION_BLOCK AIM_BOTH
     			VAR_INPUT
     				first : TARGET;
-    				first_at_x : DINT := 0;
-    				first_at_y : DINT := 0;
-    				first_level : REAL := 0.0;
-    				first_far : ULINT := 0;
     				second : TARGET;
-    				second_at_x : DINT := 0;
-    				second_at_y : DINT := 0;
-    				second_level : REAL := 0.0;
-    				second_far : ULINT := 0;
     			END_VAR
     			VAR_OUTPUT
     				DONE : BOOL;
@@ -1011,25 +1052,25 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
     				a2 := 0;
     				a3 := 0;
     				a4 := 0;
-    				a0.%B0 := USINT_TO_BYTE(first);
-    				CASE first OF
-    					TARGET#AT_:
-    						a1.%D0 := DINT_TO_DWORD(first_at_x);
-    						a1.%D1 := DINT_TO_DWORD(first_at_y);
-    					TARGET#LEVEL:
-    						a1.%D0 := REAL_TO_DWORD(first_level);
-    					TARGET#FAR:
-    						a1 := ULINT_TO_LWORD(first_far);
+    				a0.%B0 := USINT_TO_BYTE(first.kind);
+    				CASE first.kind OF
+    					TARGET_KIND#AT_:
+    						a1.%D0 := DINT_TO_DWORD(first.at_.x);
+    						a1.%D1 := DINT_TO_DWORD(first.at_.y);
+    					TARGET_KIND#LEVEL:
+    						a1.%D0 := REAL_TO_DWORD(first.level);
+    					TARGET_KIND#FAR:
+    						a1 := ULINT_TO_LWORD(first.far);
     				END_CASE;
-    				a2.%B0 := USINT_TO_BYTE(second);
-    				CASE second OF
-    					TARGET#AT_:
-    						a3.%D0 := DINT_TO_DWORD(second_at_x);
-    						a3.%D1 := DINT_TO_DWORD(second_at_y);
-    					TARGET#LEVEL:
-    						a3.%D0 := REAL_TO_DWORD(second_level);
-    					TARGET#FAR:
-    						a3 := ULINT_TO_LWORD(second_far);
+    				a2.%B0 := USINT_TO_BYTE(second.kind);
+    				CASE second.kind OF
+    					TARGET_KIND#AT_:
+    						a3.%D0 := DINT_TO_DWORD(second.at_.x);
+    						a3.%D1 := DINT_TO_DWORD(second.at_.y);
+    					TARGET_KIND#LEVEL:
+    						a3.%D0 := REAL_TO_DWORD(second.level);
+    					TARGET_KIND#FAR:
+    						a3 := ULINT_TO_LWORD(second.far);
     				END_CASE;
     				call(a0 := a0, a1 := a1, a2 := a2, a3 := a3, a4 := a4);
     				DONE := call.DONE;
@@ -1224,109 +1265,107 @@ const READ_BACK: &str = r#"
        values its cases hold not zero. */
     FUNCTION picked : BOOL
     VAR_INPUT which : UDINT; shape : USINT; nonzero : DINT; END_VAR
-    VAR_OUTPUT
-        circle : REAL; square : UINT; x : DINT; y : DINT; first : SINT; second : ULINT;
-        tinted : Wasi.Example.Shapes.COLOR; marked : Wasi.Example.Shapes.MARKS;
-        wide : LREAL; signed : INT; long : LINT;
-    END_VAR
-    VAR value : Wasi.Example.Shapes.SHAPE; count : DINT; END_VAR
-        Wasi.Example.Shapes.PICK(which := which, value => value, circle => circle,
-            square => square, at_x => x, at_y => y, pair_0 => first, pair_1 => second,
-            tinted => tinted, marked => marked, wide => wide, signed => signed, long => long);
+    VAR_OUTPUT value : Wasi.Example.Shapes.SHAPE; END_VAR
+    VAR count : DINT; END_VAR
+        value := Wasi.Example.Shapes.PICK(which := which);
         count := 0;
-        IF circle <> 0.0 THEN count := count + 1; END_IF;
-        IF square <> 0 THEN count := count + 1; END_IF;
-        IF x <> 0 THEN count := count + 1; END_IF;
-        IF y <> 0 THEN count := count + 1; END_IF;
-        IF first <> 0 THEN count := count + 1; END_IF;
-        IF second <> 0 THEN count := count + 1; END_IF;
-        IF tinted <> 0 THEN count := count + 1; END_IF;
-        IF marked <> 0 THEN count := count + 1; END_IF;
-        IF wide <> 0.0 THEN count := count + 1; END_IF;
-        IF signed <> 0 THEN count := count + 1; END_IF;
-        IF long <> 0 THEN count := count + 1; END_IF;
-        picked := value = shape AND count = nonzero;
+        IF value.circle <> 0.0 THEN count := count + 1; END_IF;
+        IF value.square <> 0 THEN count := count + 1; END_IF;
+        IF value.at_.x <> 0 THEN count := count + 1; END_IF;
+        IF value.at_.y <> 0 THEN count := count + 1; END_IF;
+        IF value.pair_0 <> 0 THEN count := count + 1; END_IF;
+        IF value.pair_1 <> 0 THEN count := count + 1; END_IF;
+        IF value.tinted <> 0 THEN count := count + 1; END_IF;
+        IF value.marked <> 0 THEN count := count + 1; END_IF;
+        IF value.wide <> 0.0 THEN count := count + 1; END_IF;
+        IF value.signed <> 0 THEN count := count + 1; END_IF;
+        IF value.long <> 0 THEN count := count + 1; END_IF;
+        picked := value.kind = shape AND count = nonzero;
     END_FUNCTION
 
     FUNCTION check : DINT
     VAR
-        circle : REAL; square : UINT; x : DINT; y : DINT; first : SINT; second : ULINT;
-        tinted : Wasi.Example.Shapes.COLOR; marked : Wasi.Example.Shapes.MARKS;
-        wide : LREAL; signed : INT; long : LINT;
-        ok, some, failed, flag : BOOL;
+        ok, some, failed : BOOL;
         shape : Wasi.Example.Shapes.SHAPE;
         error : Wasi.Example.Shapes.ERROR_CODE;
-        count : ULINT; level : USINT; a : USINT; tail : UDINT;
+        inner : Wasi.Example.Shapes.OUTER;
+        count : ULINT; level : USINT;
     END_VAR
         check := 0;
         // `at`, then `circle`: what `at` held is gone.
-        ok := picked(which := 3, shape := 3, nonzero := 2, x => x, y => y);
-        IF NOT ok OR x <> -1 OR y <> 2 THEN check := -1; RETURN; END_IF;
-        ok := picked(which := 1, shape := 1, nonzero := 1, circle => circle);
-        IF NOT ok OR circle <> 1.5 THEN check := -2; RETURN; END_IF;
-        ok := picked(which := 4, shape := 4, nonzero := 2, first => first, second => second);
-        IF NOT ok OR first <> -5 OR second <> ULINT#16#0102030405060708 THEN check := -3; RETURN; END_IF;
-        ok := picked(which := 2, shape := 2, nonzero := 1, square => square);
-        IF NOT ok OR square <> 65535 THEN check := -4; RETURN; END_IF;
-        ok := picked(which := 0, shape := 0, nonzero := 0);
+        ok := picked(which := 3, shape := 3, nonzero := 2, value => shape);
+        IF NOT ok OR shape.at_.x <> -1 OR shape.at_.y <> 2 THEN check := -1; RETURN; END_IF;
+        ok := picked(which := 1, shape := 1, nonzero := 1, value => shape);
+        IF NOT ok OR shape.circle <> 1.5 THEN check := -2; RETURN; END_IF;
+        ok := picked(which := 4, shape := 4, nonzero := 2, value => shape);
+        IF NOT ok OR shape.pair_0 <> -5 OR shape.pair_1 <> ULINT#16#0102030405060708 THEN
+            check := -3; RETURN;
+        END_IF;
+        ok := picked(which := 2, shape := 2, nonzero := 1, value => shape);
+        IF NOT ok OR shape.square <> 65535 THEN check := -4; RETURN; END_IF;
+        ok := picked(which := 0, shape := 0, nonzero := 0, value => shape);
         IF NOT ok THEN check := -5; RETURN; END_IF;
-        ok := picked(which := 5, shape := 5, nonzero := 1, tinted => tinted);
-        IF NOT ok OR tinted <> 2 THEN check := -6; RETURN; END_IF;
-        ok := picked(which := 6, shape := 6, nonzero := 1, marked => marked);
-        IF NOT ok OR marked <> 16#05 THEN check := -7; RETURN; END_IF;
-        ok := picked(which := 7, shape := 7, nonzero := 1, wide => wide);
-        IF NOT ok OR wide <> -2.25 THEN check := -8; RETURN; END_IF;
-        ok := picked(which := 8, shape := 8, nonzero := 1, signed => signed);
-        IF NOT ok OR signed <> -300 THEN check := -9; RETURN; END_IF;
-        ok := picked(which := 9, shape := 9, nonzero := 1, long => long);
-        IF NOT ok OR long <> LINT#-1099511627776 THEN check := -10; RETURN; END_IF;
+        ok := picked(which := 5, shape := 5, nonzero := 1, value => shape);
+        IF NOT ok OR shape.tinted <> 2 THEN check := -6; RETURN; END_IF;
+        ok := picked(which := 6, shape := 6, nonzero := 1, value => shape);
+        IF NOT ok OR shape.marked <> 16#05 THEN check := -7; RETURN; END_IF;
+        ok := picked(which := 7, shape := 7, nonzero := 1, value => shape);
+        IF NOT ok OR shape.wide <> -2.25 THEN check := -8; RETURN; END_IF;
+        ok := picked(which := 8, shape := 8, nonzero := 1, value => shape);
+        IF NOT ok OR shape.signed <> -300 THEN check := -9; RETURN; END_IF;
+        ok := picked(which := 9, shape := 9, nonzero := 1, value => shape);
+        IF NOT ok OR shape.long <> LINT#-1099511627776 THEN check := -10; RETURN; END_IF;
         // A case whose value is a string comes back as its name alone.
-        ok := picked(which := 10, shape := 10, nonzero := 0);
+        ok := picked(which := 10, shape := 10, nonzero := 0, value => shape);
         IF NOT ok THEN check := -11; RETURN; END_IF;
 
-        Wasi.Example.Shapes.FIND(which := 1, is_some => some, value => shape,
-            value_circle => circle);
-        IF NOT some OR shape <> 1 OR circle <> 2.5 THEN check := -12; RETURN; END_IF;
-        Wasi.Example.Shapes.FIND(which := 2, is_some => some, value => shape,
-            value_circle => circle, value_at_x => x, value_at_y => y);
-        IF NOT some OR shape <> 3 OR x <> 7 OR y <> -8 OR circle <> 0.0 THEN
+        Wasi.Example.Shapes.FIND(which := 1, is_some => some, value => shape);
+        IF NOT some OR shape.kind <> 1 OR shape.circle <> 2.5 THEN check := -12; RETURN; END_IF;
+        Wasi.Example.Shapes.FIND(which := 2, is_some => some, value => shape);
+        IF NOT some OR shape.kind <> 3 OR shape.at_.x <> 7 OR shape.at_.y <> -8
+            OR shape.circle <> 0.0
+        THEN
             check := -13; RETURN;
         END_IF;
-        Wasi.Example.Shapes.FIND(which := 0, is_some => some, value => shape,
-            value_at_x => x, value_at_y => y);
-        IF some OR shape <> 0 OR x <> 0 OR y <> 0 THEN check := -14; RETURN; END_IF;
+        Wasi.Example.Shapes.FIND(which := 0, is_some => some, value => shape);
+        IF some OR shape.kind <> 0 OR shape.at_.x <> 0 OR shape.at_.y <> 0 THEN
+            check := -14; RETURN;
+        END_IF;
 
-        Wasi.Example.Shapes.MEASURE(which := 0, failed => failed, value => shape,
-            value_square => square, error => error);
-        IF failed OR shape <> 2 OR square <> 9 OR error <> 0 THEN check := -15; RETURN; END_IF;
-        Wasi.Example.Shapes.MEASURE(which := 1, failed => failed, value => shape,
-            value_square => square, error => error);
-        IF NOT failed OR error <> 1 OR shape <> 0 OR square <> 0 THEN
+        Wasi.Example.Shapes.MEASURE(which := 0, failed => failed, value => shape, error => error);
+        IF failed OR shape.kind <> 2 OR shape.square <> 9 OR error.kind <> 0 THEN
+            check := -15; RETURN;
+        END_IF;
+        Wasi.Example.Shapes.MEASURE(which := 1, failed => failed, value => shape, error => error);
+        IF NOT failed OR error.kind <> 1 OR shape.kind <> 0 OR shape.square <> 0 THEN
             check := -16; RETURN;
         END_IF;
         Wasi.Example.Shapes.MEASURE(which := 2, failed => failed, error => error);
-        IF NOT failed OR error <> 2 THEN check := -17; RETURN; END_IF;
+        IF NOT failed OR error.kind <> 2 THEN check := -17; RETURN; END_IF;
 
         Wasi.Example.Shapes.COUNT(which := 0, failed => failed, value => count, error => error);
-        IF failed OR count <> ULINT#18446744073709551614 OR error <> 0 THEN
+        IF failed OR count <> ULINT#18446744073709551614 OR error.kind <> 0 THEN
             check := -18; RETURN;
         END_IF;
         Wasi.Example.Shapes.COUNT(which := 1, failed => failed, value => count, error => error);
-        IF NOT failed OR error <> 1 OR count <> 0 THEN check := -19; RETURN; END_IF;
+        IF NOT failed OR error.kind <> 1 OR count <> 0 THEN check := -19; RETURN; END_IF;
 
         Wasi.Example.Shapes.LEVEL(which := 0, failed => failed, value => level, error => error);
-        IF failed OR level <> 200 OR error <> 0 THEN check := -20; RETURN; END_IF;
+        IF failed OR level <> 200 OR error.kind <> 0 THEN check := -20; RETURN; END_IF;
         Wasi.Example.Shapes.LEVEL(which := 1, failed => failed, value => level, error => error);
-        IF NOT failed OR error <> 1 OR level <> 0 THEN check := -21; RETURN; END_IF;
+        IF NOT failed OR error.kind <> 1 OR level <> 0 THEN check := -21; RETURN; END_IF;
 
-        Wasi.Example.Shapes.INNER(which := 0, a => a, at_is_some => some, at_x => x, at_y => y,
-            tail_0 => flag, tail_1 => tail);
-        IF a <> 9 OR NOT some OR x <> 3 OR y <> -4 OR NOT flag OR tail <> 77 THEN
+        // A record holding an option and a tuple, in members of its STRUCT.
+        inner := Wasi.Example.Shapes.INNER(which := 0);
+        IF inner.a <> 9 OR NOT inner.at_is_some OR inner.at_.x <> 3 OR inner.at_.y <> -4
+            OR NOT inner.tail_0 OR inner.tail_1 <> 77
+        THEN
             check := -22; RETURN;
         END_IF;
-        Wasi.Example.Shapes.INNER(which := 1, a => a, at_is_some => some, at_x => x, at_y => y,
-            tail_0 => flag, tail_1 => tail);
-        IF a <> 1 OR some OR x <> 0 OR y <> 0 OR flag OR tail <> UDINT#4000000000 THEN
+        inner := Wasi.Example.Shapes.INNER(which := 1);
+        IF inner.a <> 1 OR inner.at_is_some OR inner.at_.x <> 0 OR inner.at_.y <> 0
+            OR inner.tail_0 OR inner.tail_1 <> UDINT#4000000000
+        THEN
             check := -23; RETURN;
         END_IF;
     END_FUNCTION
@@ -1347,7 +1386,7 @@ const READ_BACK: &str = r#"
         0:
             wait(which := 0);
             IF wait.DONE THEN
-                IF wait.failed OR wait.value_x <> 5 OR wait.value_y <> -6 OR wait.error <> 0 THEN
+                IF wait.failed OR wait.value.x <> 5 OR wait.value.y <> -6 OR wait.error.kind <> 0 THEN
                     output := -30;
                     step := 9;
                 ELSE
@@ -1358,7 +1397,9 @@ const READ_BACK: &str = r#"
             // An error after a value: the value is gone.
             wait(which := 1);
             IF wait.DONE THEN
-                IF NOT wait.failed OR wait.error <> 1 OR wait.value_x <> 0 OR wait.value_y <> 0 THEN
+                IF NOT wait.failed OR wait.error.kind <> 1 OR wait.value.x <> 0
+                    OR wait.value.y <> 0
+                THEN
                     output := -31;
                 ELSE
                     output := 1;
@@ -1497,76 +1538,75 @@ fn echoes_host(linker: &mut Linker<Host>) {
 /// passed: 1 when every value came back as it went and nothing else did,
 /// and otherwise the number of the check that failed, negative.
 const ECHOED: &str = r#"
+    /* A figure of the case `kind`, every value of it at zero. */
+    FUNCTION figure : Wasi.Example.Echoes.FIGURE
+    VAR_INPUT kind : USINT; END_VAR
+        figure.kind := kind;
+    END_FUNCTION
+
     /* Whether a figure comes back as it was passed: its case, what the case
        holds, and zero for what the other cases would hold. */
     FUNCTION same : BOOL
-    VAR_INPUT
-        f : Wasi.Example.Echoes.FIGURE;
-        circle : REAL := 0.0; square : UINT := 0; x : DINT := 0; y : DINT := 0;
-        first : SINT := 0; second : ULINT := 0;
-        tinted : Wasi.Example.Echoes.COLOR := 0; marked : Wasi.Example.Echoes.MARKS := 0;
-        wide : LREAL := 0.0; signed : INT := 0; long : LINT := 0; flagged : BOOL := FALSE;
-    END_VAR
-    VAR
-        got : Wasi.Example.Echoes.FIGURE;
-        got_circle : REAL; got_square : UINT; got_x : DINT; got_y : DINT;
-        got_first : SINT; got_second : ULINT;
-        got_tinted : Wasi.Example.Echoes.COLOR; got_marked : Wasi.Example.Echoes.MARKS;
-        got_wide : LREAL; got_signed : INT; got_long : LINT; got_flagged : BOOL;
-    END_VAR
-        Wasi.Example.Echoes.ECHO(f := f, f_circle := circle, f_square := square, f_at_x := x,
-            f_at_y := y, f_pair_0 := first, f_pair_1 := second, f_tinted := tinted,
-            f_marked := marked, f_wide := wide, f_signed := signed, f_long := long,
-            f_flagged := flagged,
-            value => got, circle => got_circle, square => got_square, at_x => got_x,
-            at_y => got_y, pair_0 => got_first, pair_1 => got_second, tinted => got_tinted,
-            marked => got_marked, wide => got_wide, signed => got_signed, long => got_long,
-            flagged => got_flagged);
-        same := got = f AND got_circle = circle AND got_square = square AND got_x = x
-            AND got_y = y AND got_first = first AND got_second = second
-            AND got_tinted = tinted AND got_marked = marked AND got_wide = wide
-            AND got_signed = signed AND got_long = long AND got_flagged = flagged;
+    VAR_INPUT f : Wasi.Example.Echoes.FIGURE; END_VAR
+    VAR got : Wasi.Example.Echoes.FIGURE; END_VAR
+        got := Wasi.Example.Echoes.ECHO(f := f);
+        same := got.kind = f.kind AND got.circle = f.circle AND got.square = f.square
+            AND got.at_.x = f.at_.x AND got.at_.y = f.at_.y AND got.pair_0 = f.pair_0
+            AND got.pair_1 = f.pair_1 AND got.tinted = f.tinted AND got.marked = f.marked
+            AND got.wide = f.wide AND got.signed = f.signed AND got.long = f.long
+            AND got.flagged = f.flagged;
     END_FUNCTION
 
     FUNCTION check : DINT
     VAR
         some, failed : BOOL;
-        x, y, end_x, end_y : DINT;
+        f, got : Wasi.Example.Echoes.FIGURE;
+        point : Wasi.Example.Echoes.POINT;
+        segment : Wasi.Example.Echoes.SEGMENT;
         value : UDINT;
         error : Wasi.Example.Echoes.COLOR;
-        width : USINT;
-        got : Wasi.Example.Echoes.FIGURE;
         circle : REAL;
         near, far : LREAL;
     END_VAR
         check := 0;
-        IF NOT same(f := 0) THEN check := -1; RETURN; END_IF;
-        IF NOT same(f := 1, circle := 1.5) THEN check := -2; RETURN; END_IF;
-        IF NOT same(f := 2, square := 65535) THEN check := -3; RETURN; END_IF;
-        IF NOT same(f := 3, x := -1, y := 2) THEN check := -4; RETURN; END_IF;
-        IF NOT same(f := 4, first := -5, second := ULINT#16#0102030405060708) THEN
-            check := -5; RETURN;
-        END_IF;
-        IF NOT same(f := 5, tinted := 2) THEN check := -6; RETURN; END_IF;
-        IF NOT same(f := 6, marked := 16#05) THEN check := -7; RETURN; END_IF;
-        IF NOT same(f := 7, wide := -2.25) THEN check := -8; RETURN; END_IF;
-        IF NOT same(f := 8, signed := -300) THEN check := -9; RETURN; END_IF;
-        IF NOT same(f := 9, long := LINT#-1099511627776) THEN check := -10; RETURN; END_IF;
+        IF NOT same(f := figure(0)) THEN check := -1; RETURN; END_IF;
+        f := figure(1); f.circle := 1.5;
+        IF NOT same(f := f) THEN check := -2; RETURN; END_IF;
+        f := figure(2); f.square := 65535;
+        IF NOT same(f := f) THEN check := -3; RETURN; END_IF;
+        f := figure(3); f.at_.x := -1; f.at_.y := 2;
+        IF NOT same(f := f) THEN check := -4; RETURN; END_IF;
+        f := figure(4); f.pair_0 := -5; f.pair_1 := ULINT#16#0102030405060708;
+        IF NOT same(f := f) THEN check := -5; RETURN; END_IF;
+        f := figure(5); f.tinted := 2;
+        IF NOT same(f := f) THEN check := -6; RETURN; END_IF;
+        f := figure(6); f.marked := 16#05;
+        IF NOT same(f := f) THEN check := -7; RETURN; END_IF;
+        f := figure(7); f.wide := -2.25;
+        IF NOT same(f := f) THEN check := -8; RETURN; END_IF;
+        f := figure(8); f.signed := -300;
+        IF NOT same(f := f) THEN check := -9; RETURN; END_IF;
+        f := figure(9); f.long := LINT#-1099511627776;
+        IF NOT same(f := f) THEN check := -10; RETURN; END_IF;
         // A flag where the case before held a number: FALSE is every bit of
         // it at zero, which the words start from at each call.
-        IF NOT same(f := 10, flagged := FALSE) THEN check := -17; RETURN; END_IF;
-        IF NOT same(f := 10, flagged := TRUE) THEN check := -18; RETURN; END_IF;
+        f := figure(10); f.flagged := FALSE;
+        IF NOT same(f := f) THEN check := -17; RETURN; END_IF;
+        f := figure(10); f.flagged := TRUE;
+        IF NOT same(f := f) THEN check := -18; RETURN; END_IF;
         // What another case would hold is not passed with this one.
-        Wasi.Example.Echoes.ECHO(f := 1, f_circle := 2.5, f_at_x := 7, f_at_y := 8,
-            f_long := 9, value => got, circle => circle, at_x => x, at_y => y);
-        IF got <> 1 OR circle <> 2.5 OR x <> 0 OR y <> 0 THEN check := -11; RETURN; END_IF;
+        f := figure(1); f.circle := 2.5; f.at_.x := 7; f.at_.y := 8; f.long := 9;
+        got := Wasi.Example.Echoes.ECHO(f := f);
+        IF got.kind <> 1 OR got.circle <> 2.5 OR got.at_.x <> 0 OR got.at_.y <> 0 OR got.long <> 0
+        THEN
+            check := -11; RETURN;
+        END_IF;
 
-        Wasi.Example.Echoes.MAYBE(p_is_some := TRUE, p_x := 7, p_y := -8,
-            is_some => some, value_x => x, value_y => y);
-        IF NOT some OR x <> 7 OR y <> -8 THEN check := -12; RETURN; END_IF;
-        Wasi.Example.Echoes.MAYBE(p_is_some := FALSE, p_x := 7, p_y := -8,
-            is_some => some, value_x => x, value_y => y);
-        IF some OR x <> 0 OR y <> 0 THEN check := -13; RETURN; END_IF;
+        point.x := 7; point.y := -8;
+        Wasi.Example.Echoes.MAYBE(p_is_some := TRUE, p_ := point, is_some => some, value => point);
+        IF NOT some OR point.x <> 7 OR point.y <> -8 THEN check := -12; RETURN; END_IF;
+        Wasi.Example.Echoes.MAYBE(p_is_some := FALSE, p_ := point, is_some => some, value => point);
+        IF some OR point.x <> 0 OR point.y <> 0 THEN check := -13; RETURN; END_IF;
 
         Wasi.Example.Echoes.OUTCOME(r_failed := FALSE, r_value := 4000000000,
             failed => failed, value => value, error => error);
@@ -1575,10 +1615,13 @@ const ECHOED: &str = r#"
             failed => failed, value => value, error => error);
         IF NOT failed OR value <> 0 OR error <> 2 THEN check := -15; RETURN; END_IF;
 
-        Wasi.Example.Echoes.LINE(s_start_x := 1, s_start_y := -2, s_end_x := 3, s_end_y := -4,
-            s_width := 200, start_x => x, start_y => y, end_x => end_x, end_y => end_y,
-            width => width);
-        IF x <> 1 OR y <> -2 OR end_x <> 3 OR end_y <> -4 OR width <> 200 THEN
+        // A record of records, passed field by field and given back whole.
+        segment.start.x := 1; segment.start.y := -2; segment.end.x := 3; segment.end.y := -4;
+        segment.width := 200;
+        segment := Wasi.Example.Echoes.LINE(s_ := segment);
+        IF segment.start.x <> 1 OR segment.start.y <> -2 OR segment.end.x <> 3
+            OR segment.end.y <> -4 OR segment.width <> 200
+        THEN
             check := -16; RETURN;
         END_IF;
 
@@ -1601,6 +1644,8 @@ const ECHOED: &str = r#"
     VAR
         checked : BOOL;
         step : INT;
+        first, second : Wasi.Example.Echoes.FIGURE;
+        segment : Wasi.Example.Echoes.SEGMENT;
         later : Wasi.Example.Echoes.ECHO_LATER;
         two : Wasi.Example.Echoes.ECHO_TWO;
         line : Wasi.Example.Echoes.LINE_LATER;
@@ -1613,10 +1658,11 @@ const ECHOED: &str = r#"
         END_IF;
         CASE step OF
         0:
-            later(f := 4, f_pair_0 := -5, f_pair_1 := ULINT#16#0102030405060708);
+            first := figure(4); first.pair_0 := -5; first.pair_1 := ULINT#16#0102030405060708;
+            later(f := first);
             IF later.DONE THEN
-                IF later.value <> 4 OR later.pair_0 <> -5
-                    OR later.pair_1 <> ULINT#16#0102030405060708
+                IF later.value.kind <> 4 OR later.value.pair_0 <> -5
+                    OR later.value.pair_1 <> ULINT#16#0102030405060708
                 THEN
                     output := -20; step := 9;
                 ELSE
@@ -1625,10 +1671,11 @@ const ECHOED: &str = r#"
             END_IF;
         1:
             // The pair the block still holds is not passed with this case.
-            later(f := 7, f_wide := -2.25);
+            first := figure(7); first.wide := -2.25;
+            later(f := first);
             IF later.DONE THEN
-                IF later.value <> 7 OR later.wide <> -2.25 OR later.pair_0 <> 0
-                    OR later.pair_1 <> 0
+                IF later.value.kind <> 7 OR later.value.wide <> -2.25 OR later.value.pair_0 <> 0
+                    OR later.value.pair_1 <> 0
                 THEN
                     output := -21; step := 9;
                 ELSE
@@ -1636,12 +1683,13 @@ const ECHOED: &str = r#"
                 END_IF;
             END_IF;
         2:
-            two(first := 3, first_at_x := -1, first_at_y := 2, id := 4000000000,
-                second := 9, second_long := LINT#-1099511627776);
+            first := figure(3); first.at_.x := -1; first.at_.y := 2;
+            second := figure(9); second.long := LINT#-1099511627776;
+            two(first := first, id := 4000000000, second := second);
             IF two.DONE THEN
-                IF two.item0 <> 3 OR two.item0_at_x <> -1 OR two.item0_at_y <> 2
-                    OR two.item1 <> 4000000000 OR two.item2 <> 9
-                    OR two.item2_long <> LINT#-1099511627776
+                IF two.item0.kind <> 3 OR two.item0.at_.x <> -1 OR two.item0.at_.y <> 2
+                    OR two.item1 <> 4000000000 OR two.item2.kind <> 9
+                    OR two.item2.long <> LINT#-1099511627776
                 THEN
                     output := -22; step := 9;
                 ELSE
@@ -1649,12 +1697,13 @@ const ECHOED: &str = r#"
                 END_IF;
             END_IF;
         3:
-            two(first := 6, first_marked := 16#05, id := 7, second := 2,
-                second_square := 65535);
+            first := figure(6); first.marked := 16#05;
+            second := figure(2); second.square := 65535;
+            two(first := first, id := 7, second := second);
             IF two.DONE THEN
-                IF two.item0 <> 6 OR two.item0_marked <> 16#05 OR two.item0_at_x <> 0
-                    OR two.item1 <> 7 OR two.item2 <> 2 OR two.item2_square <> 65535
-                    OR two.item2_long <> 0
+                IF two.item0.kind <> 6 OR two.item0.marked <> 16#05 OR two.item0.at_.x <> 0
+                    OR two.item1 <> 7 OR two.item2.kind <> 2 OR two.item2.square <> 65535
+                    OR two.item2.long <> 0
                 THEN
                     output := -23; step := 9;
                 ELSE
@@ -1662,11 +1711,12 @@ const ECHOED: &str = r#"
                 END_IF;
             END_IF;
         4:
-            line(s_start_x := 1, s_start_y := -2, s_end_x := 3, s_end_y := -4,
-                s_width := 5, scale := 9);
+            segment.start.x := 1; segment.start.y := -2; segment.end.x := 3;
+            segment.end.y := -4; segment.width := 5;
+            line(s_ := segment, scale := 9);
             IF line.DONE THEN
-                IF line.start_x <> 1 OR line.start_y <> -2 OR line.end_x <> 3
-                    OR line.end_y <> -4 OR line.width <> 9
+                IF line.value.start.x <> 1 OR line.value.start.y <> -2 OR line.value.end.x <> 3
+                    OR line.value.end.y <> -4 OR line.value.width <> 9
                 THEN
                     output := -24; step := 9;
                 ELSE
@@ -1675,9 +1725,10 @@ const ECHOED: &str = r#"
             END_IF;
         5:
             // A string beside a figure in the tuple.
-            tagged(name := 'four', f := 2, f_square := 9, id := 100);
+            first := figure(2); first.square := 9;
+            tagged(name := 'four', f := first, id := 100);
             IF tagged.DONE THEN
-                IF tagged.item0 <> 104 OR tagged.item1 <> 2 OR tagged.item1_square <> 9 THEN
+                IF tagged.item0 <> 104 OR tagged.item1.kind <> 2 OR tagged.item1.square <> 9 THEN
                     output := -25;
                 ELSE
                     output := 1;
