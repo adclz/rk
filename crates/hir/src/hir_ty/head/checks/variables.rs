@@ -451,6 +451,17 @@ impl<'db> InitInference<'db> {
         };
         let gives_list =
             wasi_function.is_some_and(|func| func.variables(db).iter().any(list_array));
+        // It gives the text of an error, or of a case, into its first STRING
+        // VAR_OUTPUT, cut to fit: no field of the import's result either.
+        let string_output = |var: &crate::hir_def::pous::variable::VariableDecl<'db>| {
+            var.kind(db) == crate::hir_def::pous::variable::VariableKind::Output
+                && matches!(
+                    var.spec(db).infer(db).normalize(db),
+                    Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String)
+                )
+        };
+        let host_text =
+            wasi_function.and_then(|func| func.variables(db).iter().copied().find(string_output));
         // A stream read's bytes land in a STRING or an ARRAY OF BYTE, its
         // buffer, which the block holds rather than the host returns: its
         // outputs are its built-in's, which E1516 checks.
@@ -891,6 +902,15 @@ impl<'db> InitInference<'db> {
                     },
                     // E1516 checks every output of a stream read.
                     VariableKind::Output if stream_read => None,
+                    VariableKind::Output
+                        if host_text == Some(*var) && (host_string.is_some() || gives_list) =>
+                    {
+                        Some(ExternForbiddenKind::TextBeside)
+                    }
+                    VariableKind::Output if host_text == Some(*var) => None,
+                    VariableKind::Output if host_text.is_some() && string_output(var) => {
+                        Some(ExternForbiddenKind::TextBeside)
+                    }
                     VariableKind::Output if !extern_scalar(db, var.spec(db).infer(db)) => {
                         Some(ExternForbiddenKind::AggregateOutput)
                     }

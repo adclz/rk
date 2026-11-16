@@ -63,8 +63,14 @@ pub enum ExternForbiddenKind {
     /// outside it goes.
     StringBesideList,
     /// A STRUCT, ARRAY, instance, reference or STRING `VAR_OUTPUT`: the
-    /// import's result is a record of scalars.
+    /// import's result is a record of scalars. A WASI FUNCTION's first
+    /// STRING `VAR_OUTPUT` is none of it: the host writes the text it gives
+    /// into it, cut to fit.
     AggregateOutput,
+    /// A STRING `VAR_OUTPUT` of a WASI FUNCTION beside its first one, its
+    /// STRING `VAR_IN_OUT` or its `ARRAY[*]` ones: the host's one block goes
+    /// into one of them, and nothing says where another goes.
+    TextBeside,
     /// An `ARRAY[*]` `VAR_INPUT` has the size of each call's array, and an
     /// import's copies have one size.
     Conformand,
@@ -94,7 +100,7 @@ impl ExternForbiddenKind {
             Self::InOut | Self::SecondString | Self::ListElement | Self::StringBesideList => {
                 "VAR_IN_OUT"
             }
-            Self::AggregateOutput => "VAR_OUTPUT",
+            Self::AggregateOutput | Self::TextBeside => "VAR_OUTPUT",
             Self::Conformand
             | Self::Variadic
             | Self::Reference
@@ -117,6 +123,9 @@ impl ExternForbiddenKind {
                 "cannot take a string from the host beside the list its ARRAY[*] VAR_IN_OUTs take"
             }
             Self::AggregateOutput => "cannot be a field of the import's result: only a scalar can",
+            Self::TextBeside => {
+                "cannot take a text from the host beside the string, list or text the import takes"
+            }
             Self::Conformand => {
                 "cannot cross a WASM import: an ARRAY[*] has the size of each call's array"
             }
@@ -152,6 +161,9 @@ impl ExternForbiddenKind {
             }
             Self::AggregateOutput => {
                 "an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars"
+            }
+            Self::TextBeside => {
+                "a WASI import gives one string, one list or one text, which the host writes into what the call passes"
             }
             Self::Conformand => "an extern FUNCTION receives VAR_INPUT copies of a fixed size",
             Self::Variadic => "a WASM import has one signature",
