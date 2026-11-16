@@ -109,6 +109,17 @@ pub extern "C" fn rk_char_check(c: u32) {
     }
 }
 
+/// Length check for the string an import gave: the host writes it into
+/// the STRING the call passed for it, and one longer than that STRING went
+/// nowhere the program reads (`landed` is 2).
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_host_string_check(landed: u32) {
+    if landed == 2 {
+        const MSG: &str = "a string the host gave is longer than its STRING";
+        unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
+}
+
 /// Null check for a runtime dereference: raises when the pointer is 0,
 /// else returns it. Lowering wraps every user-written `^`; `rk.idx_check`
 /// validates the index and never sees the base.
