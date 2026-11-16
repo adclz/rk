@@ -1217,7 +1217,8 @@ fn lower_module_from_pous<'db>(
 }
 
 /// Lower an `{extern}` FUNCTION: `VAR_INPUT` are the params, scalar
-/// `VAR_OUTPUT` the results in declaration order, the return type last
+/// `VAR_OUTPUT` the results in declaration order, the return type last,
+/// and a STRING `VAR_IN_OUT` where the host writes the string it gives
 /// (E1502 refused the rest).
 fn lower_extern_function<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -1240,6 +1241,16 @@ fn lower_extern_function<'db>(
             VariableKind::Output => {
                 let ty = lower_type(db, var.spec(db).infer(db))?;
                 out_results.push((var.name(db), ty));
+            }
+            // No parameter of the import: a call passes it to the wrapper
+            // that tells the host's next block where to go.
+            VariableKind::InOut => {
+                let ty = lower_type(db, var.spec(db).infer(db))?;
+                params.push(MirParam {
+                    name: var.name(db),
+                    ty: MirType::Pointer(Box::new(ty)),
+                    kind: MirParamKind::InOut,
+                });
             }
             _ => {}
         }
