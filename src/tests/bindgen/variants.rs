@@ -74,7 +74,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
 
     			/* `[method]socket.hop-limit` as the host gives it: its result in words of
     			   8 bytes, as the canonical ABI lays it out, which `SOCKET_HOP_LIMIT`
-    			   reads. */
+    			   reads, and its text in `other`, where the host writes it, cut to fit. */
     			{extern 'wasi:example/sockets@0.3.0' '[method]socket.hop-limit'}
     			FUNCTION PRIVATE SOCKET_HOP_LIMIT_RAW
     			VAR_INPUT
@@ -84,6 +84,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     				w0 : LWORD;
     				w1 : LWORD;
     				w2 : LWORD;
+    				other : STRING[256];
     			END_VAR
     			END_FUNCTION
 
@@ -101,12 +102,17 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     				w1 : LWORD;
     				w2 : LWORD;
     			END_VAR
-    				SOCKET_HOP_LIMIT_RAW(self := self, w0 => w0, w1 => w1, w2 => w2);
+    				SOCKET_HOP_LIMIT_RAW(self := self, other => error.other, w0 => w0, w1 => w1, w2 => w2);
     				value := 0;
     				error.kind := 0;
+    				error.other_is_some := FALSE;
     				failed := w0.%X0;
     				IF failed THEN
     					error.kind := BYTE_TO_USINT(w0.%B4);
+    					CASE error.kind OF
+    						ERROR_CODE_KIND#OTHER:
+    							error.other_is_some := w1.%X0;
+    					END_CASE;
     				ELSE
     					value := BYTE_TO_USINT(w0.%B4);
     				END_IF;
@@ -114,7 +120,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
 
     			/* `[method]socket.buffer-size` as the host gives it: its result in words
     			   of 8 bytes, as the canonical ABI lays it out, which `SOCKET_BUFFER_SIZE`
-    			   reads. */
+    			   reads, and its text in `other`, where the host writes it, cut to fit. */
     			{extern 'wasi:example/sockets@0.3.0' '[method]socket.buffer-size'}
     			FUNCTION PRIVATE SOCKET_BUFFER_SIZE_RAW
     			VAR_INPUT
@@ -124,6 +130,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     				w0 : LWORD;
     				w1 : LWORD;
     				w2 : LWORD;
+    				other : STRING[256];
     			END_VAR
     			END_FUNCTION
 
@@ -141,12 +148,17 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     				w1 : LWORD;
     				w2 : LWORD;
     			END_VAR
-    				SOCKET_BUFFER_SIZE_RAW(self := self, w0 => w0, w1 => w1, w2 => w2);
+    				SOCKET_BUFFER_SIZE_RAW(self := self, other => error.other, w0 => w0, w1 => w1, w2 => w2);
     				value := 0;
     				error.kind := 0;
+    				error.other_is_some := FALSE;
     				failed := w0.%X0;
     				IF failed THEN
     					error.kind := BYTE_TO_USINT(w1.%B0);
+    					CASE error.kind OF
+    						ERROR_CODE_KIND#OTHER:
+    							error.other_is_some := w1.%X32;
+    					END_CASE;
     				ELSE
     					value := LWORD_TO_ULINT(w1);
     				END_IF;
@@ -154,7 +166,8 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
 
     			/* `[method]socket.set-hop-limit` as the host gives it: its result in words
     			   of 8 bytes, as the canonical ABI lays it out, which
-    			   `SOCKET_SET_HOP_LIMIT` reads. */
+    			   `SOCKET_SET_HOP_LIMIT` reads, and its text in `other`, where the host
+    			   writes it, cut to fit. */
     			{extern 'wasi:example/sockets@0.3.0' '[method]socket.set-hop-limit'}
     			FUNCTION PRIVATE SOCKET_SET_HOP_LIMIT_RAW
     			VAR_INPUT
@@ -165,6 +178,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     				w0 : LWORD;
     				w1 : LWORD;
     				w2 : LWORD;
+    				other : STRING[256];
     			END_VAR
     			END_FUNCTION
 
@@ -182,22 +196,29 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     				w1 : LWORD;
     				w2 : LWORD;
     			END_VAR
-    				SOCKET_SET_HOP_LIMIT_RAW(self := self, value := value, w0 => w0, w1 => w1, w2 => w2);
+    				SOCKET_SET_HOP_LIMIT_RAW(self := self, value := value, other => error.other, w0 => w0, w1 => w1, w2 => w2);
     				error.kind := 0;
+    				error.other_is_some := FALSE;
     				failed := w0.%X0;
     				IF failed THEN
     					error.kind := BYTE_TO_USINT(w0.%B4);
+    					CASE error.kind OF
+    						ERROR_CODE_KIND#OTHER:
+    							error.other_is_some := w1.%X0;
+    					END_CASE;
     				END_IF;
     			END_FUNCTION
 
     			/* `open` as the host gives it: its result in words of 8 bytes, as the
-    			   canonical ABI lays it out, which `OPEN` reads. */
+    			   canonical ABI lays it out, which `OPEN` reads, and its text in `other`,
+    			   where the host writes it, cut to fit. */
     			{extern 'wasi:example/sockets@0.3.0' 'open'}
     			FUNCTION PRIVATE OPEN_RAW
     			VAR_OUTPUT
     				w0 : LWORD;
     				w1 : LWORD;
     				w2 : LWORD;
+    				other : STRING[256];
     			END_VAR
     			END_FUNCTION
 
@@ -212,12 +233,17 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     				w1 : LWORD;
     				w2 : LWORD;
     			END_VAR
-    				OPEN_RAW(w0 => w0, w1 => w1, w2 => w2);
+    				OPEN_RAW(other => error.other, w0 => w0, w1 => w1, w2 => w2);
     				value := 0;
     				error.kind := 0;
+    				error.other_is_some := FALSE;
     				failed := w0.%X0;
     				IF failed THEN
     					error.kind := BYTE_TO_USINT(w0.%B4);
+    					CASE error.kind OF
+    						ERROR_CODE_KIND#OTHER:
+    							error.other_is_some := w1.%X0;
+    					END_CASE;
     				ELSE
     					value := DWORD_TO_UDINT(w0.%D1);
     				END_IF;
@@ -226,8 +252,8 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - what `other` of `error-code` holds: a string, which an import cannot
-         give back yet. */
+       - what `other` of `error-code` holds: a string, which an async call
+         cannot give back yet. */
     ");
 }
 
@@ -288,13 +314,15 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     			END_STRUCT END_TYPE
 
     			/* `pick` as the host gives it: its result in words of 8 bytes, as the
-    			   canonical ABI lays it out, which `PICK` reads. */
+    			   canonical ABI lays it out, which `PICK` reads, and its text in `named`,
+    			   where the host writes it, cut to fit. */
     			{extern 'wasi:example/shapes@0.3.0' 'pick'}
     			FUNCTION PRIVATE PICK_RAW
     			VAR_OUTPUT
     				w0 : LWORD;
     				w1 : LWORD;
     				w2 : LWORD;
+    				named : STRING[256];
     			END_VAR
     			END_FUNCTION
 
@@ -304,7 +332,7 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     				w1 : LWORD;
     				w2 : LWORD;
     			END_VAR
-    				PICK_RAW(w0 => w0, w1 => w1, w2 => w2);
+    				PICK_RAW(named => PICK.named, w0 => w0, w1 => w1, w2 => w2);
     				PICK.circle := 0.0;
     				PICK.square := 0;
     				PICK.at_.x := 0;
@@ -327,7 +355,8 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* `find` as the host gives it: its result in words of 8 bytes, as the
-    			   canonical ABI lays it out, which `FIND` reads. */
+    			   canonical ABI lays it out, which `FIND` reads, and its text in `named`,
+    			   where the host writes it, cut to fit. */
     			{extern 'wasi:example/shapes@0.3.0' 'find'}
     			FUNCTION PRIVATE FIND_RAW
     			VAR_INPUT
@@ -338,6 +367,7 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     				w1 : LWORD;
     				w2 : LWORD;
     				w3 : LWORD;
+    				named : STRING[256];
     			END_VAR
     			END_FUNCTION
 
@@ -355,7 +385,7 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     				w2 : LWORD;
     				w3 : LWORD;
     			END_VAR
-    				FIND_RAW(id := id, w0 => w0, w1 => w1, w2 => w2, w3 => w3);
+    				FIND_RAW(id := id, named => value.named, w0 => w0, w1 => w1, w2 => w2, w3 => w3);
     				value.kind := 0;
     				value.circle := 0.0;
     				value.square := 0;
@@ -382,7 +412,8 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* `measure` as the host gives it: its result in words of 8 bytes, as the
-    			   canonical ABI lays it out, which `MEASURE` reads. */
+    			   canonical ABI lays it out, which `MEASURE` reads, and its text in
+    			   `named`, where the host writes it, cut to fit. */
     			{extern 'wasi:example/shapes@0.3.0' 'measure'}
     			FUNCTION PRIVATE MEASURE_RAW
     			VAR_OUTPUT
@@ -390,6 +421,7 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     				w1 : LWORD;
     				w2 : LWORD;
     				w3 : LWORD;
+    				named : STRING[256];
     			END_VAR
     			END_FUNCTION
 
@@ -405,7 +437,7 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     				w2 : LWORD;
     				w3 : LWORD;
     			END_VAR
-    				MEASURE_RAW(w0 => w0, w1 => w1, w2 => w2, w3 => w3);
+    				MEASURE_RAW(named => value.named, w0 => w0, w1 => w1, w2 => w2, w3 => w3);
     				value.kind := 0;
     				value.circle := 0.0;
     				value.square := 0;
@@ -437,8 +469,8 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - what `named` of `shape` holds: a string, which an import cannot give
-         back yet. */
+       - what `named` of `shape` holds: a string, which an async call cannot
+         give back yet. */
     ");
 }
 
@@ -502,8 +534,8 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - what `other` of `error-code` holds: a string, which an import cannot
-         give back yet. */
+       - what `other` of `error-code` holds: a string, which an async call
+         cannot give back yet. */
 
     // wasi-example-lookup.st
     NAMESPACE INTERNAL Wasi
@@ -512,7 +544,8 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     			USING Std.Convert;
 
     			/* `resolve` as the host gives it: its result in words of 8 bytes, as the
-    			   canonical ABI lays it out, which `RESOLVE` reads. */
+    			   canonical ABI lays it out, which `RESOLVE` reads, and its text in
+    			   `other`, where the host writes it, cut to fit. */
     			{extern 'wasi:example/lookup@0.3.0' 'resolve'}
     			FUNCTION PRIVATE RESOLVE_RAW
     			VAR_INPUT
@@ -522,6 +555,7 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     				w0 : LWORD;
     				w1 : LWORD;
     				w2 : LWORD;
+    				other : STRING[256];
     			END_VAR
     			END_FUNCTION
 
@@ -539,7 +573,7 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     				w1 : LWORD;
     				w2 : LWORD;
     			END_VAR
-    				RESOLVE_RAW(id := id, w0 => w0, w1 => w1, w2 => w2);
+    				RESOLVE_RAW(id := id, other => error.other, w0 => w0, w1 => w1, w2 => w2);
     				value.kind := 0;
     				value.v4_0 := 0;
     				value.v4_1 := 0;
@@ -549,12 +583,15 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     				value.v6_1 := 0;
     				error.kind := 0;
     				error.limit := 0;
+    				error.other_is_some := FALSE;
     				failed := w0.%X0;
     				IF failed THEN
     					error.kind := BYTE_TO_USINT(w0.%B4);
     					CASE error.kind OF
     						Wasi.Example.Types.ERROR_CODE_KIND#LIMIT:
     							error.limit := DWORD_TO_UDINT(w1.%D0);
+    						Wasi.Example.Types.ERROR_CODE_KIND#OTHER:
+    							error.other_is_some := w1.%X0;
     					END_CASE;
     				ELSE
     					value.kind := BYTE_TO_USINT(w0.%B4);

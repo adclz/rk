@@ -18,9 +18,11 @@ use crate::tests::cli::component_host::Host;
 use crate::tests::utils::with_db;
 
 /// A string by itself, in an option, in a record and as a result's value;
-/// then what is left out: two strings, an error that is one, a string
-/// beside an error or a case that holds one or a list, a string from an
-/// async call, and a list of them.
+/// a text, in an error's case or as the error itself; then what is left
+/// out: two strings, a string beside an error or a case that holds one or a
+/// list, a string from an async call, and a list of them; and what comes
+/// back without its text: two texts, on either side, and one beside a
+/// char.
 const TEXTS: &str = r#"
     package wasi:example@0.3.0;
 
@@ -29,18 +31,21 @@ const TEXTS: &str = r#"
         enum color { red, green, blue }
         variant fault { busy, other(option<string>) }
         variant chunk { empty, bytes(list<u8>) }
+        variant lettered { none, named(tuple<string, char>) }
         text: func(which: u32) -> string;
         maybe: func(which: u32) -> option<string>;
         described: func(which: u32) -> labelled;
         settled: func(which: u32) -> result<string, color>;
-        failing: func() -> result<u32, fault>;
+        failing: func(which: u32) -> result<u32, fault>;
         both: func() -> tuple<string, string>;
-        why: func() -> result<u32, string>;
+        why: func(which: u32) -> result<u32, string>;
         mixed: func() -> result<string, fault>;
         kinded: func() -> tuple<fault, string>;
         beside: func() -> tuple<chunk, string>;
         later: async func() -> string;
         names: func() -> list<string>;
+        twice: func() -> result<fault, fault>;
+        letter: func() -> lettered;
     }
 
     world example {
@@ -88,6 +93,16 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
 
     			TYPE CHUNK : STRUCT
     				kind : CHUNK_KIND;
+    			END_STRUCT END_TYPE
+
+    			/* The cases of `lettered`. */
+    			TYPE LETTERED_KIND : USINT (
+    				NONE := 0,
+    				NAMED := 1
+    			); END_TYPE
+
+    			TYPE LETTERED : STRUCT
+    				kind : LETTERED_KIND;
     			END_STRUCT END_TYPE
 
     			/* `text` as the host gives it: its result in words of 8 bytes, as the
@@ -226,17 +241,25 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
     			END_FUNCTION
 
     			/* `failing` as the host gives it: its result in words of 8 bytes, as the
-    			   canonical ABI lays it out, which `FAILING` reads. */
+    			   canonical ABI lays it out, which `FAILING` reads, and its text in
+    			   `other`, where the host writes it, cut to fit. */
     			{extern 'wasi:example/texts@0.3.0' 'failing'}
     			FUNCTION PRIVATE FAILING_RAW
+    			VAR_INPUT
+    				which : UDINT;
+    			END_VAR
     			VAR_OUTPUT
     				w0 : LWORD;
     				w1 : LWORD;
     				w2 : LWORD;
+    				other : STRING[256];
     			END_VAR
     			END_FUNCTION
 
     			FUNCTION FAILING
+    			VAR_INPUT
+    				which : UDINT;
+    			END_VAR
     			VAR_OUTPUT
     				failed : BOOL;
     				value : UDINT;
@@ -247,13 +270,54 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
     				w1 : LWORD;
     				w2 : LWORD;
     			END_VAR
-    				FAILING_RAW(w0 => w0, w1 => w1, w2 => w2);
+    				FAILING_RAW(which := which, other => error.other, w0 => w0, w1 => w1, w2 => w2);
     				value := 0;
     				error.kind := 0;
+    				error.other_is_some := FALSE;
     				failed := w0.%X0;
     				IF failed THEN
     					error.kind := BYTE_TO_USINT(w0.%B4);
+    					CASE error.kind OF
+    						FAULT_KIND#OTHER:
+    							error.other_is_some := w1.%X0;
+    					END_CASE;
     				ELSE
+    					value := DWORD_TO_UDINT(w0.%D1);
+    				END_IF;
+    			END_FUNCTION
+
+    			/* `why` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `WHY` reads, and its text in `error`,
+    			   where the host writes it, cut to fit. */
+    			{extern 'wasi:example/texts@0.3.0' 'why'}
+    			FUNCTION PRIVATE WHY_RAW
+    			VAR_INPUT
+    				which : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    				error : STRING[256];
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION WHY
+    			VAR_INPUT
+    				which : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				failed : BOOL;
+    				value : UDINT;
+    				error : STRING[256];
+    			END_VAR
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    				WHY_RAW(which := which, error => error, w0 => w0, w1 => w1);
+    				value := 0;
+    				failed := w0.%X0;
+    				IF NOT failed THEN
     					value := DWORD_TO_UDINT(w0.%D1);
     				END_IF;
     			END_FUNCTION
@@ -286,18 +350,70 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
     				NAMES_RAW(value := value, w0 => w0, w1 => w1);
     				count := DWORD_TO_UDINT(w0.%D1);
     			END_FUNCTION
+
+    			/* `twice` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `TWICE` reads. */
+    			{extern 'wasi:example/texts@0.3.0' 'twice'}
+    			FUNCTION PRIVATE TWICE_RAW
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    				w2 : LWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION TWICE
+    			VAR_OUTPUT
+    				failed : BOOL;
+    				value : FAULT;
+    				error : FAULT;
+    			END_VAR
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    				w2 : LWORD;
+    			END_VAR
+    				TWICE_RAW(w0 => w0, w1 => w1, w2 => w2);
+    				value.kind := 0;
+    				error.kind := 0;
+    				failed := w0.%X0;
+    				IF failed THEN
+    					error.kind := BYTE_TO_USINT(w0.%B4);
+    				ELSE
+    					value.kind := BYTE_TO_USINT(w0.%B4);
+    				END_IF;
+    			END_FUNCTION
+
+    			/* `letter` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `LETTER` reads. */
+    			{extern 'wasi:example/texts@0.3.0' 'letter'}
+    			FUNCTION PRIVATE LETTER_RAW
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION LETTER : LETTERED
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    				LETTER_RAW(w0 => w0, w1 => w1);
+    				LETTER.kind := BYTE_TO_USINT(w0.%B0);
+    			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - what `other` of `fault` holds: a string, which an import cannot give
-         back yet.
+       - what `other` of `fault` holds: a string, which an async call cannot
+         give back yet.
        - what `bytes` of `chunk` holds: a list, which an import cannot give
+         back yet.
+       - what `named` of `lettered` holds: a char, which an import cannot give
          back yet.
        - `both`: its result holds two strings or a string and a list, which an
          import cannot give back yet.
-       - `why`: its result holds a string, which an import cannot give back
-         yet.
        - `mixed`: its result holds two strings or a string and a list, which an
          import cannot give back yet.
        - `kinded`: its result holds two strings or a string and a list, which
@@ -313,7 +429,10 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
 /// one, one of several bytes a character, one of 300 bytes, and for 10 and
 /// 11 ones of 100,010 and 300,000; `maybe` one or none; `described` a
 /// number and a name; `settled` a string or an error; `failing` an error
-/// whose case holds a text no output takes.
+/// whose case holds a text: a short one, one of 300 bytes of digits, one
+/// whose 256th byte is inside a character, none, then another case and a
+/// value; `why` an error that is a text, short or of 300 bytes, then a
+/// value.
 fn texts_host(linker: &mut Linker<Host>) {
     let which = |params: &[Val]| match params {
         [Val::U32(which)] => *which,
@@ -370,12 +489,34 @@ fn texts_host(linker: &mut Linker<Host>) {
         })
         .expect("a function of the host");
     texts
-        .func_new("failing", move |_, _, _, results| {
-            let text = Val::Option(Some(Box::new(string("a text that no output takes"))));
-            results[0] = Val::Result(Err(Some(Box::new(Val::Variant(
-                "other".to_string(),
-                Some(Box::new(text)),
-            )))));
+        .func_new("failing", move |_, _, params, results| {
+            let other = |text: Option<String>| {
+                let text = Val::Option(text.map(|text| Box::new(Val::String(text))));
+                Val::Variant("other".to_string(), Some(Box::new(text)))
+            };
+            let fault = match which(params) {
+                0 => other(Some("disk on fire".to_string())),
+                1 => other(Some("0123456789".repeat(30))),
+                // `é` takes the 256th and the 257th bytes.
+                2 => other(Some(format!("{}éy", "x".repeat(255)))),
+                3 => other(None),
+                4 => Val::Variant("busy".to_string(), None),
+                _ => {
+                    results[0] = Val::Result(Ok(Some(Box::new(Val::U32(42)))));
+                    return Ok(());
+                }
+            };
+            results[0] = Val::Result(Err(Some(Box::new(fault))));
+            Ok(())
+        })
+        .expect("a function of the host");
+    texts
+        .func_new("why", move |_, _, params, results| {
+            results[0] = Val::Result(match which(params) {
+                0 => Err(Some(Box::new(string("not ready")))),
+                1 => Err(Some(Box::new(Val::String("y".repeat(300))))),
+                _ => Ok(Some(Box::new(Val::U32(7)))),
+            });
             Ok(())
         })
         .expect("a function of the host");
@@ -398,6 +539,8 @@ const READ: &str = r#"
         exact : STRING[5];
         tiny : STRING[4];
         long : STRING[300];
+        reason : STRING[256];
+        first : STRING[10];
         raised, known, failed : BOOL;
         value : UDINT;
         labelled : Wasi.Example.Texts.LABELLED;
@@ -448,15 +591,49 @@ const READ: &str = r#"
         Wasi.Example.Texts.SETTLED(which := 1, value := s, failed => failed, error => error);
         IF NOT failed OR s <> '' OR error <> 1 THEN check := -13; RETURN; END_IF;
 
-        // A text the host gives that no STRING waits for lands in none.
+        // An error's text, in its member and in no other STRING.
         s := 'kept';
         exact := 'kept!';
         long := 'kept';
-        Wasi.Example.Texts.FAILING(failed => failed, value => value, error => fault);
-        IF NOT failed OR fault.kind <> Wasi.Example.Texts.FAULT_KIND#OTHER THEN
+        Wasi.Example.Texts.FAILING(which := 0, failed => failed, value => value, error => fault);
+        IF NOT failed OR fault.kind <> Wasi.Example.Texts.FAULT_KIND#OTHER
+            OR NOT fault.other_is_some OR fault.other <> 'disk on fire'
+        THEN
             check := -14; RETURN;
         END_IF;
         IF s <> 'kept' OR exact <> 'kept!' OR long <> 'kept' THEN check := -15; RETURN; END_IF;
+        // One too long is cut to its first 256 bytes, and raises nothing.
+        Wasi.Example.Texts.FAILING(which := 1, failed => failed, value => value, error => fault);
+        first := fault.other;
+        IF NOT fault.other_is_some OR bytes(fault.other) <> 256 OR first <> '0123456789' THEN
+            check := -16; RETURN;
+        END_IF;
+        // Before the character the 256th byte is in: 255 bytes, not 256.
+        Wasi.Example.Texts.FAILING(which := 2, failed => failed, value => value, error => fault);
+        IF bytes(fault.other) <> 255 THEN check := -17; RETURN; END_IF;
+        // No text, another case, a value: the member is empty.
+        Wasi.Example.Texts.FAILING(which := 3, failed => failed, value => value, error => fault);
+        IF NOT failed OR fault.kind <> Wasi.Example.Texts.FAULT_KIND#OTHER
+            OR fault.other_is_some OR fault.other <> ''
+        THEN
+            check := -18; RETURN;
+        END_IF;
+        Wasi.Example.Texts.FAILING(which := 4, failed => failed, value => value, error => fault);
+        IF NOT failed OR fault.kind <> Wasi.Example.Texts.FAULT_KIND#BUSY OR fault.other <> '' THEN
+            check := -19; RETURN;
+        END_IF;
+        Wasi.Example.Texts.FAILING(which := 5, failed => failed, value => value, error => fault);
+        IF failed OR value <> 42 OR fault.other <> '' THEN check := -20; RETURN; END_IF;
+        // An error that is a text, in the output the FUNCTION gives it.
+        Wasi.Example.Texts.WHY(which := 0, failed => failed, value => value, error => reason);
+        IF NOT failed OR reason <> 'not ready' THEN check := -21; RETURN; END_IF;
+        Wasi.Example.Texts.WHY(which := 1, failed => failed, value => value, error => reason);
+        IF NOT failed OR bytes(reason) <> 256 THEN check := -22; RETURN; END_IF;
+        Wasi.Example.Texts.WHY(which := 2, failed => failed, value => value, error => reason);
+        IF failed OR value <> 7 OR reason <> '' THEN check := -23; RETURN; END_IF;
+        // Bound to a shorter STRING, the text is cut to that one.
+        Wasi.Example.Texts.WHY(which := 0, failed => failed, value => value, error => tiny);
+        IF tiny <> 'not ' THEN check := -24; RETURN; END_IF;
         check := 1;
     END_FUNCTION
 
@@ -478,12 +655,16 @@ const READ: &str = r#"
         s : STRING;
     END_VAR
         BOTH_BY_HAND(first := s);
-        IF s <> 'first' THEN by_hand := -16; RETURN; END_IF;
+        IF s <> 'first' THEN by_hand := -25; RETURN; END_IF;
         by_hand := 1;
     END_FUNCTION
 
+    // What it retains goes at the start of the scratch, before the place
+    // where a text too long for its STRING lands.
     PROGRAM P
     VAR_EXTERNAL output : DINT; END_VAR
+    VAR RETAIN runs : DINT; END_VAR
+        runs := runs + 1;
         output := check();
         IF output = 1 THEN
             output := by_hand();
@@ -495,8 +676,10 @@ const READ: &str = r#"
 /// fits, one of the STRING's very length, an empty one, one of several
 /// bytes a character and one of 300 bytes; an option's, a result's, and a
 /// record's, in the STRING member of the STRUCT the call returns. No
-/// string leaves the STRING empty, one too long raises, and a text the
-/// host gives outside such a call is written into no STRING. Of two
+/// string leaves the STRING empty, and one too long raises. An error's
+/// text, in its case or as the error itself, goes into its member or its
+/// output and no other STRING, empty when none came, and one too long is
+/// cut to fit, before the character its last byte would split. Of two
 /// strings, which a declaration written by hand may let come, the first is
 /// the STRING's.
 #[rstest]
@@ -532,9 +715,10 @@ const BOUNDS: &str = r#"
         IF NOT raised OR why <> 'a string the host gave is longer than its STRING' THEN
             check := -1; RETURN;
         END_IF;
-        // A text no STRING waits for lands where the one before it did.
+        // A text too long for its STRING lands where the one before it did,
+        // and is cut from there.
         FOR i := 1 TO 20000 DO
-            Wasi.Example.Texts.FAILING(failed => failed, value => value, error => fault);
+            Wasi.Example.Texts.FAILING(which := 1, failed => failed, value => value, error => fault);
         END_FOR;
         IF NOT failed OR fault.kind <> Wasi.Example.Texts.FAULT_KIND#OTHER THEN
             check := -2; RETURN;
@@ -558,9 +742,10 @@ const BOUNDS: &str = r#"
 /// The memory is as large as the module was built: what is too long for
 /// its STRING lands in the scratch, which has room for the largest STRING
 /// the module declares and a page more. A string ten bytes too long for a
-/// STRING longer than a page raises; texts no STRING waits for land on one
-/// another, so that 20,000 of them in one scan take the room of one; and a
-/// string longer than the room traps, whatever its STRING.
+/// STRING longer than a page raises; texts too long for their STRING land
+/// on one another before they are cut, so that 20,000 of them in one scan
+/// take the room of one; and a string longer than the room traps, whatever
+/// its STRING.
 #[rstest]
 fn room_for_what_is_too_long(mut with_db: RootDatabase) {
     let mut plc = hosted(&mut with_db, TEXTS, BOUNDS, texts_host);
