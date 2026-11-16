@@ -14,7 +14,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use super::{checked, generated};
+use super::{assert_abi, built, checked, generated, summary};
 use crate::tests::utils::with_db;
 
 /// A set per type in each interface: the two functions of one interface
@@ -995,11 +995,12 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     ");
 }
 
-/// A built-in whose name a function of the interface takes stops the
-/// generator, which would otherwise write two POUs of one name.
-#[test]
-fn a_built_in_named_like_a_function_stops_the_generator() {
-    let (resolve, world) = rk_bindgen::resolve(
+/// A built-in whose name a function of the interface takes gives way to
+/// it, with a `_` after its own: the generator would otherwise write two
+/// POUs of one name.
+#[rstest]
+fn a_built_in_named_like_a_function_gives_way(mut with_db: RootDatabase) {
+    let bindings = generated(
         r#"
         package wasi:example@0.3.0;
 
@@ -1013,9 +1014,175 @@ fn a_built_in_named_like_a_function_stops_the_generator() {
             import feeds;
         }
     "#,
-    )
-    .expect("the WIT resolves");
-    assert_snapshot!(rk_bindgen::generate(&resolve, world).unwrap_err(), @"`event-stream-new` and a built-in of `event` would both be `EVENT_STREAM_NEW` in `wasi:example/feeds@0.3.0`");
+    );
+    let (mir, module) = built(&mut with_db, &bindings.files, &[]);
+    assert_abi(&bindings, &mir, &module);
+    assert_snapshot!(summary(&bindings.files), @r"
+    wasi-example-feeds.st: EVENT_STREAM_NEW, FEED, EVENT_STREAM_NEW_, EVENT_STREAM_DROP_READABLE, EVENT_STREAM_DROP_WRITABLE
+        left out `EVENT_STREAM_READ` and `EVENT_STREAM_WRITE`: a stream's read or write moves bytes only
+        left out `EVENT_STREAM_CANCEL_READ` and `EVENT_STREAM_CANCEL_WRITE`: a cancel blocks the scan
+    ");
+}
+
+/// A future's value whose fields are named as the names its block has:
+/// `done` beside the block's `DONE`, and, where the value is read out of
+/// words, `call` beside the block that holds the import's. Each takes a
+/// `_` after it; the `call` of a value that comes back as outputs keeps
+/// its name.
+#[rstest]
+fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase) {
+    assert_snapshot!(checked(&mut with_db, r#"
+        package wasi:example@0.3.0;
+
+        interface progress {
+            record state { done: bool, call: u32 }
+            variant phase { idle, moved(u32) }
+            record report { done: bool, call: u32, phase: phase }
+            watch: func() -> future<state>;
+            follow: func() -> future<report>;
+        }
+
+        world example {
+            import progress;
+        }
+    "#), @r"
+    // wasi-example-progress.st
+    NAMESPACE INTERNAL Wasi
+    	NAMESPACE Example
+    		NAMESPACE Progress
+    			USING Std.Convert;
+
+    			TYPE PHASE : USINT (
+    				IDLE := 0,
+    				MOVED := 1
+    			); END_TYPE
+
+    			{extern 'wasi:example/progress@0.3.0' 'watch'}
+    			FUNCTION WATCH : UDINT
+    			END_FUNCTION
+
+    			/* Makes a future of `state`, and gives its reading end, then its writing
+    			   end. */
+    			{extern 'wasi:example/progress@0.3.0' '[future-new-0]watch'}
+    			FUNCTION STATE_FUTURE_NEW
+    			VAR_OUTPUT
+    				readable : UDINT;
+    				writable : UDINT;
+    			END_VAR
+    			END_FUNCTION
+
+    			/* Reads the value the future holds, which comes back after `DONE`. */
+    			{extern async 'wasi:example/progress@0.3.0' '[future-read-0]watch'}
+    			FUNCTION_BLOCK STATE_FUTURE_READ
+    			VAR_INPUT
+    				future : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				done_ : BOOL;
+    				call : UDINT;
+    			END_VAR
+    			END_FUNCTION_BLOCK
+
+    			/* Lets go of the future's reading end, `future`. */
+    			{extern 'wasi:example/progress@0.3.0' '[future-drop-readable-0]watch'}
+    			FUNCTION STATE_FUTURE_DROP_READABLE
+    			VAR_INPUT
+    				future : UDINT;
+    			END_VAR
+    			END_FUNCTION
+
+    			/* Lets go of the future's writing end, `future`. */
+    			{extern 'wasi:example/progress@0.3.0' '[future-drop-writable-0]watch'}
+    			FUNCTION STATE_FUTURE_DROP_WRITABLE
+    			VAR_INPUT
+    				future : UDINT;
+    			END_VAR
+    			END_FUNCTION
+
+    			{extern 'wasi:example/progress@0.3.0' 'follow'}
+    			FUNCTION FOLLOW : UDINT
+    			END_FUNCTION
+
+    			/* Makes a future of `report`, and gives its reading end, then its writing
+    			   end. */
+    			{extern 'wasi:example/progress@0.3.0' '[future-new-0]follow'}
+    			FUNCTION REPORT_FUTURE_NEW
+    			VAR_OUTPUT
+    				readable : UDINT;
+    				writable : UDINT;
+    			END_VAR
+    			END_FUNCTION
+
+    			/* The future's read as the host gives it: its value in words of 8 bytes,
+    			   as the canonical ABI lays it out, which `REPORT_FUTURE_READ` reads. */
+    			{extern async 'wasi:example/progress@0.3.0' '[future-read-0]follow'}
+    			FUNCTION_BLOCK REPORT_FUTURE_READ_RAW
+    			VAR_INPUT
+    				future : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    			END_FUNCTION_BLOCK
+
+    			/* Reads the value the future holds, which comes back after `DONE`. */
+    			FUNCTION_BLOCK REPORT_FUTURE_READ
+    			VAR_INPUT
+    				future : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				done_ : BOOL;
+    				call_ : UDINT;
+    				phase : PHASE;
+    				phase_moved : UDINT;
+    			END_VAR
+    			VAR
+    				call : REPORT_FUTURE_READ_RAW;
+    			END_VAR
+    				call(future := future);
+    				DONE := call.DONE;
+    				IF call.DONE THEN
+    					phase_moved := 0;
+    					done_ := call.w0.%X0;
+    					call_ := DWORD_TO_UDINT(call.w0.%D1);
+    					phase := BYTE_TO_USINT(call.w1.%B0);
+    					CASE phase OF
+    						PHASE#MOVED:
+    							phase_moved := DWORD_TO_UDINT(call.w1.%D1);
+    					END_CASE;
+    				END_IF;
+    			END_FUNCTION_BLOCK
+
+    			/* Lets go of the future's reading end, `future`. */
+    			{extern 'wasi:example/progress@0.3.0' '[future-drop-readable-0]follow'}
+    			FUNCTION REPORT_FUTURE_DROP_READABLE
+    			VAR_INPUT
+    				future : UDINT;
+    			END_VAR
+    			END_FUNCTION
+
+    			/* Lets go of the future's writing end, `future`. */
+    			{extern 'wasi:example/progress@0.3.0' '[future-drop-writable-0]follow'}
+    			FUNCTION REPORT_FUTURE_DROP_WRITABLE
+    			VAR_INPUT
+    				future : UDINT;
+    			END_VAR
+    			END_FUNCTION
+    		END_NAMESPACE
+    	END_NAMESPACE
+    END_NAMESPACE
+    /* Not generated:
+       - `STATE_FUTURE_WRITE`: a future's write is not imported yet.
+       - `STATE_FUTURE_CANCEL_READ` and `STATE_FUTURE_CANCEL_WRITE`: a cancel
+         blocks the scan.
+       - `REPORT_FUTURE_WRITE`: a future's write is not imported yet.
+       - `REPORT_FUTURE_CANCEL_READ` and `REPORT_FUTURE_CANCEL_WRITE`: a cancel
+         blocks the scan. */
+    ");
 }
 
 /// The built-ins of Std's standard output: a stream of bytes and the

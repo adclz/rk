@@ -674,7 +674,8 @@ fn a_variant_that_holds_nothing_is_its_case(mut with_db: RootDatabase) {
 
 /// What is not read: a case's value that holds a list, which leaves the
 /// case its name; two values that would share a name; a compound the
-/// canonical ABI returns as one value, not in memory.
+/// canonical ABI returns as one value, not in memory, which is the one
+/// output it holds.
 #[rstest]
 fn what_is_not_read_out_of_words(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
@@ -737,6 +738,13 @@ fn what_is_not_read_out_of_words(mut with_db: RootDatabase) {
     						size := LWORD_TO_ULINT(w1);
     				END_CASE;
     			END_FUNCTION
+
+    			{extern 'wasi:example/unread@0.3.0' 'wrap'}
+    			FUNCTION WRAP
+    			VAR_OUTPUT
+    				inner_0 : UDINT;
+    			END_VAR
+    			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE
     END_NAMESPACE
@@ -744,9 +752,7 @@ fn what_is_not_read_out_of_words(mut with_db: RootDatabase) {
        - what `bytes` of `found` holds: a list, which an import cannot give
          back yet.
        - `choose`: two of its variables would be `value`, which ST takes for
-         one.
-       - `wrap`: its result holds a tuple, which an import cannot give back
-         yet. */
+         one. */
     ");
 }
 
