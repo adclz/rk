@@ -83,9 +83,24 @@ pub(crate) struct ControlArea {
     /// Where an `{export}` FUNCTION's VAR_OUTPUTs are written by the
     /// FUNCTION, one slot each ([`crate::exports`]).
     pub outputs: u32,
+    /// Where the host's next string goes, when an import gives one
+    /// ([`HOST_STRING_AT`]): three words an import's wrapper sets around
+    /// its call and `cabi_import_realloc` reads.
+    pub host_string: Option<u32>,
     /// The first byte past the area.
     pub end: u32,
 }
+
+/// The words of [`ControlArea::host_string`], by their offset: the STRING
+/// the host's next string goes into, 0 outside a call that gives one; how
+/// many bytes that STRING holds; and what became of the string, 0 while
+/// none came, [`LANDED`] once it is in the STRING, [`TOO_LONG_FOR_IT`]
+/// when it was longer.
+pub(crate) const HOST_STRING_AT: u64 = 0;
+pub(crate) const HOST_STRING_CAPACITY: u64 = 4;
+pub(crate) const HOST_STRING_LANDED: u64 = 8;
+const LANDED: i32 = 1;
+const TOO_LONG_FOR_IT: i32 = 2;
 
 /// The control area of `module`, which starts at `base`: where its `{test}`
 /// result areas end.
@@ -102,6 +117,14 @@ pub(crate) fn control_area(module: &MirModule, base: u32) -> ControlArea {
     let import_record = (scratch + scratch_size).next_multiple_of(8);
     let outputs = (import_record + import_records_size(module)).next_multiple_of(8);
     let end = outputs + crate::exports::output_slots_size(module);
+    // Past the rest, so that a module no import gives a string to is laid
+    // out as before.
+    let host_string = module
+        .extern_functions
+        .iter()
+        .any(|ext| ext.gives_string())
+        .then_some(end.next_multiple_of(4));
+    let end = host_string.map_or(end, |at| at + 12);
     ControlArea {
         ret,
         too_long,
@@ -109,6 +132,7 @@ pub(crate) fn control_area(module: &MirModule, base: u32) -> ControlArea {
         scratch_size,
         import_record,
         outputs,
+        host_string,
         end,
     }
 }
@@ -218,6 +242,20 @@ impl WasmGen<'_> {
         self.export_section
             .export("cabi_realloc", wasm_encoder::ExportKind::Func, index);
         self.control_names.push((index, "cabi_realloc".to_string()));
+
+        // What an import gives lands through a realloc of its own, which
+        // the component takes for every import when the module has one.
+        if let Some(host_string) = area.host_string {
+            let f = import_realloc(host_string, index);
+            let index = self.add_function(&[ValType::I32; 4], &[ValType::I32], &f);
+            self.export_section.export(
+                "cabi_import_realloc",
+                wasm_encoder::ExportKind::Func,
+                index,
+            );
+            self.control_names
+                .push((index, "cabi_import_realloc".to_string()));
+        }
     }
 
     pub(crate) fn add_type(&mut self, params: &[ValType], results: &[ValType]) -> u32 {
@@ -758,6 +796,69 @@ fn control_realloc(area: &ControlArea, arena: u32, spill: u64) -> Function {
     });
     f.instruction(&Instruction::End);
     f.instruction(&Instruction::LocalGet(at));
+    f.instruction(&Instruction::End);
+    f
+}
+
+/// `cabi_import_realloc`, where what an import gives lands. Inside a call
+/// that gives a string, the first block the host asks for, a string's, is
+/// the STRING the call passed for it: the host writes the bytes there, and
+/// the block's size is the STRING's length. A string longer than the STRING
+/// lands where `cabi_realloc` puts it, as every other block does, and is
+/// not read: the call raises once the host returns.
+///
+/// The host asks for a string's bytes once, at their exact size and with an
+/// alignment of 1, and never grows the block.
+fn import_realloc(host_string: u32, cabi_realloc: u32) -> Function {
+    // Params: the old block 0 and its size 1, the alignment 2, the size 3.
+    let mut f = Function::new([]);
+    let (old, old_size, align, size) = (0, 1, 2, 3);
+    let word = |f: &mut Function, offset: u64| {
+        f.instruction(&Instruction::I32Const(host_string as i32));
+        f.instruction(&Instruction::I32Load(mem_arg(offset, 2)));
+    };
+    let set_landed = |f: &mut Function, landed: i32| {
+        f.instruction(&Instruction::I32Const(host_string as i32));
+        f.instruction(&Instruction::I32Const(landed));
+        f.instruction(&Instruction::I32Store(mem_arg(HOST_STRING_LANDED, 2)));
+    };
+    // A STRING waits, none came yet, and this is a new block of bytes.
+    word(&mut f, HOST_STRING_AT);
+    f.instruction(&Instruction::I32Const(0));
+    f.instruction(&Instruction::I32Ne);
+    word(&mut f, HOST_STRING_LANDED);
+    f.instruction(&Instruction::I32Eqz);
+    f.instruction(&Instruction::I32And);
+    f.instruction(&Instruction::LocalGet(old));
+    f.instruction(&Instruction::I32Eqz);
+    f.instruction(&Instruction::I32And);
+    f.instruction(&Instruction::LocalGet(align));
+    f.instruction(&Instruction::I32Const(1));
+    f.instruction(&Instruction::I32Eq);
+    f.instruction(&Instruction::I32And);
+    f.instruction(&Instruction::If(BlockType::Empty));
+    f.instruction(&Instruction::LocalGet(size));
+    word(&mut f, HOST_STRING_CAPACITY);
+    f.instruction(&Instruction::I32LeU);
+    f.instruction(&Instruction::If(BlockType::Empty));
+    // Its length, then where its bytes go.
+    word(&mut f, HOST_STRING_AT);
+    f.instruction(&Instruction::LocalGet(size));
+    f.instruction(&Instruction::I32Store(mem_arg(0, 2)));
+    set_landed(&mut f, LANDED);
+    word(&mut f, HOST_STRING_AT);
+    f.instruction(&Instruction::I32Const(4));
+    f.instruction(&Instruction::I32Add);
+    f.instruction(&Instruction::Return);
+    f.instruction(&Instruction::Else);
+    set_landed(&mut f, TOO_LONG_FOR_IT);
+    f.instruction(&Instruction::End);
+    f.instruction(&Instruction::End);
+    f.instruction(&Instruction::LocalGet(old));
+    f.instruction(&Instruction::LocalGet(old_size));
+    f.instruction(&Instruction::LocalGet(align));
+    f.instruction(&Instruction::LocalGet(size));
+    f.instruction(&Instruction::Call(cabi_realloc));
     f.instruction(&Instruction::End);
     f
 }

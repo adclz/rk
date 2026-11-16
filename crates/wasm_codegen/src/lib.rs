@@ -630,6 +630,10 @@ pub(crate) fn core_memory_pages(module: &MirModule) -> u64 {
 /// Name of the builtin that faults a null dereference.
 pub(crate) const NULL_CHECK: &str = "rk.null_check";
 
+/// Name of the builtin that raises when the string an import gave was
+/// longer than the STRING the call passed for it.
+const HOST_STRING_CHECK: &str = "rk.host_string_check";
+
 impl<'a> WasmGen<'a> {
     fn new(db: &'a dyn WorkspaceDataBase, module: &'a MirModule) -> Self {
         // The module defines its own memory (`finish`): a component cannot
@@ -762,10 +766,13 @@ impl<'a> WasmGen<'a> {
             wasm_idx += 1;
         }
         // 3b. An import passed a STRING or a CHAR is called through a
-        //     wrapper that checks them first, after the user functions.
+        //     wrapper that checks them first, after the user functions,
+        //     and so is one that gives a string, whose wrapper tells the
+        //     host where to write it.
         // An async call's block checks them itself, before the call.
         for (at, ext_fn) in self.module.extern_functions.iter().enumerate() {
-            if !ext_fn.asynchronous && ext_fn.params.iter().any(|p| import_check(&p.ty).is_some()) {
+            let checked = ext_fn.params.iter().any(|p| import_check(&p.ty).is_some());
+            if !ext_fn.asynchronous && (checked || ext_fn.gives_string()) {
                 index_remap.insert(ext_fn.index, wasm_idx);
                 self.import_wrappers.push((at, wasm_idx));
                 wasm_idx += 1;
@@ -1108,12 +1115,16 @@ impl<'a> WasmGen<'a> {
         for check in crate::exports::builtins(self.module) {
             found.insert(check.to_string());
         }
-        // An import's wrapper checks what a STRING or a CHAR passes.
+        // An import's wrapper checks what a STRING or a CHAR passes, and
+        // the length of the string the import gave.
         for ext_fn in &self.module.extern_functions {
             for param in &ext_fn.params {
                 if let Some(check) = import_check(&param.ty) {
                     found.insert(check.to_string());
                 }
+            }
+            if ext_fn.gives_string() {
+                found.insert(HOST_STRING_CHECK.to_string());
             }
         }
 
@@ -1165,7 +1176,8 @@ impl<'a> WasmGen<'a> {
     /// and otherwise writes in memory at the address the call passes last
     /// ([`canonical`]).
     fn import_signature(&self, ext_fn: &MirExternFunction) -> (Vec<ValType>, Vec<ValType>) {
-        let (mut params, _) = build_signature(&ext_fn.params, &None);
+        let passed: Vec<MirParam> = ext_fn.passed().cloned().collect();
+        let (mut params, _) = build_signature(&passed, &None);
         // Lowered async: the parameters, or past 4 values the address of a
         // tuple of them, the address the result is written at, and the
         // call's status and handle back.
@@ -1206,12 +1218,35 @@ impl<'a> WasmGen<'a> {
     /// character, raising where the component model would trap and stop
     /// the PLC, then calls the import with the same values and returns
     /// what it returns.
+    ///
+    /// An import that gives a string takes the STRING for it here, as its
+    /// address and how many bytes it holds, which the import itself does
+    /// not: the wrapper makes it the place of the host's next string
+    /// ([`control::ControlArea::host_string`]) for the call alone, once
+    /// the checks have passed, and raises after the call when the string
+    /// was longer than the STRING.
     fn emit_import_wrapper(&mut self, at: usize, index: u32) {
         let ext_fn = &self.module.extern_functions[at];
-        let (params, results) = self.import_signature(ext_fn);
+        let (import_params, results) = self.import_signature(ext_fn);
+        let builtin = |name: &str| {
+            self.builtin_indices
+                .get(name)
+                .copied()
+                .unwrap_or_else(|| panic!("internal compiler error: `{name}` was not grafted"))
+        };
         let mut f = wasm_encoder::Function::new([]);
+        // The wrapper's own parameters, the locals it passes on, and the
+        // STRING's two.
+        let (mut params, _) = build_signature(&ext_fn.params, &None);
+        let mut passed = Vec::new();
+        let mut string = None;
         let mut local = 0;
         for param in &ext_fn.params {
+            if param.kind == MirParamKind::InOut {
+                string = Some((local, local + 1));
+                local += 2;
+                continue;
+            }
             let lanes = match param.ty {
                 MirType::String { .. } => 2,
                 _ => 1,
@@ -1220,17 +1255,64 @@ impl<'a> WasmGen<'a> {
                 for lane in 0..lanes {
                     f.instruction(&Instruction::LocalGet(local + lane));
                 }
-                let check = self.builtin_indices.get(check).copied().unwrap_or_else(|| {
-                    panic!("internal compiler error: `{check}` was not grafted")
-                });
-                f.instruction(&Instruction::Call(check));
+                f.instruction(&Instruction::Call(builtin(check)));
             }
+            passed.extend(local..local + lanes);
             local += lanes;
         }
-        for local in 0..params.len() as u32 {
-            f.instruction(&Instruction::LocalGet(local));
+        // What the call passes past the declared parameters: the address
+        // a record comes back at.
+        for extra in &import_params[passed.len()..] {
+            passed.push(params.len() as u32);
+            params.push(*extra);
+        }
+        let host_string = string.map(|locals| {
+            let area = control::control_area(self.module, tests_end(self.module));
+            let at = area.host_string.expect(
+                "internal compiler error: an import gives a string, and the module has no place \
+                 for it",
+            );
+            (locals, at as i32)
+        });
+        if let Some(((address, capacity), at)) = host_string {
+            for (offset, value) in [
+                (control::HOST_STRING_AT, Some(address)),
+                (control::HOST_STRING_CAPACITY, Some(capacity)),
+                (control::HOST_STRING_LANDED, None),
+            ] {
+                f.instruction(&Instruction::I32Const(at));
+                match value {
+                    Some(local) => f.instruction(&Instruction::LocalGet(local)),
+                    None => f.instruction(&Instruction::I32Const(0)),
+                };
+                f.instruction(&Instruction::I32Store(emit_expr::mem_arg(offset, 2)));
+            }
+            // Empty until the host writes one: an option that is none
+            // brings no string.
+            f.instruction(&Instruction::LocalGet(address));
+            f.instruction(&Instruction::I32Const(0));
+            f.instruction(&Instruction::I32Store(emit_expr::mem_arg(0, 2)));
+        }
+        for local in &passed {
+            f.instruction(&Instruction::LocalGet(*local));
         }
         f.instruction(&Instruction::Call(at as u32));
+        if let Some((_, at)) = host_string {
+            // The host's next string is no longer this one's, whatever
+            // came.
+            f.instruction(&Instruction::I32Const(at));
+            f.instruction(&Instruction::I32Const(0));
+            f.instruction(&Instruction::I32Store(emit_expr::mem_arg(
+                control::HOST_STRING_AT,
+                2,
+            )));
+            f.instruction(&Instruction::I32Const(at));
+            f.instruction(&Instruction::I32Load(emit_expr::mem_arg(
+                control::HOST_STRING_LANDED,
+                2,
+            )));
+            f.instruction(&Instruction::Call(builtin(HOST_STRING_CHECK)));
+        }
         f.instruction(&Instruction::End);
 
         let type_idx = self.next_type_idx;
