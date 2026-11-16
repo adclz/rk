@@ -110,7 +110,8 @@ fn a_used_type_is_named_where_it_is_defined(mut with_db: RootDatabase) {
 
 /// An alias of a record, a tuple, an option, a result or a string writes
 /// no TYPE: the functions that take or give one pass it as they would pass
-/// what it names. An alias of a list is left out, with the functions.
+/// what it names. An alias of a list writes none either, and is listed as
+/// left out; a function that gives one gives its elements into arrays.
 #[rstest]
 fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
@@ -139,6 +140,8 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
     NAMESPACE INTERNAL Wasi
     	NAMESPACE Example
     		NAMESPACE Shapes
+    			USING Std.Convert;
+
     			{extern 'wasi:example/shapes@0.3.0' 'move-to'}
     			FUNCTION MOVE_TO
     			VAR_INPUT
@@ -170,6 +173,35 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
     			END_VAR
     			END_FUNCTION
 
+    			/* `list-all` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `LIST_ALL` reads, and its list in
+    			   `value`, where the host writes it. */
+    			{extern 'wasi:example/shapes@0.3.0' 'list-all'}
+    			FUNCTION PRIVATE LIST_ALL_RAW
+    			VAR_IN_OUT
+    				value : ARRAY[*] OF STRING;
+    			END_VAR
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION LIST_ALL
+    			VAR_IN_OUT
+    				value : ARRAY[*] OF STRING;
+    			END_VAR
+    			VAR_OUTPUT
+    				count : UDINT;
+    			END_VAR
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    				LIST_ALL_RAW(value := value, w0 => w0, w1 => w1);
+    				count := DWORD_TO_UDINT(w0.%D1);
+    			END_FUNCTION
+
     			/* `here` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `HERE` reads, and its string in
     			   `value`, where the host writes it. */
@@ -198,8 +230,6 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - `names`: it is a list, which ST has no type for yet.
-       - `list-all`: its result holds a list, which an import cannot give back
-         yet. */
+       - `names`: it is a list, which ST has no type for yet. */
     ");
 }

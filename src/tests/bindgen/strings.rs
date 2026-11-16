@@ -245,6 +245,35 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
     					value := DWORD_TO_UDINT(w0.%D1);
     				END_IF;
     			END_FUNCTION
+
+    			/* `names` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `NAMES` reads, and its list in `value`,
+    			   where the host writes it. */
+    			{extern 'wasi:example/texts@0.3.0' 'names'}
+    			FUNCTION PRIVATE NAMES_RAW
+    			VAR_IN_OUT
+    				value : ARRAY[*] OF STRING;
+    			END_VAR
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION NAMES
+    			VAR_IN_OUT
+    				value : ARRAY[*] OF STRING;
+    			END_VAR
+    			VAR_OUTPUT
+    				count : UDINT;
+    			END_VAR
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    				NAMES_RAW(value := value, w0 => w0, w1 => w1);
+    				count := DWORD_TO_UDINT(w0.%D1);
+    			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE
     END_NAMESPACE
@@ -253,8 +282,8 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
          back yet.
        - what `bytes` of `chunk` holds: a list, which an import cannot give
          back yet.
-       - `both`: its result holds two strings, which an import cannot give back
-         yet.
+       - `both`: its result holds two strings or a string and a list, which an
+         import cannot give back yet.
        - `why`: its result holds a string, which an import cannot give back
          yet.
        - `mixed`: its result holds two strings or a string and a list, which an
@@ -264,16 +293,15 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
        - `beside`: its result holds two strings or a string and a list, which
          an import cannot give back yet.
        - `later`: its result holds a string, which an import cannot give back
-         yet.
-       - `names`: its result holds a list, which an import cannot give back
          yet. */
     ");
 }
 
 /// The host's side of [`TEXTS`]: `text` gives a short string, an empty
-/// one, one of several bytes a character and one of 300 bytes; `maybe`
-/// one or none; `described` a number and a name; `settled` a string or an
-/// error; `failing` an error whose case holds a text no output takes.
+/// one, one of several bytes a character, one of 300 bytes, and for 10 and
+/// 11 ones of 100,010 and 300,000; `maybe` one or none; `described` a
+/// number and a name; `settled` a string or an error; `failing` an error
+/// whose case holds a text no output takes.
 fn texts_host(linker: &mut Linker<Host>) {
     let which = |params: &[Val]| match params {
         [Val::U32(which)] => *which,
@@ -289,6 +317,8 @@ fn texts_host(linker: &mut Linker<Host>) {
                 0 => string("hello"),
                 1 => string(""),
                 2 => string("héllo, 漢字"),
+                10 => Val::String("x".repeat(100_010)),
+                11 => Val::String("x".repeat(300_000)),
                 _ => Val::String("x".repeat(300)),
             };
             Ok(())
@@ -460,4 +490,66 @@ fn the_host_writes_a_string_into_the_string_passed(mut with_db: RootDatabase) {
         1,
         "the number of the check that failed, negative"
     );
+}
+
+/// What the scan of [`room_for_what_is_too_long`] checks: 1, or the number
+/// of the check that failed, negative. Its second scan asks for a string
+/// longer than any place the module has.
+const BOUNDS: &str = r#"
+    FUNCTION check : DINT
+    VAR
+        big : STRING[100000];
+        why : STRING;
+        raised, failed : BOOL;
+        value : UDINT;
+        fault : Wasi.Example.Texts.FAULT;
+        i : DINT;
+    END_VAR
+        check := 0;
+        // Ten bytes too long for a STRING longer than a page: it raises.
+        __TRY
+            Wasi.Example.Texts.TEXT(which := 10, value := big);
+        __CATCH(why)
+            raised := TRUE;
+        __END_TRY;
+        IF NOT raised OR why <> 'a string the host gave is longer than its STRING' THEN
+            check := -1; RETURN;
+        END_IF;
+        // A text no STRING waits for lands where the one before it did.
+        FOR i := 1 TO 20000 DO
+            Wasi.Example.Texts.FAILING(failed => failed, value => value, error => fault);
+        END_FOR;
+        IF NOT failed OR fault <> 1 THEN check := -2; RETURN; END_IF;
+        check := 1;
+    END_FUNCTION
+
+    PROGRAM P
+    VAR_EXTERNAL output : DINT; END_VAR
+    VAR scans : DINT; s : STRING; END_VAR
+        scans := scans + 1;
+        IF scans = 1 THEN
+            output := check();
+        ELSE
+            Wasi.Example.Texts.TEXT(which := 11, value := s);
+            output := -100;
+        END_IF;
+    END_PROGRAM
+"#;
+
+/// The memory is as large as the module was built: what is too long for
+/// its STRING lands in the scratch, which has room for the largest STRING
+/// the module declares and a page more. A string ten bytes too long for a
+/// STRING longer than a page raises; texts no STRING waits for land on one
+/// another, so that 20,000 of them in one scan take the room of one; and a
+/// string longer than the room traps, whatever its STRING.
+#[rstest]
+fn room_for_what_is_too_long(mut with_db: RootDatabase) {
+    let mut plc = hosted(&mut with_db, TEXTS, BOUNDS, texts_host);
+    assert_eq!(
+        plc.scan(0),
+        1,
+        "the number of the check that failed, negative"
+    );
+    let trap = plc.try_scan(0).expect_err("a string past the room traps");
+    assert!(trap.contains("unreachable"), "{trap}");
 }
