@@ -2149,6 +2149,99 @@ fn the_build_checks_wasi_imports_against_wasi_s_wit(
     assert_eq!(build(&mut with_db, source).err().as_deref(), Some(error));
 }
 
+/// A stream's read or write moves what the stream carries, which the build
+/// checks against WASI's WIT: bytes, in a STRING or an ARRAY OF BYTE, or a
+/// resource's handles, which a read takes into an ARRAY OF UDINT. The host
+/// writes each element at the stream's own width, which a buffer of other
+/// elements does not hold. A stream of anything else no block moves yet.
+#[rstest]
+#[case::bytes_from_a_stream_of_handles(
+    "{extern async 'wasi:sockets/types@0.3.0' '[stream-read-0][method]tcp-socket.listen'}
+     FUNCTION_BLOCK ACCEPT
+     VAR_INPUT stream : UDINT; END_VAR
+     VAR_OUTPUT DONE : BOOL; data : ARRAY[0..15] OF BYTE; read : UDINT; closed : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR accept : ACCEPT; END_VAR
+         accept(stream := 1);
+     END_PROGRAM",
+    "`ACCEPT` imports `[stream-read-0][method]tcp-socket.listen` of \
+     `wasi:sockets/types@0.3.0`, and number 0 of the streams and futures of \
+     `[method]tcp-socket.listen`'s type carries a resource's handles, which an ARRAY OF \
+     UDINT holds"
+)]
+#[case::text_from_a_stream_of_handles(
+    "{extern async 'wasi:sockets/types@0.3.0' '[stream-read-0][method]tcp-socket.listen'}
+     FUNCTION_BLOCK ACCEPT
+     VAR_INPUT stream : UDINT; END_VAR
+     VAR_OUTPUT DONE : BOOL; data : STRING[16]; read : UDINT; closed : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR accept : ACCEPT; END_VAR
+         accept(stream := 1);
+     END_PROGRAM",
+    "`ACCEPT` imports `[stream-read-0][method]tcp-socket.listen` of \
+     `wasi:sockets/types@0.3.0`, and number 0 of the streams and futures of \
+     `[method]tcp-socket.listen`'s type carries a resource's handles, which an ARRAY OF \
+     UDINT holds"
+)]
+#[case::handles_from_a_stream_of_bytes(
+    "{extern async 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
+     FUNCTION_BLOCK READ_HANDLES
+     VAR_INPUT stream : UDINT; END_VAR
+     VAR_OUTPUT DONE : BOOL; data : ARRAY[0..15] OF UDINT; read : UDINT; closed : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR read : READ_HANDLES; END_VAR
+         read(stream := 1);
+     END_PROGRAM",
+    "`READ_HANDLES` imports `[stream-read-0]read-via-stream` of `wasi:cli/stdin@0.3.0`, \
+     and number 0 of the streams and futures of `read-via-stream`'s type carries bytes, \
+     which a STRING or an ARRAY OF BYTE holds"
+)]
+#[case::bytes_into_a_stream_of_handles(
+    "{extern async 'wasi:sockets/types@0.3.0' '[stream-write-0][method]tcp-socket.listen'}
+     FUNCTION_BLOCK HAND_OVER
+     VAR_INPUT stream : UDINT; data : STRING[16]; END_VAR
+     VAR_OUTPUT DONE : BOOL; written : UDINT; closed : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR hand_over : HAND_OVER; END_VAR
+         hand_over(stream := 1, data := 'socket');
+     END_PROGRAM",
+    "`HAND_OVER` imports `[stream-write-0][method]tcp-socket.listen` of \
+     `wasi:sockets/types@0.3.0`, and number 0 of the streams and futures of \
+     `[method]tcp-socket.listen`'s type carries a resource's handles, which no block \
+     writes yet"
+)]
+#[case::entries_of_a_directory(
+    "{extern async 'wasi:filesystem/types@0.3.0' '[stream-read-0][method]descriptor.read-directory'}
+     FUNCTION_BLOCK READ_ENTRIES
+     VAR_INPUT stream : UDINT; END_VAR
+     VAR_OUTPUT DONE : BOOL; data : ARRAY[0..15] OF BYTE; read : UDINT; closed : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR read : READ_ENTRIES; END_VAR
+         read(stream := 1);
+     END_PROGRAM",
+    "`READ_ENTRIES` imports `[stream-read-0][method]descriptor.read-directory` of \
+     `wasi:filesystem/types@0.3.0`, and number 0 of the streams and futures of \
+     `[method]descriptor.read-directory`'s type carries neither bytes nor handles, which \
+     no block moves yet"
+)]
+fn the_build_checks_what_a_stream_s_read_or_write_moves(
+    mut with_db: db::RootDatabase,
+    #[case] source: &str,
+    #[case] error: &str,
+) {
+    assert_eq!(build(&mut with_db, source).err().as_deref(), Some(error));
+}
+
 /// A resource's functions are imported under the names WIT gives them, and
 /// wit-component takes their core forms: a method that returns its result
 /// where the module points, an async method lowered async, the drop of a
