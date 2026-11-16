@@ -406,13 +406,13 @@ fn what_a_host_may_not_read_or_write_is_an_error(mut with_db: db::RootDatabase) 
     );
 }
 
-/// A read too large for the scratch area lands past everything the module
-/// laid out, after its ranges when they landed there themselves, in memory
-/// grown to hold it. Each range of 4 and 64 bytes takes 8 of the list, so a
-/// list written over its own ranges would read garbage. The component goes
-/// on, and reads again.
+/// A read lands in the scratch area, after its ranges. Each range of 4 and
+/// 64 bytes takes 8 of the list, so a list written over its own ranges
+/// would read garbage. A read larger than the area is `too-large`, the
+/// memory being as large as the module was built: the component goes on,
+/// and reads again.
 #[rstest]
-fn a_read_larger_than_the_scratch_area_lands_past_it(mut with_db: db::RootDatabase) {
+fn a_read_larger_than_the_scratch_area_is_too_large(mut with_db: db::RootDatabase) {
     let component = wrap(&compile_to_wasm_as_built(&mut with_db, COUNTER));
     let info = debug_format::DebugInfo::from_wasm(&component.bytes);
     let (count, note) = (range_of(&info, "Main.count"), range_of(&info, "Main.note"));
@@ -423,13 +423,16 @@ fn a_read_larger_than_the_scratch_area_lands_past_it(mut with_db: db::RootDataba
     let alone = plc.read_memory(&[note]).expect("the note alone");
     assert_eq!(&alone[4..12], b"counting");
 
-    let ranges: Vec<Range> = (0..5_000).flat_map(|_| [count, note]).collect();
+    let ranges: Vec<Range> = (0..500).flat_map(|_| [count, note]).collect();
     let bytes = plc.read_memory(&ranges).expect("the read");
-    assert_eq!(bytes.len(), 5_000 * (4 + 64));
+    assert_eq!(bytes.len(), 500 * (4 + 64));
     for pair in bytes.chunks(4 + 64) {
         assert_eq!(&pair[..4], 1i32.to_le_bytes());
         assert_eq!(&pair[4..], alone.as_slice());
     }
+
+    let ranges: Vec<Range> = (0..2_000).flat_map(|_| [count, note]).collect();
+    assert_eq!(plc.read_memory(&ranges), Err(MemoryError::TooLarge));
 
     plc.run_task(0, &[0; 16]).unwrap();
     assert_eq!(plc.read_memory(&[count]), Ok(2i32.to_le_bytes().to_vec()));
@@ -981,9 +984,12 @@ fn a_host_calls_the_exported_functions(mut with_db: db::RootDatabase) {
 }
 
 /// What stops a FUNCTION is the error of its result, and the next call
-/// runs: an exception, a STRING longer than its parameter, however long, a
-/// value outside its subrange, and a STRING returned that is not UTF-8.
-/// Nothing traps, so the component's store is never locked.
+/// runs: an exception, a STRING longer than its parameter, by up to the
+/// room the module keeps for what is too long (its largest STRING and a
+/// page more), a value outside its subrange, and a STRING returned that is
+/// not UTF-8. A STRING longer than that room traps, the memory being as
+/// large as the module was built, and a trap locks the store: it comes
+/// last.
 #[rstest]
 fn what_stops_an_exported_function_is_an_error(mut with_db: db::RootDatabase) {
     let component = build(&mut with_db, EXPORTED).expect("the module wraps");
@@ -1010,17 +1016,18 @@ fn what_stops_an_exported_function_is_an_error(mut with_db: db::RootDatabase) {
         plc.call::<_, String>("greet", ("abcdefghié", 1u8)),
         too_long
     );
-    let megabyte = "x".repeat(1 << 20);
+    let long = "x".repeat(60_000);
     assert_eq!(
-        plc.call::<_, String>("greet", (megabyte.as_str(), 1u8)),
+        plc.call::<_, String>("greet", (long.as_str(), 1u8)),
         too_long
     );
     assert_eq!(
-        plc.call::<_, String>("pick", ("ab", megabyte.as_str())),
+        plc.call::<_, String>("pick", ("ab", long.as_str())),
         too_long
     );
+    let half = "x".repeat(30_000);
     assert_eq!(
-        plc.call::<_, String>("pick", (megabyte.as_str(), megabyte.as_str())),
+        plc.call::<_, String>("pick", (half.as_str(), half.as_str())),
         too_long
     );
     assert_eq!(plc.call("pick", ("ab", "cd")), Ok("cd".to_string()));
@@ -1034,6 +1041,13 @@ fn what_stops_an_exported_function_is_an_error(mut with_db: db::RootDatabase) {
         Err("a STRING passed to the host is not UTF-8".to_string())
     );
     assert_eq!(plc.call("half", (100i16,)), Ok(50i16));
+
+    let megabyte = "x".repeat(1 << 20);
+    let greet = plc.function_of::<(&str, u8), (Result<String, String>,)>(EXPORTS, "greet");
+    let trap = greet
+        .call(&mut plc.store, (megabyte.as_str(), 1u8))
+        .expect_err("a megabyte traps");
+    assert!(format!("{trap:#}").contains("unreachable"), "{trap:#}");
 }
 
 /// Only the host calls an exported function, so the stack of recursive

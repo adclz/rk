@@ -122,6 +122,20 @@ impl Plc {
         P: wasmtime::component::ComponentNamedList + wasmtime::component::Lower + Send + Sync,
         (Result<T, E>,): wasmtime::component::ComponentNamedList + wasmtime::component::Lift,
     {
+        self.try_call(name, params)
+            .unwrap_or_else(|trap| panic!("`{name}` trapped: {trap}"))
+    }
+
+    /// [`Plc::call`], or what stopped the call when it trapped.
+    fn try_call<P, T: 'static, E: 'static>(
+        &mut self,
+        name: &str,
+        params: P,
+    ) -> Result<Result<T, E>, String>
+    where
+        P: wasmtime::component::ComponentNamedList + wasmtime::component::Lower + Send + Sync,
+        (Result<T, E>,): wasmtime::component::ComponentNamedList + wasmtime::component::Lift,
+    {
         let control = self
             .instance
             .get_export_index(&mut self.store, None, CONTROL)
@@ -135,18 +149,26 @@ impl Plc {
             .get_typed_func::<P, (Result<T, E>,)>(&mut self.store, &function)
             .unwrap_or_else(|e| panic!("`{name}`: {e}"));
         block_on(typed.call_async(&mut self.store, params))
-            .unwrap_or_else(|e| panic!("`{name}` trapped: {e:#}"))
-            .0
+            .map(|(result,)| result)
+            .map_err(|trap| format!("{trap:#}"))
     }
 
     /// A scan with `input`, and the task's output.
     pub(crate) fn scan(&mut self, input: i32) -> i32 {
+        self.try_scan(input)
+            .unwrap_or_else(|trap| panic!("`run-task` trapped: {trap}"))
+    }
+
+    /// [`Plc::scan`], or what stopped it when it trapped.
+    pub(crate) fn try_scan(&mut self, input: i32) -> Result<i32, String> {
         let outputs = self
-            .call::<_, Vec<u8>, rk::control::ScanError>(
+            .try_call::<_, Vec<u8>, rk::control::ScanError>(
                 "run-task",
                 (0u32, &input.to_le_bytes()[..]),
-            )
+            )?
             .expect("the scan runs");
-        i32::from_le_bytes(outputs[..4].try_into().expect("four bytes"))
+        Ok(i32::from_le_bytes(
+            outputs[..4].try_into().expect("four bytes"),
+        ))
     }
 }
