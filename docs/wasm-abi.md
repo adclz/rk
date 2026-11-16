@@ -234,6 +234,9 @@ A variant, and a result with a value and an error, are not laid out as a record:
 Such a result is declared as `LWORD` outputs, which hold its bytes as the host wrote them, 8 to a word, and code rk-bindgen writes reads each value out of them: `failed := w0.%X0`, then `error := BYTE_TO_USINT(w0.%B4)`.
 A call that is not async declares two of them at least, since the canonical ABI returns one value as it is.
 A variant passed in goes the other way: the code rk-bindgen writes packs its case and what the case holds into words the import takes, the values the canonical ABI flattens it into, or, past 4 values in an async call, the bytes of the tuple the parameters are laid out in.
+A string that comes back is written by the host straight into a `STRING` of the caller's, which the import declares as its one `STRING` `VAR_IN_OUT`, of any length: the time zone's `iana-id` is `IANA_ID(value := zone, is_some => known)`.
+That `VAR_IN_OUT` is no parameter of the import: the call tells the host to write its string there, and empties it first, so it is empty when no string came.
+A string longer than the `STRING` raises `a string the host gave is longer than its STRING`, and leaves it empty.
 A `REF_TO` input is an address, where a record can come back too.
 A STRUCT, an ARRAY or an instance input is refused (`E1502`): it would go as an address into rk's own layout, which no WASI function reads.
 
