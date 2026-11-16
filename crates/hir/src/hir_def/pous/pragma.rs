@@ -314,16 +314,19 @@ pub struct WarnPragma {
 }
 
 /// What the module itself exports for the host: `__init`, the memory, the
-/// base and size of each band, and the functions of the control interface
-/// (`rk:plc/control`) with the `cabi_realloc` they take their lists by. An
-/// exported FUNCTION, `{export}` or `{test}`, may not have one of these
-/// names (E1509): a module with two exports of one name does not load.
+/// base and size of each band, the functions of the control interface
+/// (`rk:plc/control`) with the `cabi_realloc` they take their lists by, and
+/// in a module with imports the `cabi_import_realloc` what an import gives
+/// lands by. An exported FUNCTION, `{export}` or `{test}`, may not have one
+/// of these names (E1509): a module with two exports of one name does not
+/// load.
 /// `wasm_codegen` writes them; a codegen test checks it writes these and no
 /// others.
 pub const MODULE_EXPORTS: &[&str] = &[
     "__init",
     "memory",
     "cabi_realloc",
+    "cabi_import_realloc",
     "rk:plc/control@0.1.0#init",
     "rk:plc/control@0.1.0#run-task",
     "rk:plc/control@0.1.0#save-retain",
