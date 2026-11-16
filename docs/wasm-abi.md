@@ -239,6 +239,7 @@ A variant passed in goes the other way: the code rk-bindgen writes packs its cas
 A string that comes back is written by the host straight into a `STRING` of the caller's, which the import declares as its one `STRING` `VAR_IN_OUT`, of any length: the time zone's `iana-id` is `IANA_ID(value := zone, is_some => known)`.
 That `VAR_IN_OUT` is no parameter of the import: the call tells the host to write its string there, and empties it first, so it is empty when no string came.
 A string longer than the `STRING` raises `a string the host gave is longer than its STRING`, and leaves it empty.
+A string in an error, or in a variant's case, is a text, which the import declares as its first `STRING` `VAR_OUTPUT`: the call tells the host to write it into the `STRING` the output is bound to, `error.other` for a WASI error code, and one longer than that `STRING` is cut to fit, before the character its last byte would split, instead of raising.
 A list that comes back is written into arrays of the caller's, which the import declares as its `ARRAY[*]` `VAR_IN_OUT`s of any length, one for each field of an element: the preopened directories are `GET_DIRECTORIES(item0 := handles, item1 := paths, count => n)`.
 The host writes a list of scalars into its array itself, and each string of a list into its element of a `STRING` array; the scalar fields of a list of records are copied into their arrays once the call returns.
 A list longer than one of its arrays raises `a list the host gave is longer than its array`.
