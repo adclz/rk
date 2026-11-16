@@ -6,15 +6,25 @@
 //! name of its first function whose type has it, with the place the stream
 //! or future has in that function's type, and named after the type and
 //! what carries it: `BYTES_STREAM`, `RESULT_FUTURE`. A stream of bytes is
-//! read into a STRING or an ARRAY OF BYTE and written from a STRING; a
-//! stream of anything else is made and dropped only; a future's value comes
-//! back as outputs, a record in the STRUCT of one, as a function's would.
+//! read into a STRING or an ARRAY OF BYTE and written from a STRING; one of
+//! a resource's handles is read into an ARRAY OF UDINT; a stream of anything
+//! else is made and dropped only; a future's value comes back as outputs, a
+//! record in the STRUCT of one, as a function's would.
+
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
+use wasmtime::StoreContextMut;
+use wasmtime::component::{
+    Destination, Linker, Resource, ResourceType, StreamProducer, StreamReader, StreamResult,
+    VecBuffer,
+};
 
-use super::{assert_abi, built, checked, generated, summary};
+use super::{assert_abi, built, checked, generated, hosted, summary};
+use crate::tests::cli::component_host::Host;
 use crate::tests::utils::with_db;
 
 /// A set per type in each interface: the two functions of one interface
@@ -478,8 +488,198 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     ");
 }
 
-/// A stream of anything but bytes is made and dropped, not read or written
-/// yet: of a number, of a record, of a resource's handles.
+/// A stream of the handles of a resource, `connection`, as a listener's
+/// connections come in.
+const FEEDS: &str = r#"
+    package wasi:example@0.3.0;
+
+    interface feeds {
+        resource connection;
+        accept: func() -> stream<connection>;
+    }
+
+    world example {
+        import feeds;
+    }
+"#;
+
+/// A stream of a resource's handles is read into an ARRAY OF UDINT, a
+/// handle an element, each the program's own to drop: what a listener's
+/// connections come in. Nothing takes such a stream from the program, which
+/// a write would feed.
+#[rstest]
+fn a_stream_of_handles_is_read_into_udints(mut with_db: RootDatabase) {
+    assert_snapshot!(checked(&mut with_db, FEEDS), @r"
+    // wasi-example-feeds.st
+    NAMESPACE INTERNAL Wasi
+    	NAMESPACE Example
+    		NAMESPACE Feeds
+    			/* Lets go of `handle`, a handle of `connection` the host gave. */
+    			{extern 'wasi:example/feeds@0.3.0' '[resource-drop]connection'}
+    			FUNCTION CONNECTION_DROP
+    			VAR_INPUT
+    				handle : UDINT;
+    			END_VAR
+    			END_FUNCTION
+
+    			{extern 'wasi:example/feeds@0.3.0' 'accept'}
+    			FUNCTION ACCEPT : UDINT
+    			END_FUNCTION
+
+    			/* Makes a stream of `own<connection>`, and gives its reading end, then its
+    			   writing end. */
+    			{extern 'wasi:example/feeds@0.3.0' '[stream-new-0]accept'}
+    			FUNCTION CONNECTION_STREAM_NEW
+    			VAR_OUTPUT
+    				readable : UDINT;
+    				writable : UDINT;
+    			END_VAR
+    			END_FUNCTION
+
+    			/* Reads the handles that come next into `data`, as many as it holds at
+    			   most: `read` of them, after `DONE`, each the program's own to drop.
+    			   `closed` is TRUE once the writer has let go. */
+    			{extern async 'wasi:example/feeds@0.3.0' '[stream-read-0]accept'}
+    			FUNCTION_BLOCK CONNECTION_STREAM_READ
+    			VAR_INPUT
+    				stream : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				data : ARRAY[0..15] OF UDINT;
+    				read : UDINT;
+    				closed : BOOL;
+    			END_VAR
+    			END_FUNCTION_BLOCK
+
+    			/* Lets go of the stream's reading end, `stream`. */
+    			{extern 'wasi:example/feeds@0.3.0' '[stream-drop-readable-0]accept'}
+    			FUNCTION CONNECTION_STREAM_DROP_READABLE
+    			VAR_INPUT
+    				stream : UDINT;
+    			END_VAR
+    			END_FUNCTION
+
+    			/* Lets go of the stream's writing end, `stream`. */
+    			{extern 'wasi:example/feeds@0.3.0' '[stream-drop-writable-0]accept'}
+    			FUNCTION CONNECTION_STREAM_DROP_WRITABLE
+    			VAR_INPUT
+    				stream : UDINT;
+    			END_VAR
+    			END_FUNCTION
+    		END_NAMESPACE
+    	END_NAMESPACE
+    END_NAMESPACE
+    /* Not generated:
+       - `CONNECTION_STREAM_WRITE`: a stream's write moves bytes only.
+       - `CONNECTION_STREAM_CANCEL_READ` and `CONNECTION_STREAM_CANCEL_WRITE`:
+         a cancel blocks the scan. */
+    ");
+}
+
+/// A read takes as many handles as its array holds, and no more: a host
+/// that gives three connections at once fills a block whose array holds two
+/// with the first two, each a handle the program drops. 1 when it does, and
+/// otherwise the number of the check that failed, negative.
+#[rstest]
+fn a_read_takes_as_many_handles_as_its_array_holds(mut with_db: RootDatabase) {
+    let program = r#"
+        {extern async 'wasi:example/feeds@0.3.0' '[stream-read-0]accept'}
+        FUNCTION_BLOCK TWO_AT_ONCE
+        VAR_INPUT stream : UDINT; END_VAR
+        VAR_OUTPUT DONE : BOOL; data : ARRAY[0..1] OF UDINT; read : UDINT; closed : BOOL; END_VAR
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR_EXTERNAL output : DINT; END_VAR
+        VAR
+            step : INT;
+            connections : UDINT;
+            two : TWO_AT_ONCE;
+        END_VAR
+            CASE step OF
+            0:
+                connections := Wasi.Example.Feeds.ACCEPT();
+                step := 1;
+            1:
+                two(stream := connections);
+                IF two.DONE THEN
+                    step := 9;
+                    IF two.read <> 2 OR two.closed THEN output := -1; RETURN; END_IF;
+                    Wasi.Example.Feeds.CONNECTION_DROP(handle := two.data[0]);
+                    Wasi.Example.Feeds.CONNECTION_DROP(handle := two.data[1]);
+                    output := 1;
+                END_IF;
+            END_CASE;
+        END_PROGRAM
+    "#;
+    let mut plc = hosted(&mut with_db, FEEDS, program, feeds_host);
+    let mut output = 0;
+    for _ in 0..20 {
+        output = plc.scan(0);
+        if output != 0 {
+            break;
+        }
+    }
+    assert_eq!(output, 1, "the number of the check that failed, negative");
+}
+
+/// The host's side of [`FEEDS`]: `accept` gives a stream of three
+/// connections, all at once.
+fn feeds_host(linker: &mut Linker<Host>) {
+    let mut feeds = linker
+        .instance("wasi:example/feeds@0.3.0")
+        .expect("the interface");
+    feeds
+        .resource("connection", ResourceType::host::<Connection>(), |_, _| {
+            Ok(())
+        })
+        .expect("the resource");
+    feeds
+        .func_wrap("accept", |mut store: StoreContextMut<'_, Host>, (): ()| {
+            Ok((StreamReader::new(&mut store, Connections(3))?,))
+        })
+        .expect("a function of the host");
+}
+
+/// A connection the host gives.
+struct Connection;
+
+/// A stream of connections that gives the first `.0`, numbered from 1, at
+/// its first read, and nothing after.
+struct Connections(u32);
+
+impl<D> StreamProducer<D> for Connections {
+    type Item = Resource<Connection>;
+    type Buffer = VecBuffer<Resource<Connection>>;
+
+    fn poll_produce<'a>(
+        mut self: Pin<&mut Self>,
+        _: &mut Context<'_>,
+        mut store: StoreContextMut<'a, D>,
+        mut destination: Destination<'a, Self::Item, Self::Buffer>,
+        finish: bool,
+    ) -> Poll<wasmtime::Result<StreamResult>> {
+        // A read of nothing asks whether the stream is ready.
+        if destination.remaining(&mut store) == Some(0) {
+            return Poll::Ready(Ok(StreamResult::Completed));
+        }
+        // Given out: nothing comes after, until the read is called off.
+        if self.0 == 0 {
+            return match finish {
+                true => Poll::Ready(Ok(StreamResult::Cancelled)),
+                false => Poll::Pending,
+            };
+        }
+        let given: Vec<Resource<Connection>> = (1..=self.0).map(Resource::new_own).collect();
+        self.0 = 0;
+        destination.set_buffer(given.into());
+        Poll::Ready(Ok(StreamResult::Completed))
+    }
+}
+
+/// A stream of anything but bytes or handles is made and dropped, not read
+/// or written yet: of a number, of a record.
 #[rstest]
 fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
@@ -487,10 +687,8 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
 
         interface feeds {
             record event { code: u32 }
-            resource connection;
             numbers: func() -> stream<u32>;
             events: func() -> stream<event>;
-            accept: func() -> stream<connection>;
         }
 
         world example {
@@ -504,14 +702,6 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
     			TYPE EVENT : STRUCT
     				code : UDINT;
     			END_STRUCT END_TYPE
-
-    			/* Lets go of `handle`, a handle of `connection` the host gave. */
-    			{extern 'wasi:example/feeds@0.3.0' '[resource-drop]connection'}
-    			FUNCTION CONNECTION_DROP
-    			VAR_INPUT
-    				handle : UDINT;
-    			END_VAR
-    			END_FUNCTION
 
     			{extern 'wasi:example/feeds@0.3.0' 'numbers'}
     			FUNCTION NUMBERS : UDINT
@@ -572,52 +762,18 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
     				stream : UDINT;
     			END_VAR
     			END_FUNCTION
-
-    			{extern 'wasi:example/feeds@0.3.0' 'accept'}
-    			FUNCTION ACCEPT : UDINT
-    			END_FUNCTION
-
-    			/* Makes a stream of `own<connection>`, and gives its reading end, then its
-    			   writing end. */
-    			{extern 'wasi:example/feeds@0.3.0' '[stream-new-0]accept'}
-    			FUNCTION CONNECTION_STREAM_NEW
-    			VAR_OUTPUT
-    				readable : UDINT;
-    				writable : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
-    			/* Lets go of the stream's reading end, `stream`. */
-    			{extern 'wasi:example/feeds@0.3.0' '[stream-drop-readable-0]accept'}
-    			FUNCTION CONNECTION_STREAM_DROP_READABLE
-    			VAR_INPUT
-    				stream : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
-    			/* Lets go of the stream's writing end, `stream`. */
-    			{extern 'wasi:example/feeds@0.3.0' '[stream-drop-writable-0]accept'}
-    			FUNCTION CONNECTION_STREAM_DROP_WRITABLE
-    			VAR_INPUT
-    				stream : UDINT;
-    			END_VAR
-    			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - `U32_STREAM_READ` and `U32_STREAM_WRITE`: a stream's read or write
-         moves bytes only.
+       - `U32_STREAM_READ` and `U32_STREAM_WRITE`: a stream's read moves bytes
+         or handles only, and its write bytes only.
        - `U32_STREAM_CANCEL_READ` and `U32_STREAM_CANCEL_WRITE`: a cancel
          blocks the scan.
-       - `EVENT_STREAM_READ` and `EVENT_STREAM_WRITE`: a stream's read or write
-         moves bytes only.
+       - `EVENT_STREAM_READ` and `EVENT_STREAM_WRITE`: a stream's read moves
+         bytes or handles only, and its write bytes only.
        - `EVENT_STREAM_CANCEL_READ` and `EVENT_STREAM_CANCEL_WRITE`: a cancel
-         blocks the scan.
-       - `CONNECTION_STREAM_READ` and `CONNECTION_STREAM_WRITE`: a stream's
-         read or write moves bytes only.
-       - `CONNECTION_STREAM_CANCEL_READ` and `CONNECTION_STREAM_CANCEL_WRITE`:
-         a cancel blocks the scan. */
+         blocks the scan. */
     ");
 }
 
@@ -1050,7 +1206,7 @@ fn a_built_in_named_like_a_function_gives_way(mut with_db: RootDatabase) {
     assert_abi(&bindings, &mir, &module);
     assert_snapshot!(summary(&bindings.files), @r"
     wasi-example-feeds.st: EVENT, EVENT_STREAM_NEW, FEED, EVENT_STREAM_NEW_, EVENT_STREAM_DROP_READABLE, EVENT_STREAM_DROP_WRITABLE
-        left out `EVENT_STREAM_READ` and `EVENT_STREAM_WRITE`: a stream's read or write moves bytes only
+        left out `EVENT_STREAM_READ` and `EVENT_STREAM_WRITE`: a stream's read moves bytes or handles only, and its write bytes only
         left out `EVENT_STREAM_CANCEL_READ` and `EVENT_STREAM_CANCEL_WRITE`: a cancel blocks the scan
     ");
 }

@@ -541,3 +541,160 @@ fn an_address_passed_to_wasi_s_sockets_comes_back(mut with_db: RootDatabase) {
     }
     assert_eq!(output, 1, "the number of the check that failed, negative");
 }
+
+/// A listener hands over each connection it accepts as the handle of a
+/// socket, which its stream gives into an ARRAY OF UDINT: a client
+/// connects to a socket listening on the loopback address, the listener's
+/// stream gives the accepted socket, whose peer is the client, and the
+/// bytes the client sends come out of it, however many reads they take.
+/// Each handle is the program's own, which it drops. 1 when each is what
+/// it should be, and otherwise the number of the check that failed,
+/// negative.
+#[rstest]
+fn a_listener_hands_over_the_sockets_it_accepts(mut with_db: RootDatabase) {
+    let bindings = generated(&world_of(&["wasi:sockets/types@0.3.0"]));
+    let program = r#"
+        PROGRAM P
+        VAR_EXTERNAL output : DINT; END_VAR
+        VAR
+            step : INT;
+            failed : BOOL;
+            listener, connections, client, accepted : UDINT;
+            outgoing, sending, sent, incoming, ending : UDINT;
+            loopback, address : Wasi.Sockets.Types.IP_SOCKET_ADDRESS;
+            listening, peer : UINT;
+            connect : Wasi.Sockets.Types.TCP_SOCKET_CONNECT;
+            accept : Wasi.Sockets.Types.TCP_SOCKET_STREAM_READ;
+            write : Wasi.Sockets.Types.BYTES_STREAM_WRITE;
+            read : Wasi.Sockets.Types.BYTES_STREAM_READ_ARRAY;
+            got : ARRAY[0..3] OF BYTE;
+            count, taken : UDINT;
+        END_VAR
+            // 127.0.0.1, port 0: the host picks one.
+            loopback.kind := Wasi.Sockets.Types.IP_SOCKET_ADDRESS_KIND#IPV4;
+            loopback.ipv4.address.item0 := 127;
+            loopback.ipv4.address.item3 := 1;
+            CASE step OF
+            0:
+                step := 9;
+                Wasi.Sockets.Types.TCP_SOCKET_CREATE(
+                    address_family := Wasi.Sockets.Types.IP_ADDRESS_FAMILY#IPV4,
+                    failed => failed, value => listener);
+                IF failed THEN output := -1; RETURN; END_IF;
+                Wasi.Sockets.Types.TCP_SOCKET_BIND(self := listener, local_address := loopback,
+                    failed => failed);
+                IF failed THEN output := -2; RETURN; END_IF;
+                Wasi.Sockets.Types.TCP_SOCKET_GET_LOCAL_ADDRESS(self := listener,
+                    failed => failed, value => address);
+                listening := address.ipv4.port;
+                IF failed OR listening = 0 THEN output := -3; RETURN; END_IF;
+                Wasi.Sockets.Types.TCP_SOCKET_LISTEN(self := listener,
+                    failed => failed, value => connections);
+                IF failed THEN output := -4; RETURN; END_IF;
+                Wasi.Sockets.Types.TCP_SOCKET_CREATE(
+                    address_family := Wasi.Sockets.Types.IP_ADDRESS_FAMILY#IPV4,
+                    failed => failed, value => client);
+                IF failed THEN output := -5; RETURN; END_IF;
+                // Bound here, or the host binds it to any address as it
+                // connects, which this host does not allow.
+                Wasi.Sockets.Types.TCP_SOCKET_BIND(self := client, local_address := loopback,
+                    failed => failed);
+                IF failed THEN output := -6; RETURN; END_IF;
+                Wasi.Sockets.Types.TCP_SOCKET_GET_LOCAL_ADDRESS(self := client,
+                    failed => failed, value => address);
+                peer := address.ipv4.port;
+                IF failed OR peer = 0 THEN output := -7; RETURN; END_IF;
+                step := 1;
+            1:
+                address := loopback;
+                address.ipv4.port := listening;
+                connect(self := client, remote_address := address);
+                IF connect.DONE THEN
+                    step := 9;
+                    IF connect.failed THEN output := -8; RETURN; END_IF;
+                    step := 2;
+                END_IF;
+            2:
+                accept(stream := connections);
+                IF accept.DONE THEN
+                    step := 9;
+                    IF accept.read <> 1 OR accept.closed THEN output := -9; RETURN; END_IF;
+                    accepted := accept.data[0];
+                    // A socket of the program's own, connected to the client.
+                    Wasi.Sockets.Types.TCP_SOCKET_GET_REMOTE_ADDRESS(self := accepted,
+                        failed => failed, value => address);
+                    IF failed OR address.ipv4.port <> peer
+                        OR address.ipv4.address.item0 <> 127
+                    THEN
+                        output := -10; RETURN;
+                    END_IF;
+                    // The client sends what it writes into a stream; the
+                    // accepted socket gives what it receives in another.
+                    Wasi.Sockets.Types.BYTES_STREAM_NEW(readable => outgoing, writable => sending);
+                    sent := Wasi.Sockets.Types.TCP_SOCKET_SEND(self := client, data := outgoing);
+                    Wasi.Sockets.Types.TCP_SOCKET_RECEIVE(self := accepted,
+                        item0 => incoming, item1 => ending);
+                    step := 3;
+                END_IF;
+            3:
+                write(stream := sending, data := 'ping');
+                IF write.DONE THEN
+                    step := 9;
+                    IF write.written <> 4 OR write.closed THEN output := -11; RETURN; END_IF;
+                    step := 4;
+                END_IF;
+            4:
+                read(stream := incoming);
+                IF read.DONE THEN
+                    step := 9;
+                    IF read.closed THEN output := -12; RETURN; END_IF;
+                    taken := 0;
+                    WHILE taken < read.read AND count < 4 DO
+                        got[count] := read.data[taken];
+                        taken := taken + 1;
+                        count := count + 1;
+                    END_WHILE;
+                    IF taken < read.read THEN output := -13; RETURN; END_IF;
+                    step := 4;
+                    IF count = 4 THEN
+                        step := 9;
+                        // 'ping'
+                        IF got[0] <> 16#70 OR got[1] <> 16#69 OR got[2] <> 16#6E
+                            OR got[3] <> 16#67
+                        THEN
+                            output := -14; RETURN;
+                        END_IF;
+                        Wasi.Sockets.Types.BYTES_STREAM_DROP_READABLE(stream := incoming);
+                        Wasi.Sockets.Types.BYTES_STREAM_DROP_WRITABLE(stream := sending);
+                        Wasi.Sockets.Types.RESULT_FUTURE_DROP_READABLE(future := ending);
+                        Wasi.Sockets.Types.RESULT_FUTURE_DROP_READABLE(future := sent);
+                        Wasi.Sockets.Types.TCP_SOCKET_DROP(handle := accepted);
+                        Wasi.Sockets.Types.TCP_SOCKET_DROP(handle := client);
+                        Wasi.Sockets.Types.TCP_SOCKET_STREAM_DROP_READABLE(stream := connections);
+                        Wasi.Sockets.Types.TCP_SOCKET_DROP(handle := listener);
+                        output := 1;
+                    END_IF;
+                END_IF;
+            END_CASE;
+        END_PROGRAM
+    "#;
+    // WASI's sockets are tokio's: the host accepts, sends and receives
+    // within its runtime while the scans check on it.
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .expect("a tokio runtime");
+    let _within = runtime.enter();
+    // What a guest may bind and connect to is the host's to allow: here,
+    // this machine alone.
+    let mut ctx = WasiCtxBuilder::new();
+    ctx.allow_tcp(true)
+        .socket_addr_check(|address, _| Box::pin(async move { address.ip().is_loopback() }));
+    let mut plc = plc_with(&mut with_db, &bindings, program, ctx.build());
+    assert_eq!(
+        scan_until(&mut plc, 1, 500),
+        1,
+        "the number of the check that failed, negative"
+    );
+}
