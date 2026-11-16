@@ -141,6 +141,9 @@ pub const BUILTINS: &[(&str, &[Lane], &[Lane])] = &[
     ("rk.div_check", &[Lane::I32], &[Lane::I32]),
     ("rk.div_check_i64", &[Lane::I64], &[Lane::I64]),
     ("rk.div_i32_checked", &[Lane::I32, Lane::I32], &[Lane::I32]),
+    ("rk.host_list_block", &[Lane::I32, Lane::I32], &[Lane::I32]),
+    ("rk.host_list_end", &[Lane::I32], &[]),
+    ("rk.host_list_placed", &[Lane::I32, Lane::I32], &[]),
     ("rk.host_string_check", &[Lane::I32], &[]),
     (
         "rk.idx_check",
