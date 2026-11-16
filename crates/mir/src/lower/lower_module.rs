@@ -1314,8 +1314,9 @@ fn largest_string<'a>(module: &'a MirModule, globals: impl Iterator<Item = &'a M
 
 /// Lower an `{extern}` FUNCTION: `VAR_INPUT` are the params, scalar
 /// `VAR_OUTPUT` the results in declaration order, the return type last,
-/// and a STRING `VAR_IN_OUT` where the host writes the string it gives, or
-/// the `ARRAY[*]` ones where it writes a list (E1502 refused the rest).
+/// and a STRING `VAR_IN_OUT` where the host writes the string it gives, the
+/// `ARRAY[*]` ones where it writes a list, or a STRING `VAR_OUTPUT` where it
+/// writes a text (E1502 refused the rest).
 fn lower_extern_function<'db>(
     db: &'db dyn WorkspaceDataBase,
     func: Function<'db>,
@@ -1336,7 +1337,16 @@ fn lower_extern_function<'db>(
             }
             VariableKind::Output => {
                 let ty = lower_type(db, var.spec(db).infer(db))?;
-                out_results.push((var.name(db), ty));
+                match ty {
+                    // No field of the result: a call passes the STRING it is
+                    // bound to, which the wrapper cuts the text to.
+                    MirType::String { .. } => params.push(MirParam {
+                        name: var.name(db),
+                        ty: MirType::Pointer(Box::new(ty)),
+                        kind: MirParamKind::Output,
+                    }),
+                    ty => out_results.push((var.name(db), ty)),
+                }
             }
             // No parameter of the import: a call passes it to the wrapper
             // that tells the host's next block where to go. An `ARRAY[*]`
