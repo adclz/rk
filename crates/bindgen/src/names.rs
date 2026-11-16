@@ -6,7 +6,9 @@
 //! enum's value in capitals joined by `_` (`read-via-stream` is
 //! `READ_VIA_STREAM`), a variable in lowercase (`how-long` is `how_long`).
 //! A name that is a keyword of ST takes a `_` after it: the interface
-//! `exit` is the namespace `Exit_`.
+//! `exit` is the namespace `Exit_`. So does a variable that would be the
+//! name of its FUNCTION's value, or a name the generated code uses in its
+//! POU ([`Scope`]).
 
 /// The words ST reserves, which no generated name may be: the grammar's
 /// keywords and the elementary types, compared without case, as ST
@@ -195,4 +197,43 @@ pub fn upper(name: &str) -> String {
 /// `how_long`).
 pub fn lower(name: &str) -> String {
     unreserved(name.to_ascii_lowercase().replace('-', "_"))
+}
+
+/// The names a POU's variables keep away from, besides the keywords: a
+/// FUNCTION's own when it returns a value, which has that name, and those
+/// the generated code uses there, a block's `DONE`, the words values are
+/// packed into or read out of, the `call` a block holds. ST compares them
+/// without case.
+#[derive(Debug, Default)]
+pub struct Scope {
+    held: Vec<String>,
+}
+
+impl Scope {
+    /// A scope that holds each of `names`.
+    pub fn holding(names: &[&str]) -> Self {
+        Scope {
+            held: names.iter().map(|name| name.to_string()).collect(),
+        }
+    }
+
+    /// Whether the scope holds `name`.
+    pub fn holds(&self, name: &str) -> bool {
+        self.held.iter().any(|held| held.eq_ignore_ascii_case(name))
+    }
+
+    /// Holds `name` from here on.
+    pub fn hold(&mut self, name: &str) {
+        self.held.push(name.to_string());
+    }
+
+    /// A variable named `name` in WIT: as [`lower`] writes it, with a `_`
+    /// after it when the scope holds that.
+    pub fn variable(&self, name: &str) -> String {
+        let name = lower(name);
+        match self.holds(&name) {
+            true => name + "_",
+            false => name,
+        }
+    }
 }

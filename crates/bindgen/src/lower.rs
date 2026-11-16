@@ -17,9 +17,10 @@
 use wit_parser::abi::{FlatTypes, WasmType};
 use wit_parser::{Function, Int, Resolve, SizeAlign, Type, TypeDefKind, TypeOwner};
 
-use crate::lift::{self, Kind, Step, join, kind, tag_kind};
+use crate::lift::{self, Kind, Step, held_by_option, join, kind, tag_kind};
+use crate::names::{self, Scope};
 use crate::shapes::{self, Var};
-use crate::{MAX_FLAT_ASYNC_PARAMS, Out, names};
+use crate::{MAX_FLAT_ASYNC_PARAMS, Out};
 
 /// A word of the import's parameters that values are packed into.
 #[derive(Debug)]
@@ -154,14 +155,15 @@ impl Lowered {
 }
 
 /// `function`'s parameters as its import takes them: as values, or
-/// `in_memory`, where the canonical ABI lays them out as a tuple. `Err`
-/// says which cannot be passed, and why.
+/// `in_memory`, where the canonical ABI lays them out as a tuple, its
+/// inputs named in `scope`. `Err` says which cannot be passed, and why.
 pub fn lower(
     resolve: &Resolve,
     sizes: &SizeAlign,
     function: &Function,
     in_memory: bool,
     here: Option<TypeOwner>,
+    scope: &Scope,
 ) -> Result<Lowered, String> {
     let mut lowered = Lowered::default();
     let types: Vec<Type> = function.params.iter().map(|param| param.ty).collect();
@@ -183,7 +185,7 @@ pub fn lower(
         let offset = offset.size_wasm32();
         // A scalar or a string is passed as it is, and so is a record or a
         // tuple of them passed as values, field after field.
-        let single = shapes::single(resolve, &param.name, param.ty, here);
+        let single = shapes::single(resolve, &param.name, param.ty, here, scope);
         if in_memory && let Some(var) = &single {
             match kind(resolve, param.ty) {
                 Some(kind) => lay(kind.bytes(), kind.bytes(), Some(offset)),
@@ -194,7 +196,7 @@ pub fn lower(
         }
         let as_it_is = match single {
             Some(var) => Some(vec![var]),
-            None if !in_memory => shapes::input(resolve, &param.name, param.ty, here).ok(),
+            None if !in_memory => shapes::input(resolve, &param.name, param.ty, here, scope).ok(),
             None => None,
         };
         if let Some(vars) = as_it_is {
@@ -210,6 +212,7 @@ pub fn lower(
             resolve,
             sizes,
             here,
+            scope,
             inputs: Vec::new(),
         };
         let (steps, count) = walk
@@ -317,6 +320,7 @@ struct Walk<'a> {
     resolve: &'a Resolve,
     sizes: &'a SizeAlign,
     here: Option<TypeOwner>,
+    scope: &'a Scope,
     inputs: Vec<Var>,
 }
 
@@ -325,7 +329,7 @@ impl Walk<'_> {
     /// its name in ST. `inside` a flag or a case, a call may leave it out,
     /// and it starts at zero.
     fn input(&mut self, name: &str, ty: String, kind: Kind, inside: bool) -> String {
-        let name = names::lower(name);
+        let name = self.scope.variable(name);
         self.inputs.push(Var {
             name: name.clone(),
             ty,
@@ -340,10 +344,11 @@ impl Walk<'_> {
     /// parameter's first, and how many values it is passed as. Its inputs
     /// are named after `prefix`, as a result's outputs are: a scalar is
     /// `prefix` itself; a record's field and a tuple's item add their name
-    /// or their place; an option adds `is-some`, a result `failed`, then
-    /// `value` and `error`; a variant is its case, then what each case
-    /// holds under the case's name. `inside` a flag or a case, a value is
-    /// only passed when that is.
+    /// or their place; an option adds `is-some`, and `value` for an option
+    /// it holds; a result adds `failed`, then `value` and `error`; a
+    /// variant is its case, then what each case holds under the case's
+    /// name. `inside` a flag or a case, a value is only passed when that
+    /// is.
     fn value(
         &mut self,
         ty: Type,
@@ -417,7 +422,13 @@ impl Walk<'_> {
                         .payload_offset(Int::U8, [None, Some(some)])
                         .size_wasm32();
                 let (name, put) = flag(self, &join(prefix, "is-some"));
-                let (then, values) = self.value(*some, held, position + 1, prefix, true)?;
+                let (then, values) = self.value(
+                    *some,
+                    held,
+                    position + 1,
+                    &held_by_option(resolve, prefix, *some),
+                    true,
+                )?;
                 let either = Step::Either {
                     flag: name,
                     then,

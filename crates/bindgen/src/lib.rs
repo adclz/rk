@@ -22,6 +22,14 @@
 //! is imported from, the built-ins too, named after their type and what
 //! carries it: `Wasi.Cli.Stdout.BYTES_STREAM_NEW`. A function or a type ST
 //! cannot express yet is left out, and the file says why at its end.
+//!
+//! ST compares names without case, and two WIT names may be written alike.
+//! The names WIT gives come first: of two that ST takes for one, the later
+//! function is left out, and a name the generator makes, a drop, a `_RAW`
+//! import or a built-in, takes a `_` after it. A variable that would be the
+//! name of its FUNCTION's value, or one its generated code uses, takes one
+//! too ([`names::Scope`]). Two interfaces that would be one namespace, or
+//! one file, stop the generator.
 
 pub mod lift;
 pub mod lower;
@@ -29,6 +37,7 @@ pub mod names;
 pub mod shapes;
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 use wit_parser::abi::AbiVariant;
 use wit_parser::{
@@ -36,6 +45,7 @@ use wit_parser::{
     TypeOwner, WorldId, WorldItem,
 };
 
+use names::Scope;
 use shapes::{STRING_LIMIT, Shape, Var};
 
 /// The interfaces `Std` reaches WASI through, as a world for [`resolve`].
@@ -121,6 +131,8 @@ pub fn generate(resolve: &Resolve, world: WorldId) -> Result<Vec<File>, String> 
         resolve,
         sizes,
         files: Vec::new(),
+        namespaces: HashMap::new(),
+        named: HashMap::new(),
     };
     for item in resolve.worlds[world].imports.values() {
         match item {
@@ -235,6 +247,10 @@ struct Generator<'a> {
     /// Where the canonical ABI puts each type's values.
     sizes: SizeAlign,
     files: Vec<File>,
+    /// The interface each namespace written so far is, by the namespace
+    /// in capitals, and the one each file is, by its name in lowercase.
+    namespaces: HashMap<String, String>,
+    named: HashMap<String, String>,
 }
 
 /// What a function's result is declared as.
@@ -243,6 +259,34 @@ enum Returned {
     Fields(Shape),
     /// Words the generated code reads its values out of.
     Words(lift::Lifted),
+}
+
+impl Returned {
+    /// The outputs a call names.
+    fn outputs(&self) -> &[Var] {
+        match self {
+            Returned::Words(lifted) => &lifted.outputs,
+            Returned::Fields(Shape::Outputs(outputs)) => outputs,
+            Returned::Fields(_) => &[],
+        }
+    }
+}
+
+/// What the type `def` is declared as in ST, where it is: an alias of a
+/// scalar that is no `use`, an enum, a variant's cases, flags.
+fn declared(
+    resolve: &Resolve,
+    def: &wit_parser::TypeDef,
+    here: Option<TypeOwner>,
+) -> Option<&'static str> {
+    match &def.kind {
+        TypeDefKind::Type(Type::Id(other)) if resolve.types[*other].owner != def.owner => None,
+        TypeDefKind::Type(inner) => shapes::scalar(resolve, *inner, here).map(|_| "type"),
+        TypeDefKind::Enum(_) => Some("enum"),
+        TypeDefKind::Variant(_) => Some("variant"),
+        TypeDefKind::Flags(flags) => shapes::flags_base(flags).map(|_| "flags"),
+        _ => None,
+    }
 }
 
 /// The typed enum `name` on `base`, each of its `values` written `NAME :=
@@ -282,14 +326,58 @@ impl Generator<'_> {
             .ok_or("an interface outside a package cannot be imported")?;
         let interface_name = interface.name.as_deref().unwrap_or_default();
         let here = Some(TypeOwner::Interface(id));
+        let namespace = format!(
+            "Wasi.{}.{}",
+            names::namespace(&package.name),
+            names::namespace(interface_name)
+        );
+        let file = format!("{}-{}-{interface_name}.st", package.namespace, package.name);
+        if let Some(other) = self
+            .namespaces
+            .insert(namespace.to_ascii_uppercase(), module.clone())
+        {
+            return Err(format!(
+                "`{other}` and `{module}` would both be the namespace `{namespace}`, which ST takes for one"
+            ));
+        }
+        if let Some(other) = self.named.insert(file.to_ascii_lowercase(), module.clone()) {
+            return Err(format!(
+                "`{other}` and `{module}` would both be the file `{file}`"
+            ));
+        }
 
         let mut out = Out {
             text: String::new(),
             depth: 3,
         };
         let mut skipped = Vec::new();
-        // Each ST name the interface's namespace holds, by what it names.
+        // Each ST name the interface's namespace holds, by what it names:
+        // the names WIT gives first, each type's, then each function's.
         let mut taken: HashMap<String, String> = HashMap::new();
+        for (name, &ty) in &interface.types {
+            if let Some(kind) = declared(resolve, &resolve.types[ty], here) {
+                let st_name = names::upper(name);
+                let what = format!("the {kind} `{name}`");
+                if let Err(other) = claim(&mut taken, &st_name, &what) {
+                    return Err(format!(
+                        "{other} and {what} would both be `{st_name}` in `{module}`"
+                    ));
+                }
+            }
+        }
+        // A function ST takes for a type or for an earlier function.
+        let mut met: HashMap<&str, String> = HashMap::new();
+        for function in interface.functions.values() {
+            let Some(pou) = pou_name(resolve, function) else {
+                continue;
+            };
+            if let Err(other) = claim(&mut taken, &pou, &format!("`{}`", function.name)) {
+                met.insert(
+                    function.name.as_str(),
+                    format!("it would be `{pou}`, which {other} is already"),
+                );
+            }
+        }
         for (name, &ty) in &interface.types {
             let def = &resolve.types[ty];
             match &def.kind {
@@ -298,7 +386,6 @@ impl Generator<'_> {
                 TypeDefKind::Type(inner) => match shapes::scalar(resolve, *inner, here) {
                     Some(st) => {
                         let st_name = names::upper(name);
-                        claim(&mut taken, &st_name, &format!("the type `{name}`"), &module)?;
                         out.docs(&def.docs);
                         out.line(&format!("TYPE {st_name} : {st}; END_TYPE"));
                         out.line("");
@@ -322,7 +409,6 @@ impl Generator<'_> {
                         .map(|(at, case)| format!("{} := {at}", names::upper(&case.name)))
                         .collect();
                     let st_name = names::upper(name);
-                    claim(&mut taken, &st_name, &format!("the enum `{name}`"), &module)?;
                     out.docs(&def.docs);
                     named_values(&mut out, &st_name, tag_base(enumeration.tag()), &cases);
                 }
@@ -336,12 +422,6 @@ impl Generator<'_> {
                         .map(|(at, case)| format!("{} := {at}", names::upper(&case.name)))
                         .collect();
                     let st_name = names::upper(name);
-                    claim(
-                        &mut taken,
-                        &st_name,
-                        &format!("the variant `{name}`"),
-                        &module,
-                    )?;
                     out.docs(&def.docs);
                     named_values(&mut out, &st_name, tag_base(variant.tag()), &cases);
                     for case in &variant.cases {
@@ -371,18 +451,15 @@ impl Generator<'_> {
                         })
                         .collect();
                     let st_name = names::upper(name);
-                    claim(
-                        &mut taken,
-                        &st_name,
-                        &format!("the flags `{name}`"),
-                        &module,
-                    )?;
                     out.docs(&def.docs);
                     named_values(&mut out, &st_name, base, &values);
                 }
                 TypeDefKind::Resource => {
-                    let drop = names::upper(&format!("{name}-drop"));
-                    claim(&mut taken, &drop, &format!("the drop of `{name}`"), &module)?;
+                    let drop = own(
+                        &mut taken,
+                        names::upper(&format!("{name}-drop")),
+                        &format!("the drop of `{name}`"),
+                    );
                     out.prose(&format!(
                         "Lets go of `handle`, a handle of `{name}` the host gave."
                     ));
@@ -422,13 +499,12 @@ impl Generator<'_> {
         // Whether a result is read out of words, with `Std.Convert`.
         let mut converts = false;
         for function in interface.functions.values() {
-            match self.function(&mut out, &module, function, here) {
-                Ok(pous) => {
-                    converts |= pous.len() > 1;
-                    for pou in pous {
-                        claim(&mut taken, &pou, &format!("`{}`", function.name), &module)?;
-                    }
-                }
+            let written = match met.remove(function.name.as_str()) {
+                Some(reason) => Err(reason),
+                None => self.function(&mut out, &module, function, here, &mut taken),
+            };
+            match written {
+                Ok(apart) => converts |= apart,
                 Err(reason) => skipped.push(Skipped {
                     item: format!("`{}`", function.name),
                     reason,
@@ -442,7 +518,7 @@ impl Generator<'_> {
                 converts: &mut converts,
                 owner: here,
             };
-            self.built_ins(&module, function, &mut here_out)?;
+            self.built_ins(&module, function, &mut here_out);
         }
 
         let mut text = header(&[package.to_string()]);
@@ -475,7 +551,7 @@ impl Generator<'_> {
         }
         text.push_str(&left_out(&skipped));
         self.files.push(File {
-            name: format!("{}-{}-{interface_name}.st", package.namespace, package.name),
+            name: file,
             text,
             skipped,
         });
@@ -483,16 +559,18 @@ impl Generator<'_> {
     }
 
     /// The declaration of `function`, imported from `module`, written to
-    /// `out`, and its POU's name, after its import's where the two are
-    /// apart: `<NAME>_RAW`, whose parameters `<NAME>` packs and whose
-    /// result it reads. `Err` says why it cannot be.
+    /// `out` under the name `taken` holds for it, and whether its import
+    /// is apart from it: `<NAME>_RAW`, whose parameters `<NAME>` packs and
+    /// whose result it reads, which `taken` then holds too. `Err` says why
+    /// it cannot be.
     fn function(
         &self,
         out: &mut Out,
         module: &str,
         function: &Function,
         here: Option<TypeOwner>,
-    ) -> Result<Vec<String>, String> {
+        taken: &mut HashMap<String, String>,
+    ) -> Result<bool, String> {
         let resolve = self.resolve;
         let Some(pou) = pou_name(resolve, function) else {
             return Err("it is a property, which rk does not import".to_string());
@@ -505,47 +583,90 @@ impl Generator<'_> {
             },
             function,
         );
-        let lowered = lower::lower(
-            resolve,
-            &self.sizes,
-            function,
-            signature.indirect_params,
-            here,
-        )?;
-        if !asynchronous && signature.indirect_params {
-            return Err(format!(
-                "it takes {} values, which the canonical ABI passes in memory past {MAX_FLAT_PARAMS}",
-                lowered.flat
-            ));
-        }
-        let returned = match shapes::result(resolve, function.result, asynchronous, here) {
-            Ok(shape) => Returned::Fields(shape),
-            // What no record of outputs is laid out as is read out of the
-            // words it comes back in, where the canonical ABI writes it in
-            // memory: an async call's result always, another's past one
-            // value.
-            Err(what) => {
-                let lifted = match function.result {
-                    Some(ty) if asynchronous || signature.retptr => {
-                        lift::lift(resolve, &self.sizes, ty, here)
-                    }
-                    _ => Err(what),
-                };
-                Returned::Words(lifted.map_err(|what| {
-                    format!("its result holds {what}, which an import cannot give back yet")
-                })?)
+        let raw = spare(taken, format!("{pou}_RAW"));
+        let words_back = if asynchronous { 1 } else { 2 };
+        // A variable WIT names keeps away from the names the code has
+        // itself, which are known once it is laid out: laid out again
+        // where one meets.
+        let mut scope = Scope::default();
+        let (lowered, returned) = loop {
+            let lowered = lower::lower(
+                resolve,
+                &self.sizes,
+                function,
+                signature.indirect_params,
+                here,
+                &scope,
+            )?;
+            if !asynchronous && signature.indirect_params {
+                return Err(format!(
+                    "it takes {} values, which the canonical ABI passes in memory past {MAX_FLAT_PARAMS}",
+                    lowered.flat
+                ));
             }
+            let cannot = |what: &str| {
+                format!("its result holds {what}, which an import cannot give back yet")
+            };
+            let direct = shapes::result(resolve, function.result, asynchronous, here, &scope);
+            let returned = match (direct, function.result) {
+                (Ok(shape), _) => Returned::Fields(shape),
+                // What no record of outputs is laid out as is read out of
+                // the words it comes back in, where the canonical ABI
+                // writes it in memory: an async call's result always,
+                // another's past one value.
+                (Err(_), Some(ty)) if asynchronous || signature.retptr => Returned::Words(
+                    lift::lift(resolve, &self.sizes, ty, here, &scope).map_err(cannot)?,
+                ),
+                // One value, inside records or tuples that hold it alone:
+                // the canonical ABI returns it as it is, and the import
+                // gives it as the one output it would be read into.
+                (Err(what), Some(ty)) => {
+                    match lift::lift(resolve, &self.sizes, ty, here, &scope).map_err(cannot)? {
+                        lifted if lifted.outputs.len() == 1 => {
+                            Returned::Fields(Shape::Outputs(lifted.outputs))
+                        }
+                        _ => return Err(cannot(what)),
+                    }
+                }
+                (Err(what), None) => return Err(cannot(what)),
+            };
+            let apart = lowered.packs() || matches!(returned, Returned::Words(_));
+            let mut own = Vec::new();
+            // A FUNCTION's value has its name, which no variable of it can.
+            if let Returned::Fields(Shape::Return(_)) = returned {
+                own.push(pou.clone());
+                if apart {
+                    own.push(raw.clone());
+                }
+            }
+            if asynchronous {
+                own.push("DONE".to_string());
+            }
+            if apart {
+                if asynchronous {
+                    own.push("call".to_string());
+                }
+                own.extend(lowered.words().into_iter().map(|var| var.name));
+                if let Returned::Words(lifted) = &returned {
+                    own.extend(lifted.words(words_back).into_iter().map(|var| var.name));
+                }
+            }
+            let named = || lowered.inputs.iter().chain(returned.outputs());
+            own.retain(|name| {
+                !scope.holds(name) && named().any(|var| var.name.eq_ignore_ascii_case(name))
+            });
+            if own.is_empty() {
+                break (lowered, returned);
+            }
+            own.iter().for_each(|name| scope.hold(name));
         };
         // What the import gives back: the words a result is read out of, a
         // call that is not async returning a record in memory from two
         // fields on, or the outputs as they are.
-        let (given, outputs): (Vec<Var>, &[Var]) = match &returned {
-            Returned::Words(lifted) => (
-                lifted.words(if asynchronous { 1 } else { 2 }),
-                &lifted.outputs,
-            ),
-            Returned::Fields(Shape::Outputs(outputs)) => (outputs.clone(), outputs),
-            Returned::Fields(_) => (Vec::new(), &[]),
+        let outputs = returned.outputs();
+        let given: Vec<Var> = match &returned {
+            Returned::Words(lifted) => lifted.words(words_back),
+            Returned::Fields(_) => outputs.to_vec(),
         };
         let apart = lowered.packs() || matches!(returned, Returned::Words(_));
         let mut variables: Vec<&str> = lowered.inputs.iter().map(|var| var.name.as_str()).collect();
@@ -555,7 +676,9 @@ impl Generator<'_> {
         variables.extend(outputs.iter().map(|var| var.name.as_str()));
         let words = lowered.words();
         if apart {
-            variables.push("call");
+            if asynchronous {
+                variables.push("call");
+            }
             variables.extend(words.iter().map(|var| var.name.as_str()));
             if let Returned::Words(_) = returned {
                 variables.extend(given.iter().map(|var| var.name.as_str()));
@@ -578,7 +701,8 @@ impl Generator<'_> {
             _ => String::new(),
         };
         let import = if apart {
-            format!("{pou}_RAW")
+            taken.insert(raw.to_ascii_uppercase(), format!("the import of `{name}`"));
+            raw
         } else {
             pou.clone()
         };
@@ -617,7 +741,7 @@ impl Generator<'_> {
         }
         out.line("");
         if !apart {
-            return Ok(vec![pou]);
+            return Ok(false);
         }
 
         // What a call names: the values themselves, packed into the
@@ -688,7 +812,7 @@ impl Generator<'_> {
             }
         }
         out.line("");
-        Ok(vec![import, pou])
+        Ok(true)
     }
 
     /// The built-ins of each stream and future `function` takes or gives
@@ -697,12 +821,7 @@ impl Generator<'_> {
     /// the import names them after its function. A stream of bytes made by
     /// one interface's built-ins is any other's too: a stream's type is its
     /// element's.
-    fn built_ins(
-        &mut self,
-        module: &str,
-        function: &Function,
-        here: &mut Here<'_>,
-    ) -> Result<(), String> {
+    fn built_ins(&mut self, module: &str, function: &Function, here: &mut Here<'_>) {
         let resolve = self.resolve;
         for (index, ty) in function
             .find_futures_and_streams(resolve)
@@ -736,6 +855,7 @@ impl Generator<'_> {
                 here.out,
                 here.skipped,
                 here.converts,
+                here.taken,
                 carrier,
                 &name,
                 payload,
@@ -744,10 +864,9 @@ impl Generator<'_> {
             );
             let what = format!("a built-in of `{}`", wit_text(resolve, payload));
             for pou in written {
-                claim(here.taken, &pou, &what, module)?;
+                here.taken.insert(pou.to_ascii_uppercase(), what.clone());
             }
         }
-        Ok(())
     }
 }
 
@@ -804,22 +923,35 @@ fn pou_name(resolve: &Resolve, function: &Function) -> Option<String> {
     }
 }
 
-/// Records that the ST name `name` in `module`'s namespace stands for
-/// `what`, which another item cannot share: ST compares names without case,
-/// and two WIT names may be written alike, `x-new` and the constructor of
-/// `x`.
-fn claim(
-    taken: &mut HashMap<String, String>,
-    name: &str,
-    what: &str,
-    module: &str,
-) -> Result<(), String> {
-    match taken.insert(name.to_ascii_uppercase(), what.to_string()) {
-        Some(other) => Err(format!(
-            "{other} and {what} would both be `{name}` in `{module}`"
-        )),
-        None => Ok(()),
+/// Records that the ST name `name` stands for `what` in a namespace, which
+/// another item cannot share: ST compares names without case, and two WIT
+/// names may be written alike, `x-new` and the constructor of `x`. `Err` is
+/// what holds the name already.
+fn claim(taken: &mut HashMap<String, String>, name: &str, what: &str) -> Result<(), String> {
+    match taken.entry(name.to_ascii_uppercase()) {
+        Entry::Occupied(other) => Err(other.get().clone()),
+        Entry::Vacant(free) => {
+            free.insert(what.to_string());
+            Ok(())
+        }
     }
+}
+
+/// `name`, a name the generator makes, with a `_` after it for as long as
+/// the namespace holds it already: the names WIT gives come first.
+fn spare(taken: &HashMap<String, String>, name: String) -> String {
+    let mut name = name;
+    while taken.contains_key(&name.to_ascii_uppercase()) {
+        name.push('_');
+    }
+    name
+}
+
+/// [`spare`], and the namespace holds the name for `what` from here on.
+fn own(taken: &mut HashMap<String, String>, name: String, what: &str) -> String {
+    let name = spare(taken, name);
+    taken.insert(name.to_ascii_uppercase(), what.to_string());
+    name
 }
 
 /// Whether what `ty` names is passed without a type of its own: a string,
@@ -1088,7 +1220,8 @@ fn capitals(name: &str) -> String {
 /// `import` says with the built-in's name in place of its `{}`, written to
 /// `out`, what is left out of them to `skipped`; the types they name, from
 /// `owner`. `converts` is set when a future's value is read out of words.
-/// The names of the POUs written.
+/// The names of the POUs written: `name` and the built-in's own, with a
+/// `_` after it where `taken` holds that already.
 #[allow(clippy::too_many_arguments)]
 fn built_in_set(
     resolve: &Resolve,
@@ -1096,6 +1229,7 @@ fn built_in_set(
     out: &mut Out,
     skipped: &mut Vec<Skipped>,
     converts: &mut bool,
+    taken: &HashMap<String, String>,
     carrier: Carrier,
     name: &str,
     payload: Option<Type>,
@@ -1103,6 +1237,7 @@ fn built_in_set(
     owner: Option<TypeOwner>,
 ) -> Vec<String> {
     let mut written = Vec::new();
+    let pou = |built_in: &str| spare(taken, format!("{name}_{built_in}"));
     let pragma = |built_in: &str| format!("'{}'", import.replace("{}", built_in));
     let end = carrier.prefix();
     let handle = |name: &str| Var {
@@ -1124,8 +1259,9 @@ fn built_in_set(
         "Makes a {kind} of {of}, and gives its reading end, then its writing end."
     ));
     out.line(&format!("{{extern {}}}", pragma("new")));
-    out.line(&format!("FUNCTION {name}_NEW"));
-    written.push(format!("{name}_NEW"));
+    let new = pou("NEW");
+    out.line(&format!("FUNCTION {new}"));
+    written.push(new);
     out.vars("VAR_OUTPUT", &[handle("readable"), handle("writable")]);
     out.line("END_FUNCTION");
     out.line("");
@@ -1144,8 +1280,9 @@ fn built_in_set(
                     "Reads the bytes that come next into `data`, as many as it holds at most: `read` of them, after `DONE`. `closed` is TRUE once the writer has let go.",
                 );
                 out.line(&format!("{{extern async {}}}", pragma("read")));
-                out.line(&format!("FUNCTION_BLOCK {name}_{block}"));
-                written.push(format!("{name}_{block}"));
+                let read = pou(block);
+                out.line(&format!("FUNCTION_BLOCK {read}"));
+                written.push(read);
                 out.vars("VAR_INPUT", &[handle(end)]);
                 out.vars(
                     "VAR_OUTPUT",
@@ -1173,8 +1310,9 @@ fn built_in_set(
                 "Writes the bytes of `data`, as many as the reader takes: `written` of them, after `DONE`. `closed` is TRUE once the reader has let go.",
             );
             out.line(&format!("{{extern async {}}}", pragma("write")));
-            out.line(&format!("FUNCTION_BLOCK {name}_WRITE"));
-            written.push(format!("{name}_WRITE"));
+            let write = pou("WRITE");
+            out.line(&format!("FUNCTION_BLOCK {write}"));
+            written.push(write);
             out.vars(
                 "VAR_INPUT",
                 &[
@@ -1211,11 +1349,17 @@ fn built_in_set(
             let reads = "Reads the value the future holds, which comes back after `DONE`.";
             // A value no record of outputs is laid out as comes back in
             // words, which the block reads it out of.
+            // A value's field keeps away from the block's `DONE`, and
+            // from the `call` of the block that reads it out of words.
             let lifted = |what| match payload {
-                Some(ty) => lift::lift(resolve, sizes, ty, owner),
+                Some(ty) => {
+                    let scope = Scope::holding(&["DONE", "call"]);
+                    lift::lift(resolve, sizes, ty, owner, &scope)
+                }
                 None => Err(what),
             };
-            match shapes::result(resolve, payload, true, owner).map_err(lifted) {
+            let direct = shapes::result(resolve, payload, true, owner, &Scope::holding(&["DONE"]));
+            match direct.map_err(lifted) {
                 Ok(shape) => {
                     let mut outputs = vec![done()];
                     if let Shape::Outputs(fields) = shape {
@@ -1223,17 +1367,19 @@ fn built_in_set(
                     }
                     out.prose(reads);
                     out.line(&format!("{{extern async {}}}", pragma("read")));
-                    out.line(&format!("FUNCTION_BLOCK {name}_READ"));
-                    written.push(format!("{name}_READ"));
+                    let read = pou("READ");
+                    out.line(&format!("FUNCTION_BLOCK {read}"));
+                    written.push(read);
                     out.vars("VAR_INPUT", &[handle(end)]);
                     out.vars("VAR_OUTPUT", &outputs);
                     out.line("END_FUNCTION_BLOCK");
                     out.line("");
                 }
                 Err(Ok(lifted)) => {
-                    let raw = format!("{name}_READ_RAW");
+                    let raw = pou("READ_RAW");
+                    let read = pou("READ");
                     out.prose(&format!(
-                        "The future's read as the host gives it: its value in words of 8 bytes, as the canonical ABI lays it out, which `{name}_READ` reads."
+                        "The future's read as the host gives it: its value in words of 8 bytes, as the canonical ABI lays it out, which `{read}` reads."
                     ));
                     out.line(&format!("{{extern async {}}}", pragma("read")));
                     out.line(&format!("FUNCTION_BLOCK {raw}"));
@@ -1242,13 +1388,13 @@ fn built_in_set(
                     out.line("END_FUNCTION_BLOCK");
                     out.line("");
                     out.prose(reads);
-                    out.line(&format!("FUNCTION_BLOCK {name}_READ"));
+                    out.line(&format!("FUNCTION_BLOCK {read}"));
                     out.vars("VAR_INPUT", &[handle(end)]);
                     reader(out, &raw, &format!("{end} := {end}"), &lifted);
                     out.line("END_FUNCTION_BLOCK");
                     out.line("");
                     written.push(raw);
-                    written.push(format!("{name}_READ"));
+                    written.push(read);
                     *converts = true;
                 }
                 Err(Err(what)) => skipped.push(Skipped {
@@ -1270,8 +1416,9 @@ fn built_in_set(
         };
         out.prose(&format!("Lets go of the {kind}'s {side} end, `{end}`."));
         out.line(&format!("{{extern {}}}", pragma(built_in)));
-        out.line(&format!("FUNCTION {name}_DROP_{which}"));
-        written.push(format!("{name}_DROP_{which}"));
+        let drop = pou(&format!("DROP_{which}"));
+        out.line(&format!("FUNCTION {drop}"));
+        written.push(drop);
         out.vars("VAR_INPUT", &[handle(end)]);
         out.line("END_FUNCTION");
         out.line("");

@@ -15,8 +15,9 @@
 
 use wit_parser::{Int, Resolve, SizeAlign, Type, TypeDefKind, TypeOwner};
 
+use crate::Out;
+use crate::names::{self, Scope};
 use crate::shapes::{self, Var};
-use crate::{Out, names};
 
 /// How a value is read out of a word or packed into one, by its size in
 /// bytes.
@@ -215,18 +216,20 @@ pub struct Lifted {
     steps: Vec<Step<(String, Read)>>,
 }
 
-/// `ty`, a function's result, taken apart; `Err` says what in it cannot
-/// come back.
+/// `ty`, a function's result, taken apart, its outputs named in `scope`;
+/// `Err` says what in it cannot come back.
 pub fn lift(
     resolve: &Resolve,
     sizes: &SizeAlign,
     ty: Type,
     here: Option<TypeOwner>,
+    scope: &Scope,
 ) -> Result<Lifted, &'static str> {
     let mut walk = Walk {
         resolve,
         sizes,
         here,
+        scope,
         outputs: Vec::new(),
         zeroes: Vec::new(),
     };
@@ -251,6 +254,7 @@ pub fn unreadable(
         resolve,
         sizes,
         here,
+        scope: &Scope::default(),
         outputs: Vec::new(),
         zeroes: Vec::new(),
     }
@@ -341,11 +345,22 @@ pub(crate) fn join(prefix: &str, part: &str) -> String {
     }
 }
 
+/// What the value an option holds, `some`, is named after, the option
+/// named after `prefix`: the option's own name, `value` where it has none,
+/// and `value` after it for an option, whose `is-some` would be the first's.
+pub(crate) fn held_by_option(resolve: &Resolve, prefix: &str, some: Type) -> String {
+    match (prefix, shapes::definition(resolve, some)) {
+        ("", _) | (_, Some(TypeDefKind::Option(_))) => join(prefix, "value"),
+        _ => prefix.to_string(),
+    }
+}
+
 /// A result's type walked value by value, its outputs as they come.
 struct Walk<'a> {
     resolve: &'a Resolve,
     sizes: &'a SizeAlign,
     here: Option<TypeOwner>,
+    scope: &'a Scope,
     outputs: Vec<Var>,
     zeroes: Vec<(String, &'static str)>,
 }
@@ -355,7 +370,7 @@ impl Walk<'_> {
     /// its name in ST. `inside` a flag or a case, it holds zero when that
     /// did not come.
     fn output(&mut self, name: &str, ty: String, kind: Kind, inside: bool) -> String {
-        let name = names::lower(name);
+        let name = self.scope.variable(name);
         if inside {
             self.zeroes.push((name.clone(), kind.zero()));
         }
@@ -371,10 +386,11 @@ impl Walk<'_> {
     /// The steps that read `ty` at `offset` bytes into the result, its
     /// values named after `prefix`: a scalar is `prefix` itself, `value`
     /// where there is none; a record's field and a tuple's item add their
-    /// name or their place; an option adds `is-some`, a result `failed`,
-    /// then `value` and `error`; a variant is its case, then what each
-    /// case holds under the case's name. `inside` a flag or a case, a
-    /// value is only there when that came.
+    /// name or their place; an option adds `is-some`, and `value` for an
+    /// option it holds; a result adds `failed`, then `value` and `error`;
+    /// a variant is its case, then what each case holds under the case's
+    /// name. `inside` a flag or a case, a value is only there when that
+    /// came.
     fn value(
         &mut self,
         ty: Type,
@@ -441,7 +457,8 @@ impl Walk<'_> {
                         .payload_offset(Int::U8, [None, Some(some)])
                         .size_wasm32();
                 let (name, set) = flag(self, &join(prefix, "is-some"));
-                let then = self.value(*some, held, &or_value(prefix), true)?;
+                let then =
+                    self.value(*some, held, &held_by_option(resolve, prefix, *some), true)?;
                 Ok(vec![
                     set,
                     Step::Either {

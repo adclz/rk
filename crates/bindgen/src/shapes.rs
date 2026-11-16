@@ -13,7 +13,7 @@
 
 use wit_parser::{Handle, Resolve, Type, TypeDefKind, TypeId, TypeOwner};
 
-use crate::names;
+use crate::names::{self, Scope};
 
 /// The longest STRING a generated declaration takes, in bytes: a path as
 /// long as Linux allows, and what `Std.Console` writes at once.
@@ -205,13 +205,19 @@ fn string() -> String {
 
 /// The variable a parameter `name` of type `ty` is when it is passed as it
 /// is: a scalar, or a string. `None` for what holds other values.
-pub fn single(resolve: &Resolve, name: &str, ty: Type, here: Option<TypeOwner>) -> Option<Var> {
+pub fn single(
+    resolve: &Resolve,
+    name: &str,
+    ty: Type,
+    here: Option<TypeOwner>,
+    scope: &Scope,
+) -> Option<Var> {
     let (st, flat) = match resolved(resolve, ty) {
         Type::String => (string(), 2),
         _ => (scalar(resolve, ty, here)?, 1),
     };
     Some(Var {
-        name: names::lower(name),
+        name: scope.variable(name),
         ty: st,
         flat,
         start: None,
@@ -228,8 +234,9 @@ pub fn input(
     name: &str,
     ty: Type,
     here: Option<TypeOwner>,
+    scope: &Scope,
 ) -> Result<Vec<Var>, &'static str> {
-    if let Some(var) = single(resolve, name, ty, here) {
+    if let Some(var) = single(resolve, name, ty, here, scope) {
         return Ok(vec![var]);
     }
     let fields: Vec<(String, Type)> = match definition(resolve, ty) {
@@ -248,7 +255,7 @@ pub fn input(
     };
     let mut vars = Vec::new();
     for (field, ty) in fields {
-        vars.extend(input(resolve, &field, ty, here)?);
+        vars.extend(input(resolve, &field, ty, here, scope)?);
     }
     Ok(vars)
 }
@@ -262,6 +269,7 @@ pub fn result(
     ty: Option<Type>,
     in_block: bool,
     here: Option<TypeOwner>,
+    scope: &Scope,
 ) -> Result<Shape, &'static str> {
     let Some(ty) = ty else {
         return Ok(Shape::Nothing);
@@ -269,7 +277,7 @@ pub fn result(
     let out = |name: &str, ty: Type| -> Result<Var, &'static str> {
         scalar(resolve, ty, here)
             .map(|st| Var {
-                name: names::lower(name),
+                name: scope.variable(name),
                 ty: st,
                 flat: 1,
                 start: None,
@@ -279,7 +287,7 @@ pub fn result(
     if let Some(st) = scalar(resolve, ty, here) {
         return Ok(match in_block {
             true => Shape::Outputs(vec![Var {
-                name: "value".to_string(),
+                name: scope.variable("value"),
                 ty: st,
                 flat: 1,
                 start: None,
@@ -288,7 +296,7 @@ pub fn result(
         });
     }
     let flag = |name: &str| Var {
-        name: name.to_string(),
+        name: scope.variable(name),
         ty: "BOOL".to_string(),
         flat: 1,
         start: None,
@@ -305,7 +313,7 @@ pub fn result(
             .enumerate()
             .map(|(at, ty)| out(&format!("item{at}"), *ty))
             .collect::<Result<Vec<_>, _>>()?,
-        Some(TypeDefKind::Option(inner)) => vec![flag("is_some"), out("value", *inner)?],
+        Some(TypeDefKind::Option(inner)) => vec![flag("is-some"), out("value", *inner)?],
         // An ok value and an error share their place in memory, which two
         // outputs cannot.
         Some(TypeDefKind::Result(result)) => match (result.ok, result.err) {
