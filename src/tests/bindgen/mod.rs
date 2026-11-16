@@ -28,6 +28,7 @@ mod resources;
 mod runtime;
 mod scalars;
 mod skips;
+mod strings;
 mod variants;
 mod wasi;
 
@@ -176,7 +177,9 @@ pub(super) fn hosted(
     "#;
     let bindings = generated(wit);
     let (mir, core) = built(db, &bindings.files, &[program, configuration]);
-    assert_abi(&bindings, &mir, &core);
+    // A program may declare an import of the package by hand too.
+    let by_hand = program.matches("{extern ").count();
+    assert_abi_with(&bindings, &mir, &core, by_hand);
     Plc::load_with(
         &component_of(wit, &core),
         wasmtime_wasi::WasiCtxBuilder::new().build(),
@@ -290,6 +293,12 @@ pub(super) fn checked(db: &mut RootDatabase, wit: &str) -> String {
 /// checked, one import for each `{extern` the files hold, and that each
 /// result the host writes in memory fits what `mir` declares for it.
 pub(super) fn assert_abi(bindings: &Bindings, mir: &mir::MirModule, module: &[u8]) {
+    assert_abi_with(bindings, mir, module, 0);
+}
+
+/// [`assert_abi`], `by_hand` declarations of the package's imports written
+/// beside the generated ones.
+fn assert_abi_with(bindings: &Bindings, mir: &mir::MirModule, module: &[u8], by_hand: usize) {
     let short = short_results(&bindings.resolve, mir);
     assert!(short.is_empty(), "{short:#?}");
     let (checked, mismatches) = abi_mismatches(&bindings.resolve, module);
@@ -299,7 +308,11 @@ pub(super) fn assert_abi(bindings: &Bindings, mir: &mir::MirModule, module: &[u8
         .iter()
         .map(|file| file.text.matches("{extern ").count())
         .sum();
-    assert_eq!(checked, declared, "each declaration is one import");
+    assert_eq!(
+        checked,
+        declared + by_hand,
+        "each declaration is one import"
+    );
 }
 
 /// How many imports of `core` come from an interface of `resolve`, and

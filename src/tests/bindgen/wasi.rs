@@ -53,10 +53,9 @@ fn every_wasi_interface_builds_into_a_component(mut with_db: RootDatabase) {
 #[test]
 fn what_every_wasi_interface_declares() {
     assert_snapshot!(summary(&generated(&every_interface()).files), @r"
-    wasi-cli-environment.st: 
+    wasi-cli-environment.st: GET_INITIAL_CWD_RAW, GET_INITIAL_CWD
         left out `get-environment`: its result holds a list, which an import cannot give back yet
         left out `get-arguments`: its result holds a list, which an import cannot give back yet
-        left out `get-initial-cwd`: its result holds a string, which an import cannot give back yet
     wasi-cli-exit.st: EXIT__RAW, EXIT_, EXIT_WITH_CODE
     wasi-cli-run.st: RUN
     wasi-cli-types.st: ERROR_CODE
@@ -80,9 +79,7 @@ fn what_every_wasi_interface_declares() {
     wasi-clocks-types.st: DURATION
     wasi-clocks-monotonic-clock.st: MARK, NOW, GET_RESOLUTION, WAIT_UNTIL, WAIT_FOR
     wasi-clocks-system-clock.st: NOW, GET_RESOLUTION
-    wasi-clocks-timezone.st: UTC_OFFSET
-        left out `iana-id`: its result holds a string, which an import cannot give back yet
-        left out `to-debug-string`: its result holds a string, which an import cannot give back yet
+    wasi-clocks-timezone.st: IANA_ID_RAW, IANA_ID, UTC_OFFSET, TO_DEBUG_STRING_RAW, TO_DEBUG_STRING
     wasi-filesystem-types.st: FILESIZE, DESCRIPTOR_TYPE, DESCRIPTOR_FLAGS, PATH_FLAGS, OPEN_FLAGS, LINK_COUNT, NEW_TIMESTAMP, ERROR_CODE, ADVICE, DESCRIPTOR_DROP, DESCRIPTOR_READ_VIA_STREAM, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_READ_RAW, RESULT_FUTURE_READ, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE, DESCRIPTOR_WRITE_VIA_STREAM, DESCRIPTOR_APPEND_VIA_STREAM, DESCRIPTOR_ADVISE_RAW, DESCRIPTOR_ADVISE, DESCRIPTOR_SYNC_DATA_RAW, DESCRIPTOR_SYNC_DATA, DESCRIPTOR_GET_FLAGS_RAW, DESCRIPTOR_GET_FLAGS, DESCRIPTOR_GET_TYPE_RAW, DESCRIPTOR_GET_TYPE, DESCRIPTOR_SET_SIZE_RAW, DESCRIPTOR_SET_SIZE, DESCRIPTOR_SET_TIMES_RAW, DESCRIPTOR_SET_TIMES, DESCRIPTOR_READ_DIRECTORY, DIRECTORY_ENTRY_STREAM_NEW, DIRECTORY_ENTRY_STREAM_DROP_READABLE, DIRECTORY_ENTRY_STREAM_DROP_WRITABLE, DESCRIPTOR_SYNC_RAW, DESCRIPTOR_SYNC, DESCRIPTOR_CREATE_DIRECTORY_AT_RAW, DESCRIPTOR_CREATE_DIRECTORY_AT, DESCRIPTOR_STAT_RAW, DESCRIPTOR_STAT, DESCRIPTOR_STAT_AT_RAW, DESCRIPTOR_STAT_AT, DESCRIPTOR_SET_TIMES_AT_RAW, DESCRIPTOR_SET_TIMES_AT, DESCRIPTOR_LINK_AT_RAW, DESCRIPTOR_LINK_AT, DESCRIPTOR_OPEN_AT_RAW, DESCRIPTOR_OPEN_AT, DESCRIPTOR_REMOVE_DIRECTORY_AT_RAW, DESCRIPTOR_REMOVE_DIRECTORY_AT, DESCRIPTOR_RENAME_AT_RAW, DESCRIPTOR_RENAME_AT, DESCRIPTOR_SYMLINK_AT_RAW, DESCRIPTOR_SYMLINK_AT, DESCRIPTOR_UNLINK_FILE_AT_RAW, DESCRIPTOR_UNLINK_FILE_AT, DESCRIPTOR_IS_SAME_OBJECT, DESCRIPTOR_METADATA_HASH_RAW, DESCRIPTOR_METADATA_HASH, DESCRIPTOR_METADATA_HASH_AT_RAW, DESCRIPTOR_METADATA_HASH_AT
         left out what `other` of `descriptor-type` holds: a string, which an import cannot give back yet
         left out what `other` of `error-code` holds: a string, which an import cannot give back yet
@@ -130,9 +127,7 @@ fn std_s_interfaces() {
     wasi-clocks-types.st: DURATION
     wasi-clocks-monotonic-clock.st: MARK, NOW, GET_RESOLUTION, WAIT_UNTIL, WAIT_FOR
     wasi-clocks-system-clock.st: NOW, GET_RESOLUTION
-    wasi-clocks-timezone.st: UTC_OFFSET
-        left out `iana-id`: its result holds a string, which an import cannot give back yet
-        left out `to-debug-string`: its result holds a string, which an import cannot give back yet
+    wasi-clocks-timezone.st: IANA_ID_RAW, IANA_ID, UTC_OFFSET, TO_DEBUG_STRING_RAW, TO_DEBUG_STRING
     ");
 }
 

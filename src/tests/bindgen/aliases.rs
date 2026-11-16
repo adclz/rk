@@ -169,14 +169,37 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
     				value : UDINT;
     			END_VAR
     			END_FUNCTION
+
+    			/* `here` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `HERE` reads, and its string in
+    			   `value`, where the host writes it. */
+    			{extern 'wasi:example/shapes@0.3.0' 'here'}
+    			FUNCTION PRIVATE HERE_RAW
+    			VAR_IN_OUT
+    				value : STRING;
+    			END_VAR
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION HERE
+    			VAR_IN_OUT
+    				value : STRING;
+    			END_VAR
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    				HERE_RAW(value := value, w0 => w0, w1 => w1);
+    			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
        - `names`: it is a list, which ST has no type for yet.
        - `list-all`: its result holds a list, which an import cannot give back
-         yet.
-       - `here`: its result holds a string, which an import cannot give back
          yet. */
     ");
 }

@@ -360,6 +360,35 @@ fn an_option_or_a_result_passed_in_is_its_flag_and_what_it_holds(mut with_db: Ro
     				BUSY := 0
     			); END_TYPE
 
+    			/* `name` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `NAME` reads, and its string in
+    			   `value`, where the host writes it. */
+    			{extern 'wasi:example/leftovers@0.3.0' 'name'}
+    			FUNCTION PRIVATE NAME_RAW
+    			VAR_IN_OUT
+    				value : STRING;
+    			END_VAR
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION NAME
+    			VAR_IN_OUT
+    				value : STRING;
+    			END_VAR
+    			VAR_OUTPUT
+    				failed : BOOL;
+    			END_VAR
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    				NAME_RAW(value := value, w0 => w0, w1 => w1);
+    				failed := w0.%X0;
+    			END_FUNCTION
+
     			/* `maybe-in` as the host takes it: its parameters as the canonical ABI
     			   passes them, which `MAYBE_IN` packs. */
     			{extern 'wasi:example/leftovers@0.3.0' 'maybe-in'}
@@ -481,9 +510,6 @@ fn an_option_or_a_result_passed_in_is_its_flag_and_what_it_holds(mut with_db: Ro
     		END_NAMESPACE
     	END_NAMESPACE
     END_NAMESPACE
-    /* Not generated:
-       - `name`: its result holds a string, which an import cannot give back
-         yet. */
     ");
 }
 
@@ -780,6 +806,59 @@ fn an_option_in_an_option_and_one_value_in_tuples(mut with_db: RootDatabase) {
     			VAR_OUTPUT
     				item0_0_0 : USINT;
     			END_VAR
+    			END_FUNCTION
+    		END_NAMESPACE
+    	END_NAMESPACE
+    END_NAMESPACE
+    ");
+}
+
+/// A flag, and a REAL that every case puts in its place, are packed as
+/// they are: the code converts nothing, and its namespace uses no
+/// `Std.Convert`.
+#[rstest]
+fn what_is_packed_as_it_is_converts_nothing(mut with_db: RootDatabase) {
+    assert_snapshot!(checked(&mut with_db, r#"
+        package wasi:example@0.3.0;
+
+        interface plain {
+            warm-in: func(t: option<f32>);
+        }
+
+        world example {
+            import plain;
+        }
+    "#), @r"
+    // wasi-example-plain.st
+    NAMESPACE INTERNAL Wasi
+    	NAMESPACE Example
+    		NAMESPACE Plain
+    			/* `warm-in` as the host takes it: its parameters as the canonical ABI
+    			   passes them, which `WARM_IN` packs. */
+    			{extern 'wasi:example/plain@0.3.0' 'warm-in'}
+    			FUNCTION PRIVATE WARM_IN_RAW
+    			VAR_INPUT
+    				a0 : DWORD;
+    				a1 : REAL;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION WARM_IN
+    			VAR_INPUT
+    				t_is_some : BOOL;
+    				t : REAL := 0.0;
+    			END_VAR
+    			VAR
+    				a0 : DWORD;
+    				a1 : REAL;
+    			END_VAR
+    				a0 := 0;
+    				a1 := 0.0;
+    				a0.%X0 := t_is_some;
+    				IF t_is_some THEN
+    					a1 := t;
+    				END_IF;
+    				WARM_IN_RAW(a0 := a0, a1 := a1);
     			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE

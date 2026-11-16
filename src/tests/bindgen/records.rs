@@ -285,9 +285,10 @@ fn a_record_of_records_passes_by_field_and_comes_back_in_words(mut with_db: Root
 }
 
 /// What a record holds must pass too: a string in a record that comes
-/// back, a list in a record passed in.
+/// back is written into the STRING the call passes; a list in a record
+/// passed in is left out.
 #[rstest]
-fn a_record_holding_what_cannot_pass_is_left_out(mut with_db: RootDatabase) {
+fn a_record_s_string_comes_back_and_its_list_is_left_out(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
         package wasi:example@0.3.0;
 
@@ -303,9 +304,43 @@ fn a_record_holding_what_cannot_pass_is_left_out(mut with_db: RootDatabase) {
         }
     "#), @r"
     // wasi-example-nested.st
+    NAMESPACE INTERNAL Wasi
+    	NAMESPACE Example
+    		NAMESPACE Nested
+    			USING Std.Convert;
+
+    			/* `who` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `WHO` reads, and its string in `name`,
+    			   where the host writes it. */
+    			{extern 'wasi:example/nested@0.3.0' 'who'}
+    			FUNCTION PRIVATE WHO_RAW
+    			VAR_IN_OUT
+    				name : STRING;
+    			END_VAR
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION WHO
+    			VAR_IN_OUT
+    				name : STRING;
+    			END_VAR
+    			VAR_OUTPUT
+    				id : UDINT;
+    			END_VAR
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    				WHO_RAW(name := name, w0 => w0, w1 => w1);
+    				id := DWORD_TO_UDINT(w1.%D0);
+    			END_FUNCTION
+    		END_NAMESPACE
+    	END_NAMESPACE
+    END_NAMESPACE
     /* Not generated:
-       - `who`: its result holds a string, which an import cannot give back
-         yet.
        - `fill`: its parameter `b` holds a list, which an import cannot take
          yet. */
     ");

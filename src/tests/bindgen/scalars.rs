@@ -163,9 +163,10 @@ fn parameters_keep_their_order(mut with_db: RootDatabase) {
 }
 
 /// A string passed in is a STRING of 4096 bytes, its address and length
-/// two values of the call; one that comes back is left out.
+/// two values of the call; one that comes back is written into the STRING
+/// the call passes, of any length.
 #[rstest]
-fn a_string_goes_in_but_does_not_come_back(mut with_db: RootDatabase) {
+fn a_string_goes_in_and_comes_back(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
         package wasi:example@0.3.0;
 
@@ -198,12 +199,34 @@ fn a_string_goes_in_but_does_not_come_back(mut with_db: RootDatabase) {
     				second : STRING[4096];
     			END_VAR
     			END_FUNCTION
+
+    			/* `name` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `NAME` reads, and its string in
+    			   `value`, where the host writes it. */
+    			{extern 'wasi:example/text@0.3.0' 'name'}
+    			FUNCTION PRIVATE NAME_RAW
+    			VAR_IN_OUT
+    				value : STRING;
+    			END_VAR
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION NAME
+    			VAR_IN_OUT
+    				value : STRING;
+    			END_VAR
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    				NAME_RAW(value := value, w0 => w0, w1 => w1);
+    			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE
     END_NAMESPACE
-    /* Not generated:
-       - `name`: its result holds a string, which an import cannot give back
-         yet. */
     ");
 }
 
