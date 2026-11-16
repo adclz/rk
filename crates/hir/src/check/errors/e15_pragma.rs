@@ -47,8 +47,13 @@ pub enum ImportMember {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ExternForbiddenKind {
     /// `VAR_IN_OUT` hands the host a pointer into caller storage with a
-    /// mutation contract; an extern's interface is copies only.
+    /// mutation contract; an extern's interface is copies only. A WASI
+    /// FUNCTION's first STRING `VAR_IN_OUT` is no parameter: the host
+    /// writes the string the import gives into it.
     InOut,
+    /// A second STRING `VAR_IN_OUT` of a WASI FUNCTION: the host's first
+    /// string goes into the first, and nothing says where another goes.
+    SecondString,
     /// A STRUCT, ARRAY, instance, reference or STRING `VAR_OUTPUT`: the
     /// import's result is a record of scalars.
     AggregateOutput,
@@ -78,7 +83,7 @@ pub enum ExternForbiddenKind {
 impl ExternForbiddenKind {
     fn section(self) -> &'static str {
         match self {
-            Self::InOut => "VAR_IN_OUT",
+            Self::InOut | Self::SecondString => "VAR_IN_OUT",
             Self::AggregateOutput => "VAR_OUTPUT",
             Self::Conformand
             | Self::Variadic
@@ -92,6 +97,9 @@ impl ExternForbiddenKind {
     fn message(self) -> &'static str {
         match self {
             Self::InOut => "cannot cross a WASM import: an extern takes copies, not references",
+            Self::SecondString => {
+                "cannot take a string from the host: the import's first STRING VAR_IN_OUT does"
+            }
             Self::AggregateOutput => "cannot be a field of the import's result: only a scalar can",
             Self::Conformand => {
                 "cannot cross a WASM import: an ARRAY[*] has the size of each call's array"
@@ -117,6 +125,9 @@ impl ExternForbiddenKind {
     fn note(self) -> &'static str {
         match self {
             Self::InOut => "an extern FUNCTION receives copies of its VAR_INPUT",
+            Self::SecondString => {
+                "a WASI import gives one string, which the host writes into its one STRING VAR_IN_OUT"
+            }
             Self::AggregateOutput => {
                 "an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars"
             }

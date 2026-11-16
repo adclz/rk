@@ -417,6 +417,19 @@ impl<'db> InitInference<'db> {
         let extern_wasi = extern_fn
             .map(|(_, wasi)| wasi)
             .or(extern_block.map(|(_, wasi)| wasi));
+        // A WASI FUNCTION gives a string by writing it into the STRING a
+        // call passes for it, its first STRING VAR_IN_OUT: no parameter of
+        // the import, whose types are WASI's.
+        let string_in_out = |var: &crate::hir_def::pous::variable::VariableDecl<'db>| {
+            var.kind(db) == crate::hir_def::pous::variable::VariableKind::InOut
+                && matches!(
+                    var.spec(db).infer(db).normalize(db),
+                    Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String)
+                )
+        };
+        let host_string = extern_fn
+            .filter(|(_, wasi)| *wasi)
+            .and_then(|(func, _)| func.variables(db).iter().copied().find(string_in_out));
         // A stream read's bytes land in a STRING or an ARRAY OF BYTE, its
         // buffer, which the block holds rather than the host returns: its
         // outputs are its built-in's, which E1516 checks.
@@ -829,6 +842,10 @@ impl<'db> InitInference<'db> {
                 // Either returns a record of its VAR_OUTPUTs and its return
                 // value.
                 let forbidden = match var.kind(db) {
+                    VariableKind::InOut if host_string == Some(*var) => None,
+                    VariableKind::InOut if host_string.is_some() && string_in_out(var) => {
+                        Some(ExternForbiddenKind::SecondString)
+                    }
                     VariableKind::InOut => Some(ExternForbiddenKind::InOut),
                     VariableKind::Input if var.conformand(db).is_some() => {
                         Some(ExternForbiddenKind::Conformand)
