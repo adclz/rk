@@ -119,9 +119,97 @@ END_FUNCTION"#;
     ");
 }
 
-/// Only a WASI FUNCTION takes a string so: a host module's import is typed
-/// from its declaration, where a VAR_IN_OUT has no place, and an async
-/// import's result is written when no call is running.
+/// A WASI import gives a list into the arrays a call passes for it: its
+/// ARRAY[*] VAR_IN_OUTs of scalars or STRINGs, one per field of an element,
+/// of any length. A call binds them as any VAR_IN_OUT.
+#[rstest]
+fn valid_wasi_extern_gives_a_list(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'wasi:test/rt@0.1.0' 'entries'}
+FUNCTION entries
+VAR_INPUT limit : UDINT; END_VAR
+VAR_IN_OUT ids : ARRAY[*] OF UDINT; names : ARRAY[*] OF STRING; END_VAR
+VAR_OUTPUT w0 : LWORD; w1 : LWORD; END_VAR
+END_FUNCTION
+
+FUNCTION Use : UDINT
+VAR
+    ids : ARRAY[1..4] OF UDINT;
+    names : ARRAY[0..3] OF STRING[16];
+    more : ARRAY[0..9] OF UDINT;
+    long : ARRAY[0..9] OF STRING[200];
+END_VAR
+    entries(limit := 4, ids := ids, names := names);
+    entries(limit := 10, ids := more, names := long);
+    Use := ids[1] + more[0];
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// What a list cannot come in: an ARRAY[*] of two dimensions, of any type,
+/// or of records; and a STRING beside the arrays, the host's first block
+/// being the list's.
+#[rstest]
+fn invalid_wasi_extern_list_arrays(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE pair : STRUCT a : INT; b : INT; END_STRUCT END_TYPE
+
+{extern 'wasi:test/rt@0.1.0' 'grid'}
+FUNCTION grid
+VAR_IN_OUT cells : ARRAY[*, *] OF INT; anything : ARRAY[*]; pairs : ARRAY[*] OF pair; END_VAR
+VAR_OUTPUT w0 : LWORD; w1 : LWORD; END_VAR
+END_FUNCTION
+
+{extern 'wasi:test/rt@0.1.0' 'both'}
+FUNCTION both
+VAR_IN_OUT values : ARRAY[*] OF UDINT; text : STRING; END_VAR
+VAR_OUTPUT w0 : LWORD; w1 : LWORD; END_VAR
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:6:12 ]
+       |
+     6 | VAR_IN_OUT cells : ARRAY[*, *] OF INT; anything : ARRAY[*]; pairs : ARRAY[*] OF pair; END_VAR
+       |            ^^|^^
+       |              `---- VAR_IN_OUT 'cells' cannot take a list from the host: only an ARRAY[*] of scalars or STRINGs can
+       |
+       | Note: a WASI import gives a list into ARRAY[*] VAR_IN_OUTs of one dimension, one for each field of its elements
+    ---'
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:6:40 ]
+       |
+     6 | VAR_IN_OUT cells : ARRAY[*, *] OF INT; anything : ARRAY[*]; pairs : ARRAY[*] OF pair; END_VAR
+       |                                        ^^^^|^^^
+       |                                            `----- VAR_IN_OUT 'anything' cannot take a list from the host: only an ARRAY[*] of scalars or STRINGs can
+       |
+       | Note: a WASI import gives a list into ARRAY[*] VAR_IN_OUTs of one dimension, one for each field of its elements
+    ---'
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:6:61 ]
+       |
+     6 | VAR_IN_OUT cells : ARRAY[*, *] OF INT; anything : ARRAY[*]; pairs : ARRAY[*] OF pair; END_VAR
+       |                                                             ^^|^^
+       |                                                               `---- VAR_IN_OUT 'pairs' cannot take a list from the host: only an ARRAY[*] of scalars or STRINGs can
+       |
+       | Note: a WASI import gives a list into ARRAY[*] VAR_IN_OUTs of one dimension, one for each field of its elements
+    ---'
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:12:40 ]
+        |
+     12 | VAR_IN_OUT values : ARRAY[*] OF UDINT; text : STRING; END_VAR
+        |                                        ^^|^
+        |                                          `--- VAR_IN_OUT 'text' cannot take a string from the host beside the list its ARRAY[*] VAR_IN_OUTs take
+        |
+        | Note: a WASI import gives one string or one list, which the host writes into what the call passes
+    ----'
+    ");
+}
+
+/// Only a WASI FUNCTION takes a string or a list so: a host module's import
+/// is typed from its declaration, where a VAR_IN_OUT has no place, and an
+/// async import's result is written when no call is running.
 #[rstest]
 fn invalid_extern_string_in_out_elsewhere(mut with_db: RootDatabase) {
     let source = r#"
@@ -134,7 +222,12 @@ END_FUNCTION
 FUNCTION_BLOCK name_later
 VAR_IN_OUT text : STRING; END_VAR
 VAR_OUTPUT DONE : BOOL; END_VAR
-END_FUNCTION_BLOCK"#;
+END_FUNCTION_BLOCK
+
+{extern 'host' 'names'}
+FUNCTION names
+VAR_IN_OUT values : ARRAY[*] OF STRING; END_VAR
+END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1502] Error: not representable on an import
@@ -155,6 +248,15 @@ END_FUNCTION_BLOCK"#;
        |
        | Note: an extern FUNCTION receives copies of its VAR_INPUT
     ---'
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:15:12 ]
+        |
+     15 | VAR_IN_OUT values : ARRAY[*] OF STRING; END_VAR
+        |            ^^^|^^
+        |               `---- VAR_IN_OUT 'values' cannot cross a WASM import: an extern takes copies, not references
+        |
+        | Note: an extern FUNCTION receives copies of its VAR_INPUT
+    ----'
     ");
 }
 
