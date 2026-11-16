@@ -87,8 +87,9 @@ pub struct MirExternFunction {
     pub module: CompactString,
     /// Import field name.
     pub import_name: CompactString,
-    /// The `VAR_INPUT`s, and the STRING `VAR_IN_OUT` of an import that
-    /// gives a string ([`Self::gives_string`]), in declaration order.
+    /// The `VAR_INPUT`s, and the `VAR_IN_OUT`s the host writes into: the
+    /// STRING of an import that gives a string, the `ARRAY[*]`s of one that
+    /// gives a list. In declaration order.
     pub params: Vec<MirParam>,
     /// Scalar `VAR_OUTPUT` results, in declaration order. The import returns
     /// the record of these and `return_type` last: one value when it has one
@@ -110,21 +111,13 @@ pub struct MirExternFunction {
 }
 
 impl MirExternFunction {
-    /// The parameters the import itself takes: every one but the STRING
-    /// `VAR_IN_OUT` the host writes the string it gives into, which a call
-    /// passes to the import's wrapper alone.
+    /// The parameters the import itself takes: every one but the
+    /// `VAR_IN_OUT`s the host writes what it gives into, which a call passes
+    /// to the import's wrapper alone.
     pub fn passed(&self) -> impl Iterator<Item = &MirParam> {
         self.params
             .iter()
             .filter(|param| param.kind != MirParamKind::InOut)
-    }
-
-    /// Whether the import gives a string, which the host writes into the
-    /// STRING its `VAR_IN_OUT` is.
-    pub fn gives_string(&self) -> bool {
-        self.params
-            .iter()
-            .any(|param| param.kind == MirParamKind::InOut)
     }
 
     /// The fields of what the import returns: its outputs, then the return
