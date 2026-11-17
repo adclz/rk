@@ -131,11 +131,11 @@ fn the_wit_goes_beside_an_output_given() {
     assert!(ws.path().join("out").join("wit").join("world.wit").exists());
 }
 
-/// An interface of the host's own, named by an interface's name, is a
-/// package rk writes beside rk's own, from the `{extern}` FUNCTIONs that
-/// import it.
+/// An interface of a package is typed by the package's WIT, which rk does
+/// not write: the build is refused until the workspace ships it in its
+/// `wit/`, and then the package goes beside the component as it is shipped.
 #[test]
-fn the_host_s_own_package_is_written_beside_rk_s() {
+fn the_workspace_s_package_goes_beside_the_component() {
     let ws = workspace();
     std::fs::write(
         ws.path().join("display.st"),
@@ -148,6 +148,21 @@ END_FUNCTION
     )
     .unwrap();
     let out = rk(&["compile"], ws.path());
+    assert!(!out.status.success(), "refused without the package's WIT");
+    let refused = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        refused.contains(
+            "the module imports `acme:display/text@1.0.0`, which no `wit/` folder of the \
+             workspace or of a library describes"
+        ),
+        "{refused}"
+    );
+
+    let shipped = "package acme:display@1.0.0;\n\ninterface text {\n    \
+                   show: func(line: string) -> bool;\n}\n";
+    std::fs::create_dir_all(ws.path().join("wit")).unwrap();
+    std::fs::write(ws.path().join("wit").join("display.wit"), shipped).unwrap();
+    let out = rk(&["compile"], ws.path());
     assert!(
         out.status.success(),
         "{}",
@@ -157,12 +172,8 @@ END_FUNCTION
     let world = std::fs::read_to_string(wit.join("world.wit")).unwrap();
     assert!(world.contains("import acme:display/text@1.0.0;"), "{world}");
     let package =
-        std::fs::read_to_string(wit.join("deps").join("acme-display").join("text.wit")).unwrap();
-    assert!(
-        package.contains("package acme:display@1.0.0;")
-            && package.contains("show: func(line: string) -> bool;"),
-        "{package}"
-    );
+        std::fs::read_to_string(wit.join("deps").join("acme-display").join("display.wit")).unwrap();
+    assert_eq!(package, shipped);
 }
 
 /// The `{export}` FUNCTIONs are in an interface named after the project,
