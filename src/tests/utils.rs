@@ -35,6 +35,37 @@ pub fn with_db() -> RootDatabase {
     RootDatabase::default()
 }
 
+/// Std's WIT folder, `stdlib/wit/`: the world of the WASI interfaces the
+/// standard library calls, and in `deps/` the files of WASI's packages that
+/// declare them.
+pub fn stdlib_wit() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("stdlib/wit")
+}
+
+/// WASI's repository, the git submodule at `crates/debug_format/wit/wasi`,
+/// checked out at the release Std imports.
+pub fn wasi_repository() -> std::path::PathBuf {
+    let wasi =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/debug_format/wit/wasi");
+    assert!(
+        wasi.join("LICENSE.md").is_file(),
+        "{} is empty: `git submodule update --init` checks WASI's repository out",
+        wasi.display()
+    );
+    wasi
+}
+
+/// The folders WASI's repository writes its packages in, whole: the
+/// command line's, the clocks, the file system's, random numbers' and the
+/// sockets'. What the tests generate every WASI interface from.
+pub fn wasi_packages() -> Vec<std::path::PathBuf> {
+    let proposals = wasi_repository().join("proposals");
+    ["cli", "clocks", "filesystem", "random", "sockets"]
+        .iter()
+        .map(|proposal| proposals.join(proposal).join("wit"))
+        .collect()
+}
+
 /// What `f` returns, when it returns within `limit`. A test of something that
 /// took exponential time fails here instead of holding up the suite.
 pub fn within<T: Send + 'static>(
@@ -187,11 +218,13 @@ pub fn add_library_sources(db: &mut RootDatabase, sources: &[&str]) {
     // `Std` here, as for the standard library `rk` bundles. The workspace
     // input carries it, as the loader's does; the config file named is the
     // standard library's own, with no settings, so that no report carries
-    // the "no config.toml" hint.
+    // the "no config.toml" hint. Its folder is the repository's `stdlib/`,
+    // whose `wit/` types the WASI imports of the files a test takes from
+    // there: a file is the library's because it is registered as one.
     use auto_lsp::salsa::Setter;
     let library = db::dependencies::Library {
         name: "Std".to_string(),
-        dir: std::path::PathBuf::from("/lib"),
+        dir: std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("stdlib"),
         standard: true,
     };
     match db::workspace::Workspace::try_get(db) {

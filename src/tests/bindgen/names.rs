@@ -538,7 +538,7 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
 /// `foobar`: the generator stops, saying which.
 #[test]
 fn two_interfaces_of_one_namespace_stop_the_generator() {
-    let (resolve, world) = rk_bindgen::resolve(
+    let (resolve, world) = super::resolved(
         r#"
         package wasi:example@0.3.0;
 
@@ -563,7 +563,7 @@ fn two_interfaces_of_one_namespace_stop_the_generator() {
 /// Two versions of one interface are one namespace too.
 #[test]
 fn two_versions_of_an_interface_stop_the_generator() {
-    let (resolve, world) = rk_bindgen::resolve(
+    let (resolve, world) = super::resolved(
         r#"
         package wasi:example@0.3.0;
 
@@ -594,7 +594,7 @@ fn two_versions_of_an_interface_stop_the_generator() {
 /// package `foo-bar` with `baz`, and the package `foo` with `bar-baz`.
 #[test]
 fn two_interfaces_of_one_file_stop_the_generator() {
-    let (resolve, world) = rk_bindgen::resolve(
+    let (resolve, world) = super::resolved(
         r#"
         package wasi:example@0.3.0;
 

@@ -23,7 +23,7 @@ use wasmtime::component::{
     VecBuffer,
 };
 
-use super::{assert_abi, built, checked, generated, hosted, summary};
+use super::{assert_abi, built, checked, generated, generated_std, hosted, summary};
 use crate::tests::cli::component_host::Host;
 use crate::tests::utils::with_db;
 
@@ -1527,7 +1527,7 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
 /// standard error's are after its own.
 #[test]
 fn std_s_built_ins() {
-    let bindings = generated(rk_bindgen::STD_WORLD);
+    let bindings = generated_std();
     let stdout = bindings
         .files
         .iter()

@@ -68,7 +68,7 @@ fn a_package_s_namespace_is_its_root(mut with_db: RootDatabase) {
 /// Written for every program, the root is no longer INTERNAL.
 #[rstest]
 fn declarations_every_program_reaches(mut with_db: RootDatabase) {
-    let (resolve, world) = rk_bindgen::resolve(DRIVE).expect("the WIT resolves");
+    let (resolve, world) = super::resolved(DRIVE).expect("the WIT resolves");
     let files =
         rk_bindgen::generate_reaching(&resolve, world, Reach::Everyone).expect("it generates");
     let roots: Vec<&str> = files

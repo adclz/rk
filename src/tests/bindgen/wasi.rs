@@ -1,26 +1,69 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! WASI's own interfaces, from the WIT rk carries: every interface of every
-//! package generates, rk takes the files, each import has the canonical
-//! ABI's core type, and they build into a component, whose build checks
-//! each import against WASI's WIT. What each file declares, and leaves out,
-//! is the snapshot of what the generator covers. Std's interfaces likewise.
+//! WASI's own interfaces, as WASI's repository writes them: every interface
+//! of every package generates, rk takes the files, each import has the
+//! canonical ABI's core type, and they build into a component, whose build
+//! checks each import against WASI's WIT. What each file declares, and
+//! leaves out, is the snapshot of what the generator covers. Std's
+//! interfaces likewise, from Std's own WIT folder, whose files are WASI's
+//! own.
+
+use std::collections::BTreeMap;
+use std::path::Path;
 
 use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use super::{assert_abi, built, generated, summary, wrapped};
-use crate::tests::utils::with_db;
+use super::{assert_abi, built, generated, generated_std, summary, wrapped, wrapped_with};
+use crate::tests::utils::{stdlib_wit, wasi_packages, wasi_repository, with_db};
 
-/// A world that imports every interface of every WASI package rk carries,
-/// in the order their files declare them.
+/// The `.wit` files of the folder `dir`, by name, a checkout's line
+/// endings left out.
+fn wit_files(dir: &Path) -> BTreeMap<String, String> {
+    std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("reading {}: {e}", dir.display()))
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            let name = path.file_name()?.to_str()?.to_string();
+            name.ends_with(".wit").then(|| {
+                let text = std::fs::read_to_string(&path).expect("a WIT file");
+                (name, text.replace("\r\n", "\n"))
+            })
+        })
+        .collect()
+}
+
+/// The name and version of the package `files` write, as they declare it.
+fn declared(files: &BTreeMap<String, String>) -> String {
+    files
+        .values()
+        .flat_map(|text| text.lines())
+        .find_map(|line| line.trim().strip_prefix("package ")?.strip_suffix(';'))
+        .expect("a package's name")
+        .to_string()
+}
+
+/// WASI's packages, as WASI's repository writes them: each one's name and
+/// version, as its files declare them, and its files.
+fn wasi() -> Vec<(String, BTreeMap<String, String>)> {
+    wasi_packages()
+        .iter()
+        .map(|folder| {
+            let files = wit_files(folder);
+            (declared(&files), files)
+        })
+        .collect()
+}
+
+/// A world that imports every interface of every WASI package, in the
+/// order their files declare them.
 fn every_interface() -> String {
     let mut imports = String::new();
-    for package in debug_format::wit::WASI {
-        let (name, version) = package.id.split_once('@').expect("a version");
-        for (_, text) in package.files {
+    for (id, files) in wasi() {
+        let (name, version) = id.split_once('@').expect("a version");
+        for text in files.values() {
             for line in text.lines() {
                 if let Some(rest) = line.trim().strip_prefix("interface ") {
                     let interface = rest.trim_end_matches('{').trim();
@@ -32,15 +75,98 @@ fn every_interface() -> String {
     format!("package rk:every-wasi;\n\nworld every {{\n{imports}}}\n")
 }
 
-/// Every interface of the WASI rk carries builds into a component.
+/// Std ships the files of WASI's packages that declare the interfaces its
+/// world imports, and no other, as WASI's repository, the git submodule at
+/// `crates/debug_format/wit/wasi`, writes them at the release Std imports,
+/// each package with WASI's license; and `package.wit`, which names the
+/// command line's package, as WASI does only in the files that take the
+/// rest of WASI in. After the submodule moves to another release, the
+/// files are copied from it again.
+#[test]
+fn std_ships_wasi_s_own_files() {
+    let wasi = wasi_repository();
+    let license = std::fs::read_to_string(wasi.join("LICENSE.md"))
+        .expect("WASI's license")
+        .replace("\r\n", "\n");
+    let deps = stdlib_wit().join("deps");
+    let names = |dir: &Path| {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("reading {}: {e}", dir.display()))
+            .map(|entry| {
+                entry
+                    .expect("an entry")
+                    .file_name()
+                    .into_string()
+                    .expect("a name")
+            })
+            .collect();
+        names.sort();
+        names
+    };
+    let shipped: Vec<(String, Vec<String>)> = names(&deps)
+        .into_iter()
+        .map(|folder| {
+            let files = names(&deps.join(&folder));
+            (folder, files)
+        })
+        .collect();
+    assert_eq!(
+        shipped,
+        [
+            ("wasi-cli", &["LICENSE.md", "package.wit", "stdio.wit"][..]),
+            (
+                "wasi-clocks",
+                &[
+                    "LICENSE.md",
+                    "monotonic-clock.wit",
+                    "system-clock.wit",
+                    "timezone.wit",
+                    "types.wit"
+                ]
+            ),
+        ]
+        .map(|(folder, files)| (
+            folder.to_string(),
+            files
+                .iter()
+                .map(|file| file.to_string())
+                .collect::<Vec<_>>()
+        ))
+    );
+    for (folder, _) in &shipped {
+        let proposal = folder.strip_prefix("wasi-").expect("a WASI package");
+        let published = wasi.join("proposals").join(proposal).join("wit");
+        let written = wit_files(&published);
+        for (name, text) in wit_files(&deps.join(folder)) {
+            if name == "package.wit" {
+                assert_eq!(text, format!("package {};\n", declared(&written)));
+                continue;
+            }
+            assert!(
+                written.get(&name) == Some(&text),
+                "stdlib/wit/deps/{folder}/{name} is not WASI's: copy {} into it",
+                published.join(&name).display()
+            );
+        }
+        let shipped_license = std::fs::read_to_string(deps.join(folder).join("LICENSE.md"))
+            .expect("WASI's license beside its files")
+            .replace("\r\n", "\n");
+        assert!(
+            shipped_license == license,
+            "stdlib/wit/deps/{folder}/LICENSE.md is not WASI's"
+        );
+    }
+}
+
+/// Every interface of WASI's packages builds into a component.
 #[rstest]
 fn every_wasi_interface_builds_into_a_component(mut with_db: RootDatabase) {
     let bindings = generated(&every_interface());
     let (mir, core) = built(&mut with_db, &bindings.files, &[]);
     assert_abi(&bindings, &mir, &core);
     let component = wrapped(&with_db, &mir, &core);
-    for package in debug_format::wit::WASI {
-        let (name, _) = package.id.split_once('@').expect("a version");
+    for (id, _) in wasi() {
+        let (name, _) = id.split_once('@').expect("a version");
         assert!(
             component.world.contains(&format!("    import {name}/")),
             "{name} in {}",
@@ -108,7 +234,7 @@ fn what_every_wasi_interface_declares() {
 /// What the interfaces `Std` reaches WASI through declare.
 #[test]
 fn std_s_interfaces() {
-    assert_snapshot!(summary(&generated(rk_bindgen::STD_WORLD).files), @r"
+    assert_snapshot!(summary(&generated_std().files), @r"
     wasi-cli-types.st: ERROR_CODE
     wasi-cli-stdout.st: WRITE_VIA_STREAM, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_WRITE_ARRAY, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_READ, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE
         left out `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan
@@ -125,13 +251,14 @@ fn std_s_interfaces() {
     ");
 }
 
-/// Std's interfaces build into a component, which imports each of them.
+/// Std's interfaces build into a component, typed by Std's WIT folder
+/// alone, which imports each of them.
 #[rstest]
 fn std_s_interfaces_build_into_a_component(mut with_db: RootDatabase) {
-    let bindings = generated(rk_bindgen::STD_WORLD);
+    let bindings = generated_std();
     let (mir, core) = built(&mut with_db, &bindings.files, &[]);
     assert_abi(&bindings, &mir, &core);
-    let component = wrapped(&with_db, &mir, &core);
+    let component = wrapped_with(&with_db, &mir, &core, &[stdlib_wit()]);
     for interface in [
         "wasi:cli/stdout@0.3.0",
         "wasi:cli/stderr@0.3.0",
@@ -156,7 +283,7 @@ fn std_s_interfaces_build_into_a_component(mut with_db: RootDatabase) {
 #[test]
 fn std_s_generated_folder_is_what_rk_bindgen_writes() {
     let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("stdlib/generated");
-    let files = generated(rk_bindgen::STD_WORLD).files;
+    let files = generated_std().files;
     let mut on_disk: Vec<String> = std::fs::read_dir(&folder)
         .expect("stdlib/generated")
         .filter_map(|entry| {
@@ -183,7 +310,7 @@ fn std_s_generated_folder_is_what_rk_bindgen_writes() {
 /// A generated file says where it comes from, and that it is not edited.
 #[test]
 fn a_file_says_it_is_generated() {
-    let bindings = generated(rk_bindgen::STD_WORLD);
+    let bindings = generated_std();
     let header: Vec<&str> = bindings.files[0].text.lines().take(2).collect();
     assert_snapshot!(header.join("\n"), @r"
     /* Generated from the WIT of wasi:cli@0.3.0. DO NOT EDIT! */

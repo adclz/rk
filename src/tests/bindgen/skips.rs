@@ -131,7 +131,7 @@ fn an_interface_with_nothing_to_declare(mut with_db: RootDatabase) {
 /// the generator stops.
 #[test]
 fn a_function_of_the_world_stops_the_generator() {
-    let (resolve, world) = rk_bindgen::resolve(
+    let (resolve, world) = super::resolved(
         r#"
         package wasi:example@0.3.0;
 
