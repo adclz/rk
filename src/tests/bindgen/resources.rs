@@ -19,7 +19,7 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn a_resource_s_functions_and_its_drop(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface files {
             resource descriptor {
@@ -37,14 +37,14 @@ fn a_resource_s_functions_and_its_drop(mut with_db: RootDatabase) {
             import files;
         }
     "#), @r"
-    // wasi-example-files.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-files.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Files
     			TYPE DESCRIPTOR : UDINT; END_TYPE
 
     			/* Lets go of `handle`, a handle of `descriptor` the host gave. */
-    			{extern 'wasi:example/files@0.3.0' '[resource-drop]descriptor'}
+    			{extern 'acme:example/files@0.3.0' '[resource-drop]descriptor'}
     			FUNCTION DESCRIPTOR_DROP
     			VAR_INPUT
     				handle : DESCRIPTOR;
@@ -53,21 +53,21 @@ fn a_resource_s_functions_and_its_drop(mut with_db: RootDatabase) {
 
     			TYPE FILE : DESCRIPTOR; END_TYPE
 
-    			{extern 'wasi:example/files@0.3.0' '[constructor]descriptor'}
+    			{extern 'acme:example/files@0.3.0' '[constructor]descriptor'}
     			FUNCTION DESCRIPTOR_NEW : DESCRIPTOR
     			VAR_INPUT
     				mode : UDINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/files@0.3.0' '[method]descriptor.size'}
+    			{extern 'acme:example/files@0.3.0' '[method]descriptor.size'}
     			FUNCTION DESCRIPTOR_SIZE : ULINT
     			VAR_INPUT
     				self : DESCRIPTOR;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/files@0.3.0' '[method]descriptor.resize'}
+    			{extern 'acme:example/files@0.3.0' '[method]descriptor.resize'}
     			FUNCTION DESCRIPTOR_RESIZE : BOOL
     			VAR_INPUT
     				self : DESCRIPTOR;
@@ -75,14 +75,14 @@ fn a_resource_s_functions_and_its_drop(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/files@0.3.0' '[static]descriptor.open'}
+    			{extern 'acme:example/files@0.3.0' '[static]descriptor.open'}
     			FUNCTION DESCRIPTOR_OPEN : DESCRIPTOR
     			VAR_INPUT
     				at_ : UDINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern async 'wasi:example/files@0.3.0' '[method]descriptor.flush'}
+    			{extern async 'acme:example/files@0.3.0' '[method]descriptor.flush'}
     			FUNCTION_BLOCK DESCRIPTOR_FLUSH
     			VAR_INPUT
     				self : DESCRIPTOR;
@@ -92,7 +92,7 @@ fn a_resource_s_functions_and_its_drop(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION_BLOCK
 
-    			{extern async 'wasi:example/files@0.3.0' '[method]descriptor.read-at'}
+    			{extern async 'acme:example/files@0.3.0' '[method]descriptor.read-at'}
     			FUNCTION_BLOCK DESCRIPTOR_READ_AT
     			VAR_INPUT
     				self : DESCRIPTOR;
@@ -115,7 +115,7 @@ fn a_resource_s_functions_and_its_drop(mut with_db: RootDatabase) {
 #[rstest]
 fn handles_go_in_and_come_back_as_their_resource_s_type(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface types {
             resource socket;
@@ -136,14 +136,14 @@ fn handles_go_in_and_come_back_as_their_resource_s_type(mut with_db: RootDatabas
             import network;
         }
     "#), @r"
-    // wasi-example-types.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-types.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Types
     			TYPE SOCKET : UDINT; END_TYPE
 
     			/* Lets go of `handle`, a handle of `socket` the host gave. */
-    			{extern 'wasi:example/types@0.3.0' '[resource-drop]socket'}
+    			{extern 'acme:example/types@0.3.0' '[resource-drop]socket'}
     			FUNCTION SOCKET_DROP
     			VAR_INPUT
     				handle : SOCKET;
@@ -153,48 +153,48 @@ fn handles_go_in_and_come_back_as_their_resource_s_type(mut with_db: RootDatabas
     	END_NAMESPACE
     END_NAMESPACE
 
-    // wasi-example-network.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-network.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Network
     			TYPE POOL : UDINT; END_TYPE
 
     			/* Lets go of `handle`, a handle of `pool` the host gave. */
-    			{extern 'wasi:example/network@0.3.0' '[resource-drop]pool'}
+    			{extern 'acme:example/network@0.3.0' '[resource-drop]pool'}
     			FUNCTION POOL_DROP
     			VAR_INPUT
     				handle : POOL;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/network@0.3.0' '[constructor]pool'}
+    			{extern 'acme:example/network@0.3.0' '[constructor]pool'}
     			FUNCTION POOL_NEW : POOL
     			END_FUNCTION
 
-    			{extern 'wasi:example/network@0.3.0' '[method]pool.take'}
-    			FUNCTION POOL_TAKE : Wasi.Example.Types.SOCKET
+    			{extern 'acme:example/network@0.3.0' '[method]pool.take'}
+    			FUNCTION POOL_TAKE : Acme.Example.Types.SOCKET
     			VAR_INPUT
     				self : POOL;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/network@0.3.0' '[method]pool.give'}
+    			{extern 'acme:example/network@0.3.0' '[method]pool.give'}
     			FUNCTION POOL_GIVE
     			VAR_INPUT
     				self : POOL;
-    				s_ : Wasi.Example.Types.SOCKET;
+    				s_ : Acme.Example.Types.SOCKET;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/network@0.3.0' '[method]pool.peek'}
+    			{extern 'acme:example/network@0.3.0' '[method]pool.peek'}
     			FUNCTION POOL_PEEK : BOOL
     			VAR_INPUT
     				self : POOL;
-    				s_ : Wasi.Example.Types.SOCKET;
+    				s_ : Acme.Example.Types.SOCKET;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/network@0.3.0' 'swap'}
+    			{extern 'acme:example/network@0.3.0' 'swap'}
     			FUNCTION SWAP : POOL
     			VAR_INPUT
     				a : POOL;
@@ -212,7 +212,7 @@ fn handles_go_in_and_come_back_as_their_resource_s_type(mut with_db: RootDatabas
 #[rstest]
 fn methods_of_one_name_on_two_resources(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface pair {
             resource input { get: func() -> u32; }
@@ -223,14 +223,14 @@ fn methods_of_one_name_on_two_resources(mut with_db: RootDatabase) {
             import pair;
         }
     "#), @r"
-    // wasi-example-pair.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-pair.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Pair
     			TYPE INPUT : UDINT; END_TYPE
 
     			/* Lets go of `handle`, a handle of `input` the host gave. */
-    			{extern 'wasi:example/pair@0.3.0' '[resource-drop]input'}
+    			{extern 'acme:example/pair@0.3.0' '[resource-drop]input'}
     			FUNCTION INPUT_DROP
     			VAR_INPUT
     				handle : INPUT;
@@ -240,21 +240,21 @@ fn methods_of_one_name_on_two_resources(mut with_db: RootDatabase) {
     			TYPE OUTPUT : UDINT; END_TYPE
 
     			/* Lets go of `handle`, a handle of `output` the host gave. */
-    			{extern 'wasi:example/pair@0.3.0' '[resource-drop]output'}
+    			{extern 'acme:example/pair@0.3.0' '[resource-drop]output'}
     			FUNCTION OUTPUT_DROP
     			VAR_INPUT
     				handle : OUTPUT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/pair@0.3.0' '[method]input.get'}
+    			{extern 'acme:example/pair@0.3.0' '[method]input.get'}
     			FUNCTION INPUT_GET : UDINT
     			VAR_INPUT
     				self : INPUT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/pair@0.3.0' '[method]output.get'}
+    			{extern 'acme:example/pair@0.3.0' '[method]output.get'}
     			FUNCTION OUTPUT_GET : UDINT
     			VAR_INPUT
     				self : OUTPUT;

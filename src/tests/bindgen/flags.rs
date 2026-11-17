@@ -20,7 +20,7 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn flags_are_named_bits(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface files {
             flags open-flags { create, directory, exclusive, truncate }
@@ -37,8 +37,8 @@ fn flags_are_named_bits(mut with_db: RootDatabase) {
             import files;
         }
     "#), @r"
-    // wasi-example-files.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-files.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Files
     			TYPE OPEN_FLAGS : BYTE (
@@ -86,7 +86,7 @@ fn flags_are_named_bits(mut with_db: RootDatabase) {
     				modes : MODES;
     			END_STRUCT END_TYPE
 
-    			{extern 'wasi:example/files@0.3.0' 'open'}
+    			{extern 'acme:example/files@0.3.0' 'open'}
     			FUNCTION OPEN : RIGHTS
     			VAR_INPUT
     				how : OPEN_FLAGS;
@@ -96,7 +96,7 @@ fn flags_are_named_bits(mut with_db: RootDatabase) {
 
     			/* `last` as the host gives it: the values of its result, which `LAST` puts
     			   in its members. */
-    			{extern 'wasi:example/files@0.3.0' 'last'}
+    			{extern 'acme:example/files@0.3.0' 'last'}
     			FUNCTION PRIVATE LAST_RAW
     			VAR_OUTPUT
     				how : OPEN_FLAGS;
@@ -116,7 +116,7 @@ fn flags_are_named_bits(mut with_db: RootDatabase) {
 
 /// Flags a host takes and gives, and a record's.
 const MARKS: &str = r#"
-    package wasi:example@0.3.0;
+    package acme:example@0.3.0;
 
     interface marks {
         flags style { bold, dashed, filled }
@@ -135,7 +135,7 @@ const MARKS: &str = r#"
 /// given, `pen-of` a pen with the flags it was given and `dashed`.
 fn marks_host(linker: &mut Linker<Host>) {
     let mut marks = linker
-        .instance("wasi:example/marks@0.3.0")
+        .instance("acme:example/marks@0.3.0")
         .expect("the interface");
     marks
         .func_new("invert", |_, _, params, results| {
@@ -176,21 +176,21 @@ fn flags_pass_and_come_back_bit_for_bit(mut with_db: RootDatabase) {
         PROGRAM P
         VAR_EXTERNAL output : DINT; END_VAR
         VAR
-            style, fresh : Wasi.Example.Marks.STYLE;
-            pen : Wasi.Example.Marks.PEN;
+            style, fresh : Acme.Example.Marks.STYLE;
+            pen : Acme.Example.Marks.PEN;
         END_VAR
             output := 1;
             // No flag set: flags start at zero, not at their first flag.
             IF fresh <> 0 OR pen.style <> 0 THEN output := -4; RETURN; END_IF;
-            style := Wasi.Example.Marks.INVERT(style := Wasi.Example.Marks.STYLE#DASHED);
-            IF style <> (Wasi.Example.Marks.STYLE#BOLD OR Wasi.Example.Marks.STYLE#FILLED) THEN
+            style := Acme.Example.Marks.INVERT(style := Acme.Example.Marks.STYLE#DASHED);
+            IF style <> (Acme.Example.Marks.STYLE#BOLD OR Acme.Example.Marks.STYLE#FILLED) THEN
                 output := -1;
             END_IF;
-            style := Wasi.Example.Marks.INVERT(style := 0);
+            style := Acme.Example.Marks.INVERT(style := 0);
             IF style <> 16#07 THEN output := -2; END_IF;
-            pen := Wasi.Example.Marks.PEN_OF(
-                given := Wasi.Example.Marks.WIDE#W0 OR Wasi.Example.Marks.WIDE#W9);
-            IF pen.style <> Wasi.Example.Marks.STYLE#DASHED OR pen.size <> 7
+            pen := Acme.Example.Marks.PEN_OF(
+                given := Acme.Example.Marks.WIDE#W0 OR Acme.Example.Marks.WIDE#W9);
+            IF pen.style <> Acme.Example.Marks.STYLE#DASHED OR pen.size <> 7
                 OR pen.wide <> 16#0201
             THEN
                 output := -3;

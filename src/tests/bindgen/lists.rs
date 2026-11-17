@@ -24,7 +24,7 @@ use crate::tests::utils::with_db;
 /// list beside a string, two lists, a list in an error, and one from an
 /// async call.
 const LISTS: &str = r#"
-    package wasi:example@0.3.0;
+    package acme:example@0.3.0;
 
     interface lists {
         enum color { red, green, blue }
@@ -55,8 +55,8 @@ const LISTS: &str = r#"
 #[rstest]
 fn a_list_comes_back_in_the_arrays_the_call_passes(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, LISTS), @r"
-    // wasi-example-lists.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-lists.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Lists
     			USING Std.Convert;
@@ -76,7 +76,7 @@ fn a_list_comes_back_in_the_arrays_the_call_passes(mut with_db: RootDatabase) {
     			/* `bytes` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `BYTES` reads, and its list in `value`,
     			   where the host writes it. */
-    			{extern 'wasi:example/lists@0.3.0' 'bytes'}
+    			{extern 'acme:example/lists@0.3.0' 'bytes'}
     			FUNCTION PRIVATE BYTES_RAW
     			VAR_INPUT
     				size : UDINT;
@@ -111,7 +111,7 @@ fn a_list_comes_back_in_the_arrays_the_call_passes(mut with_db: RootDatabase) {
     			/* `numbers` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `NUMBERS` reads, and its list in
     			   `value`, where the host writes it. */
-    			{extern 'wasi:example/lists@0.3.0' 'numbers'}
+    			{extern 'acme:example/lists@0.3.0' 'numbers'}
     			FUNCTION PRIVATE NUMBERS_RAW
     			VAR_INPUT
     				size : UDINT;
@@ -146,7 +146,7 @@ fn a_list_comes_back_in_the_arrays_the_call_passes(mut with_db: RootDatabase) {
     			/* `colors` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `COLORS` reads, and its list in
     			   `value`, where the host writes it. */
-    			{extern 'wasi:example/lists@0.3.0' 'colors'}
+    			{extern 'acme:example/lists@0.3.0' 'colors'}
     			FUNCTION PRIVATE COLORS_RAW
     			VAR_IN_OUT
     				value : ARRAY[*] OF COLOR;
@@ -175,7 +175,7 @@ fn a_list_comes_back_in_the_arrays_the_call_passes(mut with_db: RootDatabase) {
     			/* `names` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `NAMES` reads, and its list in `value`,
     			   where the host writes it. */
-    			{extern 'wasi:example/lists@0.3.0' 'names'}
+    			{extern 'acme:example/lists@0.3.0' 'names'}
     			FUNCTION PRIVATE NAMES_RAW
     			VAR_INPUT
     				size : UDINT;
@@ -210,7 +210,7 @@ fn a_list_comes_back_in_the_arrays_the_call_passes(mut with_db: RootDatabase) {
     			/* `pairs` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `PAIRS` reads, and its list in `item0`,
     			   `item1`, where the host writes it. */
-    			{extern 'wasi:example/lists@0.3.0' 'pairs'}
+    			{extern 'acme:example/lists@0.3.0' 'pairs'}
     			FUNCTION PRIVATE PAIRS_RAW
     			VAR_INPUT
     				size : UDINT;
@@ -247,7 +247,7 @@ fn a_list_comes_back_in_the_arrays_the_call_passes(mut with_db: RootDatabase) {
     			/* `entries` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `ENTRIES` reads, and its list in
     			   `item0`, `item1`, where the host writes it. */
-    			{extern 'wasi:example/lists@0.3.0' 'entries'}
+    			{extern 'acme:example/lists@0.3.0' 'entries'}
     			FUNCTION PRIVATE ENTRIES_RAW
     			VAR_IN_OUT
     				item0 : ARRAY[*] OF UDINT;
@@ -278,7 +278,7 @@ fn a_list_comes_back_in_the_arrays_the_call_passes(mut with_db: RootDatabase) {
     			/* `readings` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `READINGS` reads, and its list in `id`,
     			   `name`, `ok`, where the host writes it. */
-    			{extern 'wasi:example/lists@0.3.0' 'readings'}
+    			{extern 'acme:example/lists@0.3.0' 'readings'}
     			FUNCTION PRIVATE READINGS_RAW
     			VAR_IN_OUT
     				id : ARRAY[*] OF UDINT;
@@ -311,7 +311,7 @@ fn a_list_comes_back_in_the_arrays_the_call_passes(mut with_db: RootDatabase) {
     			/* `maybe` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `MAYBE` reads, and its list in `value`,
     			   where the host writes it. */
-    			{extern 'wasi:example/lists@0.3.0' 'maybe'}
+    			{extern 'acme:example/lists@0.3.0' 'maybe'}
     			FUNCTION PRIVATE MAYBE_RAW
     			VAR_INPUT
     				some : BOOL;
@@ -351,7 +351,7 @@ fn a_list_comes_back_in_the_arrays_the_call_passes(mut with_db: RootDatabase) {
     			/* `fetched` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `FETCHED` reads, and its list in
     			   `value`, where the host writes it. */
-    			{extern 'wasi:example/lists@0.3.0' 'fetched'}
+    			{extern 'acme:example/lists@0.3.0' 'fetched'}
     			FUNCTION PRIVATE FETCHED_RAW
     			VAR_INPUT
     				fail : BOOL;
@@ -395,7 +395,7 @@ fn a_list_comes_back_in_the_arrays_the_call_passes(mut with_db: RootDatabase) {
     			/* `label` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `LABEL` reads, and its string in
     			   `value`, where the host writes it. */
-    			{extern 'wasi:example/lists@0.3.0' 'label'}
+    			{extern 'acme:example/lists@0.3.0' 'label'}
     			FUNCTION PRIVATE LABEL_RAW
     			VAR_IN_OUT
     				value : STRING;
@@ -451,7 +451,7 @@ fn lists_host(linker: &mut Linker<Host>) {
     };
     let string = |text: &str| Val::String(text.to_string());
     let mut lists = linker
-        .instance("wasi:example/lists@0.3.0")
+        .instance("acme:example/lists@0.3.0")
         .expect("the interface");
     let mut define = |name: &str, give: Gives| {
         lists
@@ -579,7 +579,7 @@ const READ: &str = r#"
     VAR
         raw : GUARDED_BYTES;
         numbers : ARRAY[1..4] OF UDINT;
-        colors : ARRAY[0..3] OF Wasi.Example.Lists.COLOR;
+        colors : ARRAY[0..3] OF Acme.Example.Lists.COLOR;
         names : ARRAY[0..4] OF STRING[8];
         keys, values : ARRAY[0..3] OF STRING[16];
         few : GUARDED_NAMES;
@@ -589,22 +589,22 @@ const READ: &str = r#"
         halves : ARRAY[0..2] OF UINT;
         count : UDINT;
         known, failed, raised : BOOL;
-        error : Wasi.Example.Lists.COLOR;
+        error : Acme.Example.Lists.COLOR;
         why, s : STRING;
     END_VAR
         check := 0;
         // Bytes the host writes into the array itself; past them, nothing.
         raw.data[5] := 99;
-        Wasi.Example.Lists.BYTES(size := 5, value := raw.data, count => count);
+        Acme.Example.Lists.BYTES(size := 5, value := raw.data, count => count);
         IF count <> 5 OR raw.data[0] <> 0 OR raw.data[1] <> 1 OR raw.data[4] <> 4
             OR raw.data[5] <> 99
         THEN
             check := -1; RETURN;
         END_IF;
-        Wasi.Example.Lists.BYTES(size := 8, value := raw.data, count => count);
+        Acme.Example.Lists.BYTES(size := 8, value := raw.data, count => count);
         IF count <> 8 OR raw.data[7] <> 7 THEN check := -2; RETURN; END_IF;
         __TRY
-            Wasi.Example.Lists.BYTES(size := 9, value := raw.data, count => count);
+            Acme.Example.Lists.BYTES(size := 9, value := raw.data, count => count);
         __CATCH(why)
             raised := TRUE;
         __END_TRY;
@@ -616,18 +616,18 @@ const READ: &str = r#"
 
         // An array whose first element is 1.
         numbers[4] := 7;
-        Wasi.Example.Lists.NUMBERS(size := 3, value := numbers, count => count);
+        Acme.Example.Lists.NUMBERS(size := 3, value := numbers, count => count);
         IF count <> 3 OR numbers[1] <> 1000 OR numbers[3] <> 1002 OR numbers[4] <> 7 THEN
             check := -4; RETURN;
         END_IF;
-        Wasi.Example.Lists.COLORS(value := colors, count => count);
+        Acme.Example.Lists.COLORS(value := colors, count => count);
         IF count <> 3 OR colors[0] <> 2 OR colors[1] <> 0 OR colors[2] <> 1 THEN
             check := -5; RETURN;
         END_IF;
 
         // Each string into its element, an empty one too; one a byte
         // longer than its STRING raises.
-        Wasi.Example.Lists.NAMES(size := 4, value := names, count => count);
+        Acme.Example.Lists.NAMES(size := 4, value := names, count => count);
         IF count <> 4 OR names[0] <> 'a' OR names[1] <> '' OR names[2] <> 'ccc'
             OR names[3] <> 'héllo'
         THEN
@@ -635,7 +635,7 @@ const READ: &str = r#"
         END_IF;
         raised := FALSE;
         __TRY
-            Wasi.Example.Lists.NAMES(size := 5, value := names, count => count);
+            Acme.Example.Lists.NAMES(size := 5, value := names, count => count);
         __CATCH(why)
             raised := TRUE;
         __END_TRY;
@@ -643,11 +643,11 @@ const READ: &str = r#"
             check := -7; RETURN;
         END_IF;
         // The call after it is one like any other.
-        Wasi.Example.Lists.NAMES(size := 2, value := names, count => count);
+        Acme.Example.Lists.NAMES(size := 2, value := names, count => count);
         IF count <> 2 OR names[0] <> 'a' OR names[1] <> '' THEN check := -8; RETURN; END_IF;
 
         // Two strings an element, each into its own array.
-        Wasi.Example.Lists.PAIRS(size := 2, item0 := keys, item1 := values, count => count);
+        Acme.Example.Lists.PAIRS(size := 2, item0 := keys, item1 := values, count => count);
         IF count <> 2 OR keys[0] <> 'HOME' OR values[0] <> '/root' OR keys[1] <> 'LANG'
             OR values[1] <> 'C'
         THEN
@@ -656,7 +656,7 @@ const READ: &str = r#"
         // The shorter of two arrays bounds the list.
         raised := FALSE;
         __TRY
-            Wasi.Example.Lists.PAIRS(size := 3, item0 := keys, item1 := few.data, count => count);
+            Acme.Example.Lists.PAIRS(size := 3, item0 := keys, item1 := few.data, count => count);
         __CATCH(why)
             raised := TRUE;
         __END_TRY;
@@ -666,39 +666,39 @@ const READ: &str = r#"
         IF few.after <> 'guard' THEN check := -19; RETURN; END_IF;
 
         // A number and a string an element: the number copied into its array.
-        Wasi.Example.Lists.ENTRIES(item0 := ids, item1 := labels, count => count);
+        Acme.Example.Lists.ENTRIES(item0 := ids, item1 := labels, count => count);
         IF count <> 2 OR ids[0] <> 7 OR labels[0] <> 'seven' OR ids[1] <> 11
             OR labels[1] <> 'eleven'
         THEN
             check := -11; RETURN;
         END_IF;
-        Wasi.Example.Lists.READINGS(id := ids, name := labels, ok := oks, count => count);
+        Acme.Example.Lists.READINGS(id := ids, name := labels, ok := oks, count => count);
         IF count <> 3 OR ids[0] <> 1 OR labels[0] <> 'temp' OR NOT oks[0] OR ids[1] <> 2
             OR labels[1] <> 'flow' OR oks[1] OR ids[2] <> 3 OR labels[2] <> '' OR NOT oks[2]
         THEN
             check := -12; RETURN;
         END_IF;
 
-        Wasi.Example.Lists.MAYBE(some := FALSE, value := halves, is_some => known,
+        Acme.Example.Lists.MAYBE(some := FALSE, value := halves, is_some => known,
             value_count => count);
         IF known OR count <> 0 THEN check := -13; RETURN; END_IF;
-        Wasi.Example.Lists.MAYBE(some := TRUE, value := halves, is_some => known,
+        Acme.Example.Lists.MAYBE(some := TRUE, value := halves, is_some => known,
             value_count => count);
         IF NOT known OR count <> 2 OR halves[0] <> 1 OR halves[1] <> 65535 THEN
             check := -14; RETURN;
         END_IF;
 
-        Wasi.Example.Lists.FETCHED(fail := FALSE, value := raw.data, failed => failed,
+        Acme.Example.Lists.FETCHED(fail := FALSE, value := raw.data, failed => failed,
             value_count => count, error => error);
         IF failed OR count <> 3 OR raw.data[0] <> 9 OR raw.data[2] <> 7 THEN
             check := -15; RETURN;
         END_IF;
-        Wasi.Example.Lists.FETCHED(fail := TRUE, value := raw.data, failed => failed,
+        Acme.Example.Lists.FETCHED(fail := TRUE, value := raw.data, failed => failed,
             value_count => count, error => error);
         IF NOT failed OR count <> 0 OR error <> 1 THEN check := -16; RETURN; END_IF;
 
         // A string after them, in the same module.
-        Wasi.Example.Lists.LABEL(value := s);
+        Acme.Example.Lists.LABEL(value := s);
         IF s <> 'after' THEN check := -17; RETURN; END_IF;
         check := 1;
     END_FUNCTION
@@ -738,7 +738,7 @@ const AGAIN: &str = r#"
         check := 0;
         // Each call's elements land from the start of the scratch.
         FOR i := 1 TO 5000 DO
-            Wasi.Example.Lists.NAMES(size := 4, value := names, count => count);
+            Acme.Example.Lists.NAMES(size := 4, value := names, count => count);
         END_FOR;
         IF count <> 4 OR names[0] <> 'a' OR names[3] <> 'héllo' THEN check := -1; RETURN; END_IF;
         check := 1;
@@ -751,7 +751,7 @@ const AGAIN: &str = r#"
         IF scans = 1 THEN
             output := check();
         ELSE
-            Wasi.Example.Lists.BYTES(size := 300000, value := raw, count => count);
+            Acme.Example.Lists.BYTES(size := 300000, value := raw, count => count);
             output := -100;
         END_IF;
     END_PROGRAM
@@ -778,7 +778,7 @@ fn each_call_starts_the_scratch_over(mut with_db: RootDatabase) {
 /// beside a parameter WIT names `count`, and an async one whose parameters
 /// go past 4 values, in memory.
 const FRAMES: &str = r#"
-    package wasi:example@0.3.0;
+    package acme:example@0.3.0;
 
     interface frames {
         send: func(data: list<u8>) -> u32;
@@ -799,15 +799,15 @@ const FRAMES: &str = r#"
 #[rstest]
 fn a_list_passed_in_is_an_array_and_a_count(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, FRAMES), @r"
-    // wasi-example-frames.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-frames.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Frames
     			USING Std.Convert;
 
     			/* `send` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `SEND` takes from the caller's array. */
-    			{extern 'wasi:example/frames@0.3.0' 'send'}
+    			{extern 'acme:example/frames@0.3.0' 'send'}
     			FUNCTION PRIVATE SEND_RAW : UDINT
     			VAR_INPUT
     				data : REF_TO BYTE;
@@ -830,7 +830,7 @@ fn a_list_passed_in_is_an_array_and_a_count(mut with_db: RootDatabase) {
 
     			/* `tally` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `TALLY` takes from the caller's array. */
-    			{extern 'wasi:example/frames@0.3.0' 'tally'}
+    			{extern 'acme:example/frames@0.3.0' 'tally'}
     			FUNCTION PRIVATE TALLY_RAW : UDINT
     			VAR_INPUT
     				count_ : UDINT;
@@ -855,7 +855,7 @@ fn a_list_passed_in_is_an_array_and_a_count(mut with_db: RootDatabase) {
 
     			/* `post` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `POST` takes from the caller's array. */
-    			{extern async 'wasi:example/frames@0.3.0' 'post'}
+    			{extern async 'acme:example/frames@0.3.0' 'post'}
     			FUNCTION_BLOCK POST_RAW
     			VAR_INPUT
     				data : REF_TO BYTE;
@@ -925,7 +925,7 @@ fn frames_host(linker: &mut Linker<Host>) {
         other => panic!("a number: {other:?}"),
     };
     let mut frames = linker
-        .instance("wasi:example/frames@0.3.0")
+        .instance("acme:example/frames@0.3.0")
         .expect("the interface");
     frames
         .func_new("send", |_, _, params, results| {
@@ -964,24 +964,24 @@ const SENT: &str = r#"
         n : UDINT;
         raised : BOOL;
         why : STRING;
-        post : Wasi.Example.Frames.POST;
+        post : Acme.Example.Frames.POST;
     END_VAR
         CASE step OF
         0:
             step := 9;
             // The first four bytes of ten, none of them, all of them.
-            n := Wasi.Example.Frames.SEND(data := frame, count := 4);
+            n := Acme.Example.Frames.SEND(data := frame, count := 4);
             IF n <> 4010 THEN output := -1; RETURN; END_IF;
-            n := Wasi.Example.Frames.SEND(data := frame, count := 0);
+            n := Acme.Example.Frames.SEND(data := frame, count := 0);
             IF n <> 0 THEN output := -2; RETURN; END_IF;
-            n := Wasi.Example.Frames.SEND(data := frame, count := 10);
+            n := Acme.Example.Frames.SEND(data := frame, count := 10);
             IF n <> 10055 THEN output := -3; RETURN; END_IF;
             // An array that starts past 0 is passed from its first element.
-            n := Wasi.Example.Frames.SEND(data := shifted, count := 2);
+            n := Acme.Example.Frames.SEND(data := shifted, count := 2);
             IF n <> 2201 THEN output := -4; RETURN; END_IF;
             // A count past the array raises before the call.
             __TRY
-                n := Wasi.Example.Frames.SEND(data := shifted, count := 4);
+                n := Acme.Example.Frames.SEND(data := shifted, count := 4);
             __CATCH(why)
                 raised := TRUE;
             __END_TRY;
@@ -989,7 +989,7 @@ const SENT: &str = r#"
                 output := -5; RETURN;
             END_IF;
             // WIT's own `count`, beside the list's.
-            n := Wasi.Example.Frames.TALLY(count_ := 7, data := frame, count := 3);
+            n := Acme.Example.Frames.TALLY(count_ := 7, data := frame, count := 3);
             IF n <> 7003006 THEN output := -6; RETURN; END_IF;
             step := 1;
         1:

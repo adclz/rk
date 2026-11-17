@@ -33,7 +33,7 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface pipe {
             enum error-code { closed, full }
@@ -51,8 +51,8 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
             import other;
         }
     "#), @r"
-    // wasi-example-pipe.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-pipe.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Pipe
     			TYPE ERROR_CODE : USINT (
@@ -60,7 +60,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     				FULL := 1
     			); END_TYPE
 
-    			{extern 'wasi:example/pipe@0.3.0' 'send'}
+    			{extern 'acme:example/pipe@0.3.0' 'send'}
     			FUNCTION SEND : UDINT
     			VAR_INPUT
     				data : UDINT;
@@ -68,7 +68,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Makes a stream of `u8`, and gives its reading end, then its writing end. */
-    			{extern 'wasi:example/pipe@0.3.0' '[stream-new-0]send'}
+    			{extern 'acme:example/pipe@0.3.0' '[stream-new-0]send'}
     			FUNCTION BYTES_STREAM_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -79,7 +79,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			/* Reads the bytes that come next into `data`, as many as it holds at most:
     			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
     			   go. */
-    			{extern async 'wasi:example/pipe@0.3.0' '[stream-read-0]send'}
+    			{extern async 'acme:example/pipe@0.3.0' '[stream-read-0]send'}
     			FUNCTION_BLOCK BYTES_STREAM_READ
     			VAR_INPUT
     				stream : UDINT;
@@ -95,7 +95,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			/* Reads the bytes that come next into `data`, as many as it holds at most:
     			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
     			   go. */
-    			{extern async 'wasi:example/pipe@0.3.0' '[stream-read-0]send'}
+    			{extern async 'acme:example/pipe@0.3.0' '[stream-read-0]send'}
     			FUNCTION_BLOCK BYTES_STREAM_READ_ARRAY
     			VAR_INPUT
     				stream : UDINT;
@@ -110,7 +110,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
 
     			/* Writes the bytes of `data`, as many as the reader takes: `written` of
     			   them, after `DONE`. `closed` is TRUE once the reader has let go. */
-    			{extern async 'wasi:example/pipe@0.3.0' '[stream-write-0]send'}
+    			{extern async 'acme:example/pipe@0.3.0' '[stream-write-0]send'}
     			FUNCTION_BLOCK BYTES_STREAM_WRITE
     			VAR_INPUT
     				stream : UDINT;
@@ -127,7 +127,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			   reader takes: `written` of them, after `DONE`. The host reads them where
     			   they are while the write runs, so they stay there, unchanged, until
     			   `DONE`. `closed` is TRUE once the reader has let go. */
-    			{extern async 'wasi:example/pipe@0.3.0' '[stream-write-0]send'}
+    			{extern async 'acme:example/pipe@0.3.0' '[stream-write-0]send'}
     			FUNCTION_BLOCK BYTES_STREAM_WRITE_ARRAY
     			VAR_INPUT
     				stream : UDINT;
@@ -142,7 +142,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the stream's reading end, `stream`. */
-    			{extern 'wasi:example/pipe@0.3.0' '[stream-drop-readable-0]send'}
+    			{extern 'acme:example/pipe@0.3.0' '[stream-drop-readable-0]send'}
     			FUNCTION BYTES_STREAM_DROP_READABLE
     			VAR_INPUT
     				stream : UDINT;
@@ -150,7 +150,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the stream's writing end, `stream`. */
-    			{extern 'wasi:example/pipe@0.3.0' '[stream-drop-writable-0]send'}
+    			{extern 'acme:example/pipe@0.3.0' '[stream-drop-writable-0]send'}
     			FUNCTION BYTES_STREAM_DROP_WRITABLE
     			VAR_INPUT
     				stream : UDINT;
@@ -159,7 +159,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
 
     			/* Makes a future of `result<_, error-code>`, and gives its reading end,
     			   then its writing end. */
-    			{extern 'wasi:example/pipe@0.3.0' '[future-new-1]send'}
+    			{extern 'acme:example/pipe@0.3.0' '[future-new-1]send'}
     			FUNCTION RESULT_FUTURE_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -168,7 +168,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Reads the value the future holds, which comes back after `DONE`. */
-    			{extern async 'wasi:example/pipe@0.3.0' '[future-read-1]send'}
+    			{extern async 'acme:example/pipe@0.3.0' '[future-read-1]send'}
     			FUNCTION_BLOCK RESULT_FUTURE_READ
     			VAR_INPUT
     				future : UDINT;
@@ -181,7 +181,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the future's reading end, `future`. */
-    			{extern 'wasi:example/pipe@0.3.0' '[future-drop-readable-1]send'}
+    			{extern 'acme:example/pipe@0.3.0' '[future-drop-readable-1]send'}
     			FUNCTION RESULT_FUTURE_DROP_READABLE
     			VAR_INPUT
     				future : UDINT;
@@ -189,14 +189,14 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the future's writing end, `future`. */
-    			{extern 'wasi:example/pipe@0.3.0' '[future-drop-writable-1]send'}
+    			{extern 'acme:example/pipe@0.3.0' '[future-drop-writable-1]send'}
     			FUNCTION RESULT_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/pipe@0.3.0' 'receive'}
+    			{extern 'acme:example/pipe@0.3.0' 'receive'}
     			FUNCTION RECEIVE
     			VAR_OUTPUT
     				item0 : UDINT;
@@ -214,11 +214,11 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
        - `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel
          blocks the scan. */
 
-    // wasi-example-other.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-other.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Other
-    			{extern 'wasi:example/other@0.3.0' 'relay'}
+    			{extern 'acme:example/other@0.3.0' 'relay'}
     			FUNCTION RELAY : UDINT
     			VAR_INPUT
     				data : UDINT;
@@ -226,7 +226,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Makes a stream of `u8`, and gives its reading end, then its writing end. */
-    			{extern 'wasi:example/other@0.3.0' '[stream-new-0]relay'}
+    			{extern 'acme:example/other@0.3.0' '[stream-new-0]relay'}
     			FUNCTION BYTES_STREAM_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -237,7 +237,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			/* Reads the bytes that come next into `data`, as many as it holds at most:
     			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
     			   go. */
-    			{extern async 'wasi:example/other@0.3.0' '[stream-read-0]relay'}
+    			{extern async 'acme:example/other@0.3.0' '[stream-read-0]relay'}
     			FUNCTION_BLOCK BYTES_STREAM_READ
     			VAR_INPUT
     				stream : UDINT;
@@ -253,7 +253,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			/* Reads the bytes that come next into `data`, as many as it holds at most:
     			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
     			   go. */
-    			{extern async 'wasi:example/other@0.3.0' '[stream-read-0]relay'}
+    			{extern async 'acme:example/other@0.3.0' '[stream-read-0]relay'}
     			FUNCTION_BLOCK BYTES_STREAM_READ_ARRAY
     			VAR_INPUT
     				stream : UDINT;
@@ -268,7 +268,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
 
     			/* Writes the bytes of `data`, as many as the reader takes: `written` of
     			   them, after `DONE`. `closed` is TRUE once the reader has let go. */
-    			{extern async 'wasi:example/other@0.3.0' '[stream-write-0]relay'}
+    			{extern async 'acme:example/other@0.3.0' '[stream-write-0]relay'}
     			FUNCTION_BLOCK BYTES_STREAM_WRITE
     			VAR_INPUT
     				stream : UDINT;
@@ -285,7 +285,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			   reader takes: `written` of them, after `DONE`. The host reads them where
     			   they are while the write runs, so they stay there, unchanged, until
     			   `DONE`. `closed` is TRUE once the reader has let go. */
-    			{extern async 'wasi:example/other@0.3.0' '[stream-write-0]relay'}
+    			{extern async 'acme:example/other@0.3.0' '[stream-write-0]relay'}
     			FUNCTION_BLOCK BYTES_STREAM_WRITE_ARRAY
     			VAR_INPUT
     				stream : UDINT;
@@ -300,7 +300,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the stream's reading end, `stream`. */
-    			{extern 'wasi:example/other@0.3.0' '[stream-drop-readable-0]relay'}
+    			{extern 'acme:example/other@0.3.0' '[stream-drop-readable-0]relay'}
     			FUNCTION BYTES_STREAM_DROP_READABLE
     			VAR_INPUT
     				stream : UDINT;
@@ -308,7 +308,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the stream's writing end, `stream`. */
-    			{extern 'wasi:example/other@0.3.0' '[stream-drop-writable-0]relay'}
+    			{extern 'acme:example/other@0.3.0' '[stream-drop-writable-0]relay'}
     			FUNCTION BYTES_STREAM_DROP_WRITABLE
     			VAR_INPUT
     				stream : UDINT;
@@ -317,7 +317,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
 
     			/* Makes a future of `result<_, error-code>`, and gives its reading end,
     			   then its writing end. */
-    			{extern 'wasi:example/other@0.3.0' '[future-new-1]relay'}
+    			{extern 'acme:example/other@0.3.0' '[future-new-1]relay'}
     			FUNCTION RESULT_FUTURE_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -326,7 +326,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Reads the value the future holds, which comes back after `DONE`. */
-    			{extern async 'wasi:example/other@0.3.0' '[future-read-1]relay'}
+    			{extern async 'acme:example/other@0.3.0' '[future-read-1]relay'}
     			FUNCTION_BLOCK RESULT_FUTURE_READ
     			VAR_INPUT
     				future : UDINT;
@@ -334,12 +334,12 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			VAR_OUTPUT
     				DONE : BOOL;
     				failed : BOOL;
-    				error : Wasi.Example.Pipe.ERROR_CODE;
+    				error : Acme.Example.Pipe.ERROR_CODE;
     			END_VAR
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the future's reading end, `future`. */
-    			{extern 'wasi:example/other@0.3.0' '[future-drop-readable-1]relay'}
+    			{extern 'acme:example/other@0.3.0' '[future-drop-readable-1]relay'}
     			FUNCTION RESULT_FUTURE_DROP_READABLE
     			VAR_INPUT
     				future : UDINT;
@@ -347,7 +347,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the future's writing end, `future`. */
-    			{extern 'wasi:example/other@0.3.0' '[future-drop-writable-1]relay'}
+    			{extern 'acme:example/other@0.3.0' '[future-drop-writable-1]relay'}
     			FUNCTION RESULT_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
@@ -372,7 +372,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
 #[rstest]
 fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface copy {
             resource channel {
@@ -384,21 +384,21 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
             import copy;
         }
     "#), @r"
-    // wasi-example-copy.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-copy.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Copy
     			TYPE CHANNEL : UDINT; END_TYPE
 
     			/* Lets go of `handle`, a handle of `channel` the host gave. */
-    			{extern 'wasi:example/copy@0.3.0' '[resource-drop]channel'}
+    			{extern 'acme:example/copy@0.3.0' '[resource-drop]channel'}
     			FUNCTION CHANNEL_DROP
     			VAR_INPUT
     				handle : CHANNEL;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/copy@0.3.0' '[method]channel.transfer'}
+    			{extern 'acme:example/copy@0.3.0' '[method]channel.transfer'}
     			FUNCTION CHANNEL_TRANSFER : BOOL
     			VAR_INPUT
     				self : CHANNEL;
@@ -409,7 +409,7 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
 
     			/* Makes a future of `u32`, and gives its reading end, then its writing
     			   end. */
-    			{extern 'wasi:example/copy@0.3.0' '[future-new-0][method]channel.transfer'}
+    			{extern 'acme:example/copy@0.3.0' '[future-new-0][method]channel.transfer'}
     			FUNCTION U32_FUTURE_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -418,7 +418,7 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Reads the value the future holds, which comes back after `DONE`. */
-    			{extern async 'wasi:example/copy@0.3.0' '[future-read-0][method]channel.transfer'}
+    			{extern async 'acme:example/copy@0.3.0' '[future-read-0][method]channel.transfer'}
     			FUNCTION_BLOCK U32_FUTURE_READ
     			VAR_INPUT
     				future : UDINT;
@@ -430,7 +430,7 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the future's reading end, `future`. */
-    			{extern 'wasi:example/copy@0.3.0' '[future-drop-readable-0][method]channel.transfer'}
+    			{extern 'acme:example/copy@0.3.0' '[future-drop-readable-0][method]channel.transfer'}
     			FUNCTION U32_FUTURE_DROP_READABLE
     			VAR_INPUT
     				future : UDINT;
@@ -438,7 +438,7 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the future's writing end, `future`. */
-    			{extern 'wasi:example/copy@0.3.0' '[future-drop-writable-0][method]channel.transfer'}
+    			{extern 'acme:example/copy@0.3.0' '[future-drop-writable-0][method]channel.transfer'}
     			FUNCTION U32_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
@@ -446,7 +446,7 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Makes a stream of `u8`, and gives its reading end, then its writing end. */
-    			{extern 'wasi:example/copy@0.3.0' '[stream-new-1][method]channel.transfer'}
+    			{extern 'acme:example/copy@0.3.0' '[stream-new-1][method]channel.transfer'}
     			FUNCTION BYTES_STREAM_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -457,7 +457,7 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     			/* Reads the bytes that come next into `data`, as many as it holds at most:
     			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
     			   go. */
-    			{extern async 'wasi:example/copy@0.3.0' '[stream-read-1][method]channel.transfer'}
+    			{extern async 'acme:example/copy@0.3.0' '[stream-read-1][method]channel.transfer'}
     			FUNCTION_BLOCK BYTES_STREAM_READ
     			VAR_INPUT
     				stream : UDINT;
@@ -473,7 +473,7 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     			/* Reads the bytes that come next into `data`, as many as it holds at most:
     			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
     			   go. */
-    			{extern async 'wasi:example/copy@0.3.0' '[stream-read-1][method]channel.transfer'}
+    			{extern async 'acme:example/copy@0.3.0' '[stream-read-1][method]channel.transfer'}
     			FUNCTION_BLOCK BYTES_STREAM_READ_ARRAY
     			VAR_INPUT
     				stream : UDINT;
@@ -488,7 +488,7 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
 
     			/* Writes the bytes of `data`, as many as the reader takes: `written` of
     			   them, after `DONE`. `closed` is TRUE once the reader has let go. */
-    			{extern async 'wasi:example/copy@0.3.0' '[stream-write-1][method]channel.transfer'}
+    			{extern async 'acme:example/copy@0.3.0' '[stream-write-1][method]channel.transfer'}
     			FUNCTION_BLOCK BYTES_STREAM_WRITE
     			VAR_INPUT
     				stream : UDINT;
@@ -505,7 +505,7 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     			   reader takes: `written` of them, after `DONE`. The host reads them where
     			   they are while the write runs, so they stay there, unchanged, until
     			   `DONE`. `closed` is TRUE once the reader has let go. */
-    			{extern async 'wasi:example/copy@0.3.0' '[stream-write-1][method]channel.transfer'}
+    			{extern async 'acme:example/copy@0.3.0' '[stream-write-1][method]channel.transfer'}
     			FUNCTION_BLOCK BYTES_STREAM_WRITE_ARRAY
     			VAR_INPUT
     				stream : UDINT;
@@ -520,7 +520,7 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the stream's reading end, `stream`. */
-    			{extern 'wasi:example/copy@0.3.0' '[stream-drop-readable-1][method]channel.transfer'}
+    			{extern 'acme:example/copy@0.3.0' '[stream-drop-readable-1][method]channel.transfer'}
     			FUNCTION BYTES_STREAM_DROP_READABLE
     			VAR_INPUT
     				stream : UDINT;
@@ -528,7 +528,7 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the stream's writing end, `stream`. */
-    			{extern 'wasi:example/copy@0.3.0' '[stream-drop-writable-1][method]channel.transfer'}
+    			{extern 'acme:example/copy@0.3.0' '[stream-drop-writable-1][method]channel.transfer'}
     			FUNCTION BYTES_STREAM_DROP_WRITABLE
     			VAR_INPUT
     				stream : UDINT;
@@ -549,7 +549,7 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
 /// A stream of the handles of a resource, `connection`, as a listener's
 /// connections come in.
 const FEEDS: &str = r#"
-    package wasi:example@0.3.0;
+    package acme:example@0.3.0;
 
     interface feeds {
         resource connection;
@@ -568,27 +568,27 @@ const FEEDS: &str = r#"
 #[rstest]
 fn a_stream_of_handles_is_read_into_an_array(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, FEEDS), @r"
-    // wasi-example-feeds.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-feeds.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Feeds
     			TYPE CONNECTION : UDINT; END_TYPE
 
     			/* Lets go of `handle`, a handle of `connection` the host gave. */
-    			{extern 'wasi:example/feeds@0.3.0' '[resource-drop]connection'}
+    			{extern 'acme:example/feeds@0.3.0' '[resource-drop]connection'}
     			FUNCTION CONNECTION_DROP
     			VAR_INPUT
     				handle : CONNECTION;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/feeds@0.3.0' 'accept'}
+    			{extern 'acme:example/feeds@0.3.0' 'accept'}
     			FUNCTION ACCEPT : UDINT
     			END_FUNCTION
 
     			/* Makes a stream of `own<connection>`, and gives its reading end, then its
     			   writing end. */
-    			{extern 'wasi:example/feeds@0.3.0' '[stream-new-0]accept'}
+    			{extern 'acme:example/feeds@0.3.0' '[stream-new-0]accept'}
     			FUNCTION CONNECTION_STREAM_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -599,7 +599,7 @@ fn a_stream_of_handles_is_read_into_an_array(mut with_db: RootDatabase) {
     			/* Reads the handles that come next into `data`, as many as it holds at
     			   most: `read` of them, after `DONE`, each the program's own to drop.
     			   `closed` is TRUE once the writer has let go. */
-    			{extern async 'wasi:example/feeds@0.3.0' '[stream-read-0]accept'}
+    			{extern async 'acme:example/feeds@0.3.0' '[stream-read-0]accept'}
     			FUNCTION_BLOCK CONNECTION_STREAM_READ
     			VAR_INPUT
     				stream : UDINT;
@@ -613,7 +613,7 @@ fn a_stream_of_handles_is_read_into_an_array(mut with_db: RootDatabase) {
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the stream's reading end, `stream`. */
-    			{extern 'wasi:example/feeds@0.3.0' '[stream-drop-readable-0]accept'}
+    			{extern 'acme:example/feeds@0.3.0' '[stream-drop-readable-0]accept'}
     			FUNCTION CONNECTION_STREAM_DROP_READABLE
     			VAR_INPUT
     				stream : UDINT;
@@ -621,7 +621,7 @@ fn a_stream_of_handles_is_read_into_an_array(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the stream's writing end, `stream`. */
-    			{extern 'wasi:example/feeds@0.3.0' '[stream-drop-writable-0]accept'}
+    			{extern 'acme:example/feeds@0.3.0' '[stream-drop-writable-0]accept'}
     			FUNCTION CONNECTION_STREAM_DROP_WRITABLE
     			VAR_INPUT
     				stream : UDINT;
@@ -645,7 +645,7 @@ fn a_stream_of_handles_is_read_into_an_array(mut with_db: RootDatabase) {
 #[rstest]
 fn a_read_takes_as_many_handles_as_its_array_holds(mut with_db: RootDatabase) {
     let program = r#"
-        {extern async 'wasi:example/feeds@0.3.0' '[stream-read-0]accept'}
+        {extern async 'acme:example/feeds@0.3.0' '[stream-read-0]accept'}
         FUNCTION_BLOCK TWO_AT_ONCE
         VAR_INPUT stream : UDINT; END_VAR
         VAR_OUTPUT DONE : BOOL; data : ARRAY[0..1] OF UDINT; read : UDINT; closed : BOOL; END_VAR
@@ -660,15 +660,15 @@ fn a_read_takes_as_many_handles_as_its_array_holds(mut with_db: RootDatabase) {
         END_VAR
             CASE step OF
             0:
-                connections := Wasi.Example.Feeds.ACCEPT();
+                connections := Acme.Example.Feeds.ACCEPT();
                 step := 1;
             1:
                 two(stream := connections);
                 IF two.DONE THEN
                     step := 9;
                     IF two.read <> 2 OR two.closed THEN output := -1; RETURN; END_IF;
-                    Wasi.Example.Feeds.CONNECTION_DROP(handle := two.data[0]);
-                    Wasi.Example.Feeds.CONNECTION_DROP(handle := two.data[1]);
+                    Acme.Example.Feeds.CONNECTION_DROP(handle := two.data[0]);
+                    Acme.Example.Feeds.CONNECTION_DROP(handle := two.data[1]);
                     output := 1;
                 END_IF;
             END_CASE;
@@ -689,7 +689,7 @@ fn a_read_takes_as_many_handles_as_its_array_holds(mut with_db: RootDatabase) {
 /// connections, all at once.
 fn feeds_host(linker: &mut Linker<Host>) {
     let mut feeds = linker
-        .instance("wasi:example/feeds@0.3.0")
+        .instance("acme:example/feeds@0.3.0")
         .expect("the interface");
     feeds
         .resource("connection", ResourceType::host::<Connection>(), |_, _| {
@@ -744,7 +744,7 @@ impl<D> StreamProducer<D> for Connections {
 #[rstest]
 fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface feeds {
             record event { code: u32 }
@@ -756,21 +756,21 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
             import feeds;
         }
     "#), @r"
-    // wasi-example-feeds.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-feeds.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Feeds
     			TYPE EVENT : STRUCT
     				code : UDINT;
     			END_STRUCT END_TYPE
 
-    			{extern 'wasi:example/feeds@0.3.0' 'numbers'}
+    			{extern 'acme:example/feeds@0.3.0' 'numbers'}
     			FUNCTION NUMBERS : UDINT
     			END_FUNCTION
 
     			/* Makes a stream of `u32`, and gives its reading end, then its writing
     			   end. */
-    			{extern 'wasi:example/feeds@0.3.0' '[stream-new-0]numbers'}
+    			{extern 'acme:example/feeds@0.3.0' '[stream-new-0]numbers'}
     			FUNCTION U32_STREAM_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -779,7 +779,7 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the stream's reading end, `stream`. */
-    			{extern 'wasi:example/feeds@0.3.0' '[stream-drop-readable-0]numbers'}
+    			{extern 'acme:example/feeds@0.3.0' '[stream-drop-readable-0]numbers'}
     			FUNCTION U32_STREAM_DROP_READABLE
     			VAR_INPUT
     				stream : UDINT;
@@ -787,20 +787,20 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the stream's writing end, `stream`. */
-    			{extern 'wasi:example/feeds@0.3.0' '[stream-drop-writable-0]numbers'}
+    			{extern 'acme:example/feeds@0.3.0' '[stream-drop-writable-0]numbers'}
     			FUNCTION U32_STREAM_DROP_WRITABLE
     			VAR_INPUT
     				stream : UDINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/feeds@0.3.0' 'events'}
+    			{extern 'acme:example/feeds@0.3.0' 'events'}
     			FUNCTION EVENTS : UDINT
     			END_FUNCTION
 
     			/* Makes a stream of `event`, and gives its reading end, then its writing
     			   end. */
-    			{extern 'wasi:example/feeds@0.3.0' '[stream-new-0]events'}
+    			{extern 'acme:example/feeds@0.3.0' '[stream-new-0]events'}
     			FUNCTION EVENT_STREAM_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -809,7 +809,7 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the stream's reading end, `stream`. */
-    			{extern 'wasi:example/feeds@0.3.0' '[stream-drop-readable-0]events'}
+    			{extern 'acme:example/feeds@0.3.0' '[stream-drop-readable-0]events'}
     			FUNCTION EVENT_STREAM_DROP_READABLE
     			VAR_INPUT
     				stream : UDINT;
@@ -817,7 +817,7 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the stream's writing end, `stream`. */
-    			{extern 'wasi:example/feeds@0.3.0' '[stream-drop-writable-0]events'}
+    			{extern 'acme:example/feeds@0.3.0' '[stream-drop-writable-0]events'}
     			FUNCTION EVENT_STREAM_DROP_WRITABLE
     			VAR_INPUT
     				stream : UDINT;
@@ -845,7 +845,7 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
 fn a_write_left_out_says_why(mut with_db: RootDatabase) {
     let bindings = generated(
         r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface hand {
             resource connection;
@@ -870,12 +870,12 @@ fn a_write_left_out_says_why(mut with_db: RootDatabase) {
     let (mir, module) = built(&mut with_db, &bindings.files, &[]);
     assert_abi(&bindings, &mir, &module);
     assert_snapshot!(summary(&bindings.files), @r"
-    wasi-example-hand.st: CONNECTION, CONNECTION_DROP, ACCEPT, CONNECTION_STREAM_NEW, CONNECTION_STREAM_READ, CONNECTION_STREAM_DROP_READABLE, CONNECTION_STREAM_DROP_WRITABLE, HAND_OVER, LATER, U32_FUTURE_NEW, U32_FUTURE_READ, U32_FUTURE_DROP_READABLE, U32_FUTURE_DROP_WRITABLE, GIVE
+    acme-example-hand.st: CONNECTION, CONNECTION_DROP, ACCEPT, CONNECTION_STREAM_NEW, CONNECTION_STREAM_READ, CONNECTION_STREAM_DROP_READABLE, CONNECTION_STREAM_DROP_WRITABLE, HAND_OVER, LATER, U32_FUTURE_NEW, U32_FUTURE_READ, U32_FUTURE_DROP_READABLE, U32_FUTURE_DROP_WRITABLE, GIVE
         left out `CONNECTION_STREAM_WRITE`: a stream's write moves bytes only
         left out `CONNECTION_STREAM_CANCEL_READ` and `CONNECTION_STREAM_CANCEL_WRITE`: a cancel blocks the scan
         left out `U32_FUTURE_WRITE`: a future's write is not imported yet
         left out `U32_FUTURE_CANCEL_READ` and `U32_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
-    wasi-example-keep.st: CONNECTION, CONNECTION_DROP, ACCEPT, CONNECTION_STREAM_NEW, CONNECTION_STREAM_READ, CONNECTION_STREAM_DROP_READABLE, CONNECTION_STREAM_DROP_WRITABLE, LATER, U32_FUTURE_NEW, U32_FUTURE_READ, U32_FUTURE_DROP_READABLE, U32_FUTURE_DROP_WRITABLE
+    acme-example-keep.st: CONNECTION, CONNECTION_DROP, ACCEPT, CONNECTION_STREAM_NEW, CONNECTION_STREAM_READ, CONNECTION_STREAM_DROP_READABLE, CONNECTION_STREAM_DROP_WRITABLE, LATER, U32_FUTURE_NEW, U32_FUTURE_READ, U32_FUTURE_DROP_READABLE, U32_FUTURE_DROP_WRITABLE
         left out `CONNECTION_STREAM_WRITE`: no function of the interface takes a stream of `own<connection>` from the program
         left out `CONNECTION_STREAM_CANCEL_READ` and `CONNECTION_STREAM_CANCEL_WRITE`: a cancel blocks the scan
         left out `U32_FUTURE_WRITE`: no function of the interface takes a future of `u32` from the program
@@ -891,7 +891,7 @@ fn a_write_left_out_says_why(mut with_db: RootDatabase) {
 #[rstest]
 fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface promises {
             enum error-code { lost }
@@ -909,8 +909,8 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
             import promises;
         }
     "#), @r"
-    // wasi-example-promises.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-promises.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Promises
     			USING Std.Convert;
@@ -924,13 +924,13 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     				y : LREAL;
     			END_STRUCT END_TYPE
 
-    			{extern 'wasi:example/promises@0.3.0' 'ready'}
+    			{extern 'acme:example/promises@0.3.0' 'ready'}
     			FUNCTION READY : UDINT
     			END_FUNCTION
 
     			/* Makes a future of nothing, and gives its reading end, then its writing
     			   end. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-new-0]ready'}
+    			{extern 'acme:example/promises@0.3.0' '[future-new-0]ready'}
     			FUNCTION UNIT_FUTURE_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -939,7 +939,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Reads the value the future holds, which comes back after `DONE`. */
-    			{extern async 'wasi:example/promises@0.3.0' '[future-read-0]ready'}
+    			{extern async 'acme:example/promises@0.3.0' '[future-read-0]ready'}
     			FUNCTION_BLOCK UNIT_FUTURE_READ
     			VAR_INPUT
     				future : UDINT;
@@ -950,7 +950,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the future's reading end, `future`. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-drop-readable-0]ready'}
+    			{extern 'acme:example/promises@0.3.0' '[future-drop-readable-0]ready'}
     			FUNCTION UNIT_FUTURE_DROP_READABLE
     			VAR_INPUT
     				future : UDINT;
@@ -958,20 +958,20 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the future's writing end, `future`. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-drop-writable-0]ready'}
+    			{extern 'acme:example/promises@0.3.0' '[future-drop-writable-0]ready'}
     			FUNCTION UNIT_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/promises@0.3.0' 'count'}
+    			{extern 'acme:example/promises@0.3.0' 'count'}
     			FUNCTION COUNT : UDINT
     			END_FUNCTION
 
     			/* Makes a future of `u32`, and gives its reading end, then its writing
     			   end. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-new-0]count'}
+    			{extern 'acme:example/promises@0.3.0' '[future-new-0]count'}
     			FUNCTION U32_FUTURE_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -980,7 +980,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Reads the value the future holds, which comes back after `DONE`. */
-    			{extern async 'wasi:example/promises@0.3.0' '[future-read-0]count'}
+    			{extern async 'acme:example/promises@0.3.0' '[future-read-0]count'}
     			FUNCTION_BLOCK U32_FUTURE_READ
     			VAR_INPUT
     				future : UDINT;
@@ -992,7 +992,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the future's reading end, `future`. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-drop-readable-0]count'}
+    			{extern 'acme:example/promises@0.3.0' '[future-drop-readable-0]count'}
     			FUNCTION U32_FUTURE_DROP_READABLE
     			VAR_INPUT
     				future : UDINT;
@@ -1000,20 +1000,20 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the future's writing end, `future`. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-drop-writable-0]count'}
+    			{extern 'acme:example/promises@0.3.0' '[future-drop-writable-0]count'}
     			FUNCTION U32_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/promises@0.3.0' 'outcome'}
+    			{extern 'acme:example/promises@0.3.0' 'outcome'}
     			FUNCTION OUTCOME : UDINT
     			END_FUNCTION
 
     			/* Makes a future of `result<_, error-code>`, and gives its reading end,
     			   then its writing end. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-new-0]outcome'}
+    			{extern 'acme:example/promises@0.3.0' '[future-new-0]outcome'}
     			FUNCTION RESULT_FUTURE_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -1022,7 +1022,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Reads the value the future holds, which comes back after `DONE`. */
-    			{extern async 'wasi:example/promises@0.3.0' '[future-read-0]outcome'}
+    			{extern async 'acme:example/promises@0.3.0' '[future-read-0]outcome'}
     			FUNCTION_BLOCK RESULT_FUTURE_READ
     			VAR_INPUT
     				future : UDINT;
@@ -1035,7 +1035,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the future's reading end, `future`. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-drop-readable-0]outcome'}
+    			{extern 'acme:example/promises@0.3.0' '[future-drop-readable-0]outcome'}
     			FUNCTION RESULT_FUTURE_DROP_READABLE
     			VAR_INPUT
     				future : UDINT;
@@ -1043,20 +1043,20 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the future's writing end, `future`. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-drop-writable-0]outcome'}
+    			{extern 'acme:example/promises@0.3.0' '[future-drop-writable-0]outcome'}
     			FUNCTION RESULT_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/promises@0.3.0' 'maybe'}
+    			{extern 'acme:example/promises@0.3.0' 'maybe'}
     			FUNCTION MAYBE : UDINT
     			END_FUNCTION
 
     			/* Makes a future of `option<s64>`, and gives its reading end, then its
     			   writing end. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-new-0]maybe'}
+    			{extern 'acme:example/promises@0.3.0' '[future-new-0]maybe'}
     			FUNCTION OPTION_S64_FUTURE_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -1065,7 +1065,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Reads the value the future holds, which comes back after `DONE`. */
-    			{extern async 'wasi:example/promises@0.3.0' '[future-read-0]maybe'}
+    			{extern async 'acme:example/promises@0.3.0' '[future-read-0]maybe'}
     			FUNCTION_BLOCK OPTION_S64_FUTURE_READ
     			VAR_INPUT
     				future : UDINT;
@@ -1078,7 +1078,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the future's reading end, `future`. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-drop-readable-0]maybe'}
+    			{extern 'acme:example/promises@0.3.0' '[future-drop-readable-0]maybe'}
     			FUNCTION OPTION_S64_FUTURE_DROP_READABLE
     			VAR_INPUT
     				future : UDINT;
@@ -1086,20 +1086,20 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the future's writing end, `future`. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-drop-writable-0]maybe'}
+    			{extern 'acme:example/promises@0.3.0' '[future-drop-writable-0]maybe'}
     			FUNCTION OPTION_S64_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/promises@0.3.0' 'where-is'}
+    			{extern 'acme:example/promises@0.3.0' 'where-is'}
     			FUNCTION WHERE_IS : UDINT
     			END_FUNCTION
 
     			/* Makes a future of `point`, and gives its reading end, then its writing
     			   end. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-new-0]where-is'}
+    			{extern 'acme:example/promises@0.3.0' '[future-new-0]where-is'}
     			FUNCTION POINT_FUTURE_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -1109,7 +1109,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
 
     			/* The future's read as the host gives it: the values the future holds,
     			   which `POINT_FUTURE_READ` puts in the members of `value`. */
-    			{extern async 'wasi:example/promises@0.3.0' '[future-read-0]where-is'}
+    			{extern async 'acme:example/promises@0.3.0' '[future-read-0]where-is'}
     			FUNCTION_BLOCK POINT_FUTURE_READ_RAW
     			VAR_INPUT
     				future : UDINT;
@@ -1142,7 +1142,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the future's reading end, `future`. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-drop-readable-0]where-is'}
+    			{extern 'acme:example/promises@0.3.0' '[future-drop-readable-0]where-is'}
     			FUNCTION POINT_FUTURE_DROP_READABLE
     			VAR_INPUT
     				future : UDINT;
@@ -1150,20 +1150,20 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the future's writing end, `future`. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-drop-writable-0]where-is'}
+    			{extern 'acme:example/promises@0.3.0' '[future-drop-writable-0]where-is'}
     			FUNCTION POINT_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/promises@0.3.0' 'name'}
+    			{extern 'acme:example/promises@0.3.0' 'name'}
     			FUNCTION NAME : UDINT
     			END_FUNCTION
 
     			/* Makes a future of `string`, and gives its reading end, then its writing
     			   end. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-new-0]name'}
+    			{extern 'acme:example/promises@0.3.0' '[future-new-0]name'}
     			FUNCTION STRING_FUTURE_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -1172,7 +1172,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the future's reading end, `future`. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-drop-readable-0]name'}
+    			{extern 'acme:example/promises@0.3.0' '[future-drop-readable-0]name'}
     			FUNCTION STRING_FUTURE_DROP_READABLE
     			VAR_INPUT
     				future : UDINT;
@@ -1180,20 +1180,20 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the future's writing end, `future`. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-drop-writable-0]name'}
+    			{extern 'acme:example/promises@0.3.0' '[future-drop-writable-0]name'}
     			FUNCTION STRING_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/promises@0.3.0' 'both'}
+    			{extern 'acme:example/promises@0.3.0' 'both'}
     			FUNCTION BOTH : UDINT
     			END_FUNCTION
 
     			/* Makes a future of `result<u64, error-code>`, and gives its reading end,
     			   then its writing end. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-new-0]both'}
+    			{extern 'acme:example/promises@0.3.0' '[future-new-0]both'}
     			FUNCTION RESULT_U64_FUTURE_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -1203,7 +1203,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
 
     			/* The future's read as the host gives it: its value in words of 8 bytes,
     			   as the canonical ABI lays it out, which `RESULT_U64_FUTURE_READ` reads. */
-    			{extern async 'wasi:example/promises@0.3.0' '[future-read-0]both'}
+    			{extern async 'acme:example/promises@0.3.0' '[future-read-0]both'}
     			FUNCTION_BLOCK RESULT_U64_FUTURE_READ_RAW
     			VAR_INPUT
     				future : UDINT;
@@ -1244,7 +1244,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the future's reading end, `future`. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-drop-readable-0]both'}
+    			{extern 'acme:example/promises@0.3.0' '[future-drop-readable-0]both'}
     			FUNCTION RESULT_U64_FUTURE_DROP_READABLE
     			VAR_INPUT
     				future : UDINT;
@@ -1252,7 +1252,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_FUNCTION
 
     			/* Lets go of the future's writing end, `future`. */
-    			{extern 'wasi:example/promises@0.3.0' '[future-drop-writable-0]both'}
+    			{extern 'acme:example/promises@0.3.0' '[future-drop-writable-0]both'}
     			FUNCTION RESULT_U64_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
@@ -1302,7 +1302,7 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
 fn a_built_in_named_like_a_function_gives_way(mut with_db: RootDatabase) {
     let bindings = generated(
         r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface feeds {
             record event { x: u32 }
@@ -1318,7 +1318,7 @@ fn a_built_in_named_like_a_function_gives_way(mut with_db: RootDatabase) {
     let (mir, module) = built(&mut with_db, &bindings.files, &[]);
     assert_abi(&bindings, &mir, &module);
     assert_snapshot!(summary(&bindings.files), @r"
-    wasi-example-feeds.st: EVENT, EVENT_STREAM_NEW, FEED, EVENT_STREAM_NEW_, EVENT_STREAM_DROP_READABLE, EVENT_STREAM_DROP_WRITABLE
+    acme-example-feeds.st: EVENT, EVENT_STREAM_NEW, FEED, EVENT_STREAM_NEW_, EVENT_STREAM_DROP_READABLE, EVENT_STREAM_DROP_WRITABLE
         left out `EVENT_STREAM_READ` and `EVENT_STREAM_WRITE`: a stream's read moves bytes or handles only, and its write bytes only
         left out `EVENT_STREAM_CANCEL_READ` and `EVENT_STREAM_CANCEL_WRITE`: a cancel blocks the scan
     ");
@@ -1332,7 +1332,7 @@ fn a_built_in_named_like_a_function_gives_way(mut with_db: RootDatabase) {
 #[rstest]
 fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface progress {
             record state { done: bool, call: u32 }
@@ -1346,8 +1346,8 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
             import progress;
         }
     "#), @r"
-    // wasi-example-progress.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-progress.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Progress
     			USING Std.Convert;
@@ -1374,13 +1374,13 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     				phase : PHASE;
     			END_STRUCT END_TYPE
 
-    			{extern 'wasi:example/progress@0.3.0' 'watch'}
+    			{extern 'acme:example/progress@0.3.0' 'watch'}
     			FUNCTION WATCH : UDINT
     			END_FUNCTION
 
     			/* Makes a future of `state`, and gives its reading end, then its writing
     			   end. */
-    			{extern 'wasi:example/progress@0.3.0' '[future-new-0]watch'}
+    			{extern 'acme:example/progress@0.3.0' '[future-new-0]watch'}
     			FUNCTION STATE_FUTURE_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -1390,7 +1390,7 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
 
     			/* The future's read as the host gives it: the values the future holds,
     			   which `STATE_FUTURE_READ` puts in the members of `value`. */
-    			{extern async 'wasi:example/progress@0.3.0' '[future-read-0]watch'}
+    			{extern async 'acme:example/progress@0.3.0' '[future-read-0]watch'}
     			FUNCTION_BLOCK STATE_FUTURE_READ_RAW
     			VAR_INPUT
     				future : UDINT;
@@ -1423,7 +1423,7 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the future's reading end, `future`. */
-    			{extern 'wasi:example/progress@0.3.0' '[future-drop-readable-0]watch'}
+    			{extern 'acme:example/progress@0.3.0' '[future-drop-readable-0]watch'}
     			FUNCTION STATE_FUTURE_DROP_READABLE
     			VAR_INPUT
     				future : UDINT;
@@ -1431,20 +1431,20 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     			END_FUNCTION
 
     			/* Lets go of the future's writing end, `future`. */
-    			{extern 'wasi:example/progress@0.3.0' '[future-drop-writable-0]watch'}
+    			{extern 'acme:example/progress@0.3.0' '[future-drop-writable-0]watch'}
     			FUNCTION STATE_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/progress@0.3.0' 'follow'}
+    			{extern 'acme:example/progress@0.3.0' 'follow'}
     			FUNCTION FOLLOW : UDINT
     			END_FUNCTION
 
     			/* Makes a future of `report`, and gives its reading end, then its writing
     			   end. */
-    			{extern 'wasi:example/progress@0.3.0' '[future-new-0]follow'}
+    			{extern 'acme:example/progress@0.3.0' '[future-new-0]follow'}
     			FUNCTION REPORT_FUTURE_NEW
     			VAR_OUTPUT
     				readable : UDINT;
@@ -1454,7 +1454,7 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
 
     			/* The future's read as the host gives it: its value in words of 8 bytes,
     			   as the canonical ABI lays it out, which `REPORT_FUTURE_READ` reads. */
-    			{extern async 'wasi:example/progress@0.3.0' '[future-read-0]follow'}
+    			{extern async 'acme:example/progress@0.3.0' '[future-read-0]follow'}
     			FUNCTION_BLOCK REPORT_FUTURE_READ_RAW
     			VAR_INPUT
     				future : UDINT;
@@ -1493,7 +1493,7 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     			END_FUNCTION_BLOCK
 
     			/* Lets go of the future's reading end, `future`. */
-    			{extern 'wasi:example/progress@0.3.0' '[future-drop-readable-0]follow'}
+    			{extern 'acme:example/progress@0.3.0' '[future-drop-readable-0]follow'}
     			FUNCTION REPORT_FUTURE_DROP_READABLE
     			VAR_INPUT
     				future : UDINT;
@@ -1501,7 +1501,7 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     			END_FUNCTION
 
     			/* Lets go of the future's writing end, `future`. */
-    			{extern 'wasi:example/progress@0.3.0' '[future-drop-writable-0]follow'}
+    			{extern 'acme:example/progress@0.3.0' '[future-drop-writable-0]follow'}
     			FUNCTION REPORT_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;

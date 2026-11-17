@@ -25,7 +25,7 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface sockets {
             variant error-code {
@@ -45,8 +45,8 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
             import sockets;
         }
     "#), @r"
-    // wasi-example-sockets.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-sockets.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Sockets
     			USING Std.Convert;
@@ -67,7 +67,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     			TYPE SOCKET : UDINT; END_TYPE
 
     			/* Lets go of `handle`, a handle of `socket` the host gave. */
-    			{extern 'wasi:example/sockets@0.3.0' '[resource-drop]socket'}
+    			{extern 'acme:example/sockets@0.3.0' '[resource-drop]socket'}
     			FUNCTION SOCKET_DROP
     			VAR_INPUT
     				handle : SOCKET;
@@ -77,7 +77,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     			/* `[method]socket.hop-limit` as the host gives it: its result in words of
     			   8 bytes, as the canonical ABI lays it out, which `SOCKET_HOP_LIMIT`
     			   reads, and its text in `other`, where the host writes it, cut to fit. */
-    			{extern 'wasi:example/sockets@0.3.0' '[method]socket.hop-limit'}
+    			{extern 'acme:example/sockets@0.3.0' '[method]socket.hop-limit'}
     			FUNCTION PRIVATE SOCKET_HOP_LIMIT_RAW
     			VAR_INPUT
     				self : SOCKET;
@@ -123,7 +123,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     			/* `[method]socket.buffer-size` as the host gives it: its result in words
     			   of 8 bytes, as the canonical ABI lays it out, which `SOCKET_BUFFER_SIZE`
     			   reads, and its text in `other`, where the host writes it, cut to fit. */
-    			{extern 'wasi:example/sockets@0.3.0' '[method]socket.buffer-size'}
+    			{extern 'acme:example/sockets@0.3.0' '[method]socket.buffer-size'}
     			FUNCTION PRIVATE SOCKET_BUFFER_SIZE_RAW
     			VAR_INPUT
     				self : SOCKET;
@@ -170,7 +170,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     			   of 8 bytes, as the canonical ABI lays it out, which
     			   `SOCKET_SET_HOP_LIMIT` reads, and its text in `other`, where the host
     			   writes it, cut to fit. */
-    			{extern 'wasi:example/sockets@0.3.0' '[method]socket.set-hop-limit'}
+    			{extern 'acme:example/sockets@0.3.0' '[method]socket.set-hop-limit'}
     			FUNCTION PRIVATE SOCKET_SET_HOP_LIMIT_RAW
     			VAR_INPUT
     				self : SOCKET;
@@ -214,7 +214,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     			/* `open` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `OPEN` reads, and its text in `other`,
     			   where the host writes it, cut to fit. */
-    			{extern 'wasi:example/sockets@0.3.0' 'open'}
+    			{extern 'acme:example/sockets@0.3.0' 'open'}
     			FUNCTION PRIVATE OPEN_RAW
     			VAR_OUTPUT
     				w0 : LWORD;
@@ -263,7 +263,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
 #[rstest]
 fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface shapes {
             record point { x: s32, y: s32 }
@@ -284,8 +284,8 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
             import shapes;
         }
     "#), @r"
-    // wasi-example-shapes.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-shapes.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Shapes
     			USING Std.Convert;
@@ -318,7 +318,7 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     			/* `pick` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `PICK` reads, and its text in `named`,
     			   where the host writes it, cut to fit. */
-    			{extern 'wasi:example/shapes@0.3.0' 'pick'}
+    			{extern 'acme:example/shapes@0.3.0' 'pick'}
     			FUNCTION PRIVATE PICK_RAW
     			VAR_OUTPUT
     				w0 : LWORD;
@@ -359,7 +359,7 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     			/* `find` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `FIND` reads, and its text in `named`,
     			   where the host writes it, cut to fit. */
-    			{extern 'wasi:example/shapes@0.3.0' 'find'}
+    			{extern 'acme:example/shapes@0.3.0' 'find'}
     			FUNCTION PRIVATE FIND_RAW
     			VAR_INPUT
     				id : UDINT;
@@ -416,7 +416,7 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
     			/* `measure` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `MEASURE` reads, and its text in
     			   `named`, where the host writes it, cut to fit. */
-    			{extern 'wasi:example/shapes@0.3.0' 'measure'}
+    			{extern 'acme:example/shapes@0.3.0' 'measure'}
     			FUNCTION PRIVATE MEASURE_RAW
     			VAR_OUTPUT
     				w0 : LWORD;
@@ -482,7 +482,7 @@ fn a_variant_is_its_case_and_what_each_case_holds(mut with_db: RootDatabase) {
 #[rstest]
 fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface types {
             variant error-code { busy, limit(u32), other(option<string>) }
@@ -499,8 +499,8 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
             import lookup;
         }
     "#), @r"
-    // wasi-example-types.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-types.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Types
     			/* The cases of `error-code`. */
@@ -539,8 +539,8 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
        - what `other` of `error-code` holds: a string, which an async call
          cannot give back yet. */
 
-    // wasi-example-lookup.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-lookup.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Lookup
     			USING Std.Convert;
@@ -548,7 +548,7 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     			/* `resolve` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `RESOLVE` reads, and its text in
     			   `other`, where the host writes it, cut to fit. */
-    			{extern 'wasi:example/lookup@0.3.0' 'resolve'}
+    			{extern 'acme:example/lookup@0.3.0' 'resolve'}
     			FUNCTION PRIVATE RESOLVE_RAW
     			VAR_INPUT
     				id : UDINT;
@@ -567,8 +567,8 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     			END_VAR
     			VAR_OUTPUT
     				failed : BOOL;
-    				value : Wasi.Example.Types.ADDRESS;
-    				error : Wasi.Example.Types.ERROR_CODE;
+    				value : Acme.Example.Types.ADDRESS;
+    				error : Acme.Example.Types.ERROR_CODE;
     			END_VAR
     			VAR
     				w0 : LWORD;
@@ -590,20 +590,20 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     				IF failed THEN
     					error.kind := BYTE_TO_USINT(w0.%B4);
     					CASE error.kind OF
-    						Wasi.Example.Types.ERROR_CODE_KIND#LIMIT:
+    						Acme.Example.Types.ERROR_CODE_KIND#LIMIT:
     							error.limit := DWORD_TO_UDINT(w1.%D0);
-    						Wasi.Example.Types.ERROR_CODE_KIND#OTHER:
+    						Acme.Example.Types.ERROR_CODE_KIND#OTHER:
     							error.other_is_some := w1.%X0;
     					END_CASE;
     				ELSE
     					value.kind := BYTE_TO_USINT(w0.%B4);
     					CASE value.kind OF
-    						Wasi.Example.Types.ADDRESS_KIND#V4:
+    						Acme.Example.Types.ADDRESS_KIND#V4:
     							value.v4_0 := BYTE_TO_USINT(w0.%B6);
     							value.v4_1 := BYTE_TO_USINT(w0.%B7);
     							value.v4_2 := BYTE_TO_USINT(w1.%B0);
     							value.v4_3 := BYTE_TO_USINT(w1.%B1);
-    						Wasi.Example.Types.ADDRESS_KIND#V6:
+    						Acme.Example.Types.ADDRESS_KIND#V6:
     							value.v6_0 := WORD_TO_UINT(w0.%W3);
     							value.v6_1 := WORD_TO_UINT(w1.%W0);
     					END_CASE;
@@ -612,7 +612,7 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
 
     			/* `first` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `FIRST` reads. */
-    			{extern async 'wasi:example/lookup@0.3.0' 'first'}
+    			{extern async 'acme:example/lookup@0.3.0' 'first'}
     			FUNCTION_BLOCK FIRST_RAW
     			VAR_INPUT
     				name : STRING[4096];
@@ -630,7 +630,7 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     			VAR_OUTPUT
     				DONE : BOOL;
     				is_some : BOOL;
-    				value : Wasi.Example.Types.ADDRESS;
+    				value : Acme.Example.Types.ADDRESS;
     			END_VAR
     			VAR
     				call : FIRST_RAW;
@@ -649,12 +649,12 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
     					IF is_some THEN
     						value.kind := BYTE_TO_USINT(call.w0.%B2);
     						CASE value.kind OF
-    							Wasi.Example.Types.ADDRESS_KIND#V4:
+    							Acme.Example.Types.ADDRESS_KIND#V4:
     								value.v4_0 := BYTE_TO_USINT(call.w0.%B4);
     								value.v4_1 := BYTE_TO_USINT(call.w0.%B5);
     								value.v4_2 := BYTE_TO_USINT(call.w0.%B6);
     								value.v4_3 := BYTE_TO_USINT(call.w0.%B7);
-    							Wasi.Example.Types.ADDRESS_KIND#V6:
+    							Acme.Example.Types.ADDRESS_KIND#V6:
     								value.v6_0 := WORD_TO_UINT(call.w0.%W2);
     								value.v6_1 := WORD_TO_UINT(call.w0.%W3);
     						END_CASE;
@@ -672,7 +672,7 @@ fn a_variant_of_another_interface_and_an_async_function(mut with_db: RootDatabas
 #[rstest]
 fn a_variant_that_holds_nothing_is_its_case(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface plain {
             variant state { idle, running, stopped }
@@ -685,8 +685,8 @@ fn a_variant_that_holds_nothing_is_its_case(mut with_db: RootDatabase) {
             import plain;
         }
     "#), @r"
-    // wasi-example-plain.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-plain.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Plain
     			TYPE STATE : USINT (
@@ -695,18 +695,18 @@ fn a_variant_that_holds_nothing_is_its_case(mut with_db: RootDatabase) {
     				STOPPED := 2
     			); END_TYPE
 
-    			{extern 'wasi:example/plain@0.3.0' 'current'}
+    			{extern 'acme:example/plain@0.3.0' 'current'}
     			FUNCTION CURRENT : STATE
     			END_FUNCTION
 
-    			{extern 'wasi:example/plain@0.3.0' 'set'}
+    			{extern 'acme:example/plain@0.3.0' 'set'}
     			FUNCTION SET
     			VAR_INPUT
     				to_ : STATE;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/plain@0.3.0' 'history'}
+    			{extern 'acme:example/plain@0.3.0' 'history'}
     			FUNCTION HISTORY
     			VAR_OUTPUT
     				item0 : STATE;
@@ -726,7 +726,7 @@ fn a_variant_that_holds_nothing_is_its_case(mut with_db: RootDatabase) {
 #[rstest]
 fn what_is_not_read_out_of_words(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface unread {
             record wrapped { inner: tuple<u32> }
@@ -741,8 +741,8 @@ fn what_is_not_read_out_of_words(mut with_db: RootDatabase) {
             import unread;
         }
     "#), @r"
-    // wasi-example-unread.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-unread.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Unread
     			USING Std.Convert;
@@ -776,7 +776,7 @@ fn what_is_not_read_out_of_words(mut with_db: RootDatabase) {
 
     			/* `find` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `FIND` reads. */
-    			{extern 'wasi:example/unread@0.3.0' 'find'}
+    			{extern 'acme:example/unread@0.3.0' 'find'}
     			FUNCTION PRIVATE FIND_RAW
     			VAR_OUTPUT
     				w0 : LWORD;
@@ -800,7 +800,7 @@ fn what_is_not_read_out_of_words(mut with_db: RootDatabase) {
 
     			/* `choose` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `CHOOSE` reads. */
-    			{extern 'wasi:example/unread@0.3.0' 'choose'}
+    			{extern 'acme:example/unread@0.3.0' 'choose'}
     			FUNCTION PRIVATE CHOOSE_RAW
     			VAR_OUTPUT
     				w0 : LWORD;
@@ -824,7 +824,7 @@ fn what_is_not_read_out_of_words(mut with_db: RootDatabase) {
 
     			/* `wrap` as the host gives it: the one value of its result, which `WRAP`
     			   puts in its member. */
-    			{extern 'wasi:example/unread@0.3.0' 'wrap'}
+    			{extern 'acme:example/unread@0.3.0' 'wrap'}
     			FUNCTION PRIVATE WRAP_RAW
     			VAR_OUTPUT
     				inner_0 : UDINT;
@@ -850,7 +850,7 @@ fn a_variant_of_more_than_256_cases_has_its_case_in_a_uint(mut with_db: RootData
     let cases: String = (0..257).map(|at| format!("c{at}, ")).collect();
     let wit = format!(
         r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface many {{
             variant big {{ {cases}last(u32) }}
@@ -883,7 +883,7 @@ fn a_variant_of_more_than_256_cases_has_its_case_in_a_uint(mut with_db: RootData
 #[rstest]
 fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface passing {
             record point { x: s32, y: s32 }
@@ -898,8 +898,8 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
             import passing;
         }
     "#), @r"
-    // wasi-example-passing.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-passing.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Passing
     			USING Std.Convert;
@@ -926,7 +926,7 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
 
     			/* `aim` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `AIM` packs. */
-    			{extern 'wasi:example/passing@0.3.0' 'aim'}
+    			{extern 'acme:example/passing@0.3.0' 'aim'}
     			FUNCTION PRIVATE AIM_RAW
     			VAR_INPUT
     				a0 : DWORD;
@@ -962,7 +962,7 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
 
     			/* `aim-later` as the host takes it: its parameters as the canonical ABI
     			   passes them, which `AIM_LATER` packs. */
-    			{extern async 'wasi:example/passing@0.3.0' 'aim-later'}
+    			{extern async 'acme:example/passing@0.3.0' 'aim-later'}
     			FUNCTION_BLOCK AIM_LATER_RAW
     			VAR_INPUT
     				a0 : DWORD;
@@ -1011,7 +1011,7 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
 
     			/* `aim-named` as the host takes it: its parameters as the canonical ABI
     			   passes them, which `AIM_NAMED` packs. */
-    			{extern async 'wasi:example/passing@0.3.0' 'aim-named'}
+    			{extern async 'acme:example/passing@0.3.0' 'aim-named'}
     			FUNCTION_BLOCK AIM_NAMED_RAW
     			VAR_INPUT
     				id : USINT;
@@ -1056,7 +1056,7 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
 
     			/* `aim-both` as the host takes it: its parameters as the canonical ABI
     			   passes them, which `AIM_BOTH` packs. */
-    			{extern async 'wasi:example/passing@0.3.0' 'aim-both'}
+    			{extern async 'acme:example/passing@0.3.0' 'aim-both'}
     			FUNCTION_BLOCK AIM_BOTH_RAW
     			VAR_INPUT
     				a0 : LWORD;
@@ -1123,7 +1123,7 @@ fn a_variant_passed_in_is_packed_into_words(mut with_db: RootDatabase) {
 /// Every kind of value a case holds, an option and a result of a variant,
 /// a record that holds an option and a tuple, and an async function.
 const SHAPES: &str = r#"
-    package wasi:example@0.3.0;
+    package acme:example@0.3.0;
 
     interface shapes {
         record point { x: s32, y: s32 }
@@ -1239,7 +1239,7 @@ fn shapes_host(linker: &mut Linker<Host>) {
         other => panic!("`which`, a u32: {other:?}"),
     };
     let mut shapes = linker
-        .instance("wasi:example/shapes@0.3.0")
+        .instance("acme:example/shapes@0.3.0")
         .expect("the interface");
     let mut returns = |name: &str, value: fn(u32) -> Val| {
         shapes
@@ -1304,9 +1304,9 @@ const READ_BACK: &str = r#"
        values its cases hold not zero. */
     FUNCTION picked : BOOL
     VAR_INPUT which : UDINT; shape : USINT; nonzero : DINT; END_VAR
-    VAR_OUTPUT value : Wasi.Example.Shapes.SHAPE; END_VAR
+    VAR_OUTPUT value : Acme.Example.Shapes.SHAPE; END_VAR
     VAR count : DINT; END_VAR
-        value := Wasi.Example.Shapes.PICK(which := which);
+        value := Acme.Example.Shapes.PICK(which := which);
         count := 0;
         IF value.circle <> 0.0 THEN count := count + 1; END_IF;
         IF value.square <> 0 THEN count := count + 1; END_IF;
@@ -1325,9 +1325,9 @@ const READ_BACK: &str = r#"
     FUNCTION check : DINT
     VAR
         ok, some, failed : BOOL;
-        shape : Wasi.Example.Shapes.SHAPE;
-        error : Wasi.Example.Shapes.ERROR_CODE;
-        inner : Wasi.Example.Shapes.OUTER;
+        shape : Acme.Example.Shapes.SHAPE;
+        error : Acme.Example.Shapes.ERROR_CODE;
+        inner : Acme.Example.Shapes.OUTER;
         count : ULINT; level : USINT;
     END_VAR
         check := 0;
@@ -1358,50 +1358,50 @@ const READ_BACK: &str = r#"
         ok := picked(which := 10, shape := 10, nonzero := 0, value => shape);
         IF NOT ok THEN check := -11; RETURN; END_IF;
 
-        Wasi.Example.Shapes.FIND(which := 1, is_some => some, value => shape);
+        Acme.Example.Shapes.FIND(which := 1, is_some => some, value => shape);
         IF NOT some OR shape.kind <> 1 OR shape.circle <> 2.5 THEN check := -12; RETURN; END_IF;
-        Wasi.Example.Shapes.FIND(which := 2, is_some => some, value => shape);
+        Acme.Example.Shapes.FIND(which := 2, is_some => some, value => shape);
         IF NOT some OR shape.kind <> 3 OR shape.at_.x <> 7 OR shape.at_.y <> -8
             OR shape.circle <> 0.0
         THEN
             check := -13; RETURN;
         END_IF;
-        Wasi.Example.Shapes.FIND(which := 0, is_some => some, value => shape);
+        Acme.Example.Shapes.FIND(which := 0, is_some => some, value => shape);
         IF some OR shape.kind <> 0 OR shape.at_.x <> 0 OR shape.at_.y <> 0 THEN
             check := -14; RETURN;
         END_IF;
 
-        Wasi.Example.Shapes.MEASURE(which := 0, failed => failed, value => shape, error => error);
+        Acme.Example.Shapes.MEASURE(which := 0, failed => failed, value => shape, error => error);
         IF failed OR shape.kind <> 2 OR shape.square <> 9 OR error.kind <> 0 THEN
             check := -15; RETURN;
         END_IF;
-        Wasi.Example.Shapes.MEASURE(which := 1, failed => failed, value => shape, error => error);
+        Acme.Example.Shapes.MEASURE(which := 1, failed => failed, value => shape, error => error);
         IF NOT failed OR error.kind <> 1 OR shape.kind <> 0 OR shape.square <> 0 THEN
             check := -16; RETURN;
         END_IF;
-        Wasi.Example.Shapes.MEASURE(which := 2, failed => failed, error => error);
+        Acme.Example.Shapes.MEASURE(which := 2, failed => failed, error => error);
         IF NOT failed OR error.kind <> 2 THEN check := -17; RETURN; END_IF;
 
-        Wasi.Example.Shapes.COUNT(which := 0, failed => failed, value => count, error => error);
+        Acme.Example.Shapes.COUNT(which := 0, failed => failed, value => count, error => error);
         IF failed OR count <> ULINT#18446744073709551614 OR error.kind <> 0 THEN
             check := -18; RETURN;
         END_IF;
-        Wasi.Example.Shapes.COUNT(which := 1, failed => failed, value => count, error => error);
+        Acme.Example.Shapes.COUNT(which := 1, failed => failed, value => count, error => error);
         IF NOT failed OR error.kind <> 1 OR count <> 0 THEN check := -19; RETURN; END_IF;
 
-        Wasi.Example.Shapes.LEVEL(which := 0, failed => failed, value => level, error => error);
+        Acme.Example.Shapes.LEVEL(which := 0, failed => failed, value => level, error => error);
         IF failed OR level <> 200 OR error.kind <> 0 THEN check := -20; RETURN; END_IF;
-        Wasi.Example.Shapes.LEVEL(which := 1, failed => failed, value => level, error => error);
+        Acme.Example.Shapes.LEVEL(which := 1, failed => failed, value => level, error => error);
         IF NOT failed OR error.kind <> 1 OR level <> 0 THEN check := -21; RETURN; END_IF;
 
         // A record holding an option and a tuple, in members of its STRUCT.
-        inner := Wasi.Example.Shapes.INNER(which := 0);
+        inner := Acme.Example.Shapes.INNER(which := 0);
         IF inner.a <> 9 OR NOT inner.at_is_some OR inner.at_.x <> 3 OR inner.at_.y <> -4
             OR NOT inner.tail_0 OR inner.tail_1 <> 77
         THEN
             check := -22; RETURN;
         END_IF;
-        inner := Wasi.Example.Shapes.INNER(which := 1);
+        inner := Acme.Example.Shapes.INNER(which := 1);
         IF inner.a <> 1 OR inner.at_is_some OR inner.at_.x <> 0 OR inner.at_.y <> 0
             OR inner.tail_0 OR inner.tail_1 <> UDINT#4000000000
         THEN
@@ -1414,7 +1414,7 @@ const READ_BACK: &str = r#"
     VAR
         checked : BOOL;
         step : INT;
-        wait : Wasi.Example.Shapes.WAIT;
+        wait : Acme.Example.Shapes.WAIT;
     END_VAR
         IF NOT checked THEN
             checked := TRUE;
@@ -1471,7 +1471,7 @@ fn what_a_host_returns_is_read_back(mut with_db: RootDatabase) {
 /// case, an option and a result, each also of a float alone, a record of
 /// records, as values and in memory.
 const ECHOES: &str = r#"
-    package wasi:example@0.3.0;
+    package acme:example@0.3.0;
 
     interface echoes {
         record point { x: s32, y: s32 }
@@ -1514,7 +1514,7 @@ const ECHOES: &str = r#"
 /// `name`.
 fn echoes_host(linker: &mut Linker<Host>) {
     let mut echoes = linker
-        .instance("wasi:example/echoes@0.3.0")
+        .instance("acme:example/echoes@0.3.0")
         .expect("the interface");
     for name in ["echo", "maybe", "outcome", "warm", "reach", "line"] {
         echoes
@@ -1578,7 +1578,7 @@ fn echoes_host(linker: &mut Linker<Host>) {
 /// and otherwise the number of the check that failed, negative.
 const ECHOED: &str = r#"
     /* A figure of the case `kind`, every value of it at zero. */
-    FUNCTION figure : Wasi.Example.Echoes.FIGURE
+    FUNCTION figure : Acme.Example.Echoes.FIGURE
     VAR_INPUT kind : USINT; END_VAR
         figure.kind := kind;
     END_FUNCTION
@@ -1586,9 +1586,9 @@ const ECHOED: &str = r#"
     /* Whether a figure comes back as it was passed: its case, what the case
        holds, and zero for what the other cases would hold. */
     FUNCTION same : BOOL
-    VAR_INPUT f : Wasi.Example.Echoes.FIGURE; END_VAR
-    VAR got : Wasi.Example.Echoes.FIGURE; END_VAR
-        got := Wasi.Example.Echoes.ECHO(f := f);
+    VAR_INPUT f : Acme.Example.Echoes.FIGURE; END_VAR
+    VAR got : Acme.Example.Echoes.FIGURE; END_VAR
+        got := Acme.Example.Echoes.ECHO(f := f);
         same := got.kind = f.kind AND got.circle = f.circle AND got.square = f.square
             AND got.at_.x = f.at_.x AND got.at_.y = f.at_.y AND got.pair_0 = f.pair_0
             AND got.pair_1 = f.pair_1 AND got.tinted = f.tinted AND got.marked = f.marked
@@ -1599,11 +1599,11 @@ const ECHOED: &str = r#"
     FUNCTION check : DINT
     VAR
         some, failed : BOOL;
-        f, got : Wasi.Example.Echoes.FIGURE;
-        point : Wasi.Example.Echoes.POINT;
-        segment : Wasi.Example.Echoes.SEGMENT;
+        f, got : Acme.Example.Echoes.FIGURE;
+        point : Acme.Example.Echoes.POINT;
+        segment : Acme.Example.Echoes.SEGMENT;
         value : UDINT;
-        error : Wasi.Example.Echoes.COLOR;
+        error : Acme.Example.Echoes.COLOR;
         circle : REAL;
         near, far : LREAL;
     END_VAR
@@ -1635,29 +1635,29 @@ const ECHOED: &str = r#"
         IF NOT same(f := f) THEN check := -18; RETURN; END_IF;
         // What another case would hold is not passed with this one.
         f := figure(1); f.circle := 2.5; f.at_.x := 7; f.at_.y := 8; f.long := 9;
-        got := Wasi.Example.Echoes.ECHO(f := f);
+        got := Acme.Example.Echoes.ECHO(f := f);
         IF got.kind <> 1 OR got.circle <> 2.5 OR got.at_.x <> 0 OR got.at_.y <> 0 OR got.long <> 0
         THEN
             check := -11; RETURN;
         END_IF;
 
         point.x := 7; point.y := -8;
-        Wasi.Example.Echoes.MAYBE(p_is_some := TRUE, p_ := point, is_some => some, value => point);
+        Acme.Example.Echoes.MAYBE(p_is_some := TRUE, p_ := point, is_some => some, value => point);
         IF NOT some OR point.x <> 7 OR point.y <> -8 THEN check := -12; RETURN; END_IF;
-        Wasi.Example.Echoes.MAYBE(p_is_some := FALSE, p_ := point, is_some => some, value => point);
+        Acme.Example.Echoes.MAYBE(p_is_some := FALSE, p_ := point, is_some => some, value => point);
         IF some OR point.x <> 0 OR point.y <> 0 THEN check := -13; RETURN; END_IF;
 
-        Wasi.Example.Echoes.OUTCOME(r_failed := FALSE, r_value := 4000000000,
+        Acme.Example.Echoes.OUTCOME(r_failed := FALSE, r_value := 4000000000,
             failed => failed, value => value, error => error);
         IF failed OR value <> 4000000000 OR error <> 0 THEN check := -14; RETURN; END_IF;
-        Wasi.Example.Echoes.OUTCOME(r_failed := TRUE, r_value := 77, r_error := 2,
+        Acme.Example.Echoes.OUTCOME(r_failed := TRUE, r_value := 77, r_error := 2,
             failed => failed, value => value, error => error);
         IF NOT failed OR value <> 0 OR error <> 2 THEN check := -15; RETURN; END_IF;
 
         // A record of records, passed field by field and given back whole.
         segment.start.x := 1; segment.start.y := -2; segment.end.x := 3; segment.end.y := -4;
         segment.width := 200;
-        segment := Wasi.Example.Echoes.LINE(s_ := segment);
+        segment := Acme.Example.Echoes.LINE(s_ := segment);
         IF segment.start.x <> 1 OR segment.start.y <> -2 OR segment.end.x <> 3
             OR segment.end.y <> -4 OR segment.width <> 200
         THEN
@@ -1665,15 +1665,15 @@ const ECHOED: &str = r#"
         END_IF;
 
         // A value both sides agree on is passed as the REAL or the LREAL it is.
-        Wasi.Example.Echoes.WARM(t_is_some := TRUE, t := 36.5, is_some => some,
+        Acme.Example.Echoes.WARM(t_is_some := TRUE, t := 36.5, is_some => some,
             value => circle);
         IF NOT some OR circle <> 36.5 THEN check := -26; RETURN; END_IF;
-        Wasi.Example.Echoes.WARM(t_is_some := FALSE, t := 36.5, is_some => some);
+        Acme.Example.Echoes.WARM(t_is_some := FALSE, t := 36.5, is_some => some);
         IF some THEN check := -27; RETURN; END_IF;
-        Wasi.Example.Echoes.REACH(d_failed := FALSE, d_value := -2.5,
+        Acme.Example.Echoes.REACH(d_failed := FALSE, d_value := -2.5,
             failed => failed, value => near, error => far);
         IF failed OR near <> -2.5 OR far <> 0.0 THEN check := -28; RETURN; END_IF;
-        Wasi.Example.Echoes.REACH(d_failed := TRUE, d_value := 1.0, d_error := 1.0E300,
+        Acme.Example.Echoes.REACH(d_failed := TRUE, d_value := 1.0, d_error := 1.0E300,
             failed => failed, value => near, error => far);
         IF NOT failed OR near <> 0.0 OR far <> 1.0E300 THEN check := -29; RETURN; END_IF;
     END_FUNCTION
@@ -1683,12 +1683,12 @@ const ECHOED: &str = r#"
     VAR
         checked : BOOL;
         step : INT;
-        first, second : Wasi.Example.Echoes.FIGURE;
-        segment : Wasi.Example.Echoes.SEGMENT;
-        later : Wasi.Example.Echoes.ECHO_LATER;
-        two : Wasi.Example.Echoes.ECHO_TWO;
-        line : Wasi.Example.Echoes.LINE_LATER;
-        tagged : Wasi.Example.Echoes.TAGGED;
+        first, second : Acme.Example.Echoes.FIGURE;
+        segment : Acme.Example.Echoes.SEGMENT;
+        later : Acme.Example.Echoes.ECHO_LATER;
+        two : Acme.Example.Echoes.ECHO_TWO;
+        line : Acme.Example.Echoes.LINE_LATER;
+        tagged : Acme.Example.Echoes.TAGGED;
     END_VAR
         IF NOT checked THEN
             checked := TRUE;

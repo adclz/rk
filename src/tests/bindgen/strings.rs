@@ -24,7 +24,7 @@ use crate::tests::utils::with_db;
 /// back without its text: two texts, on either side, and one beside a
 /// char.
 const TEXTS: &str = r#"
-    package wasi:example@0.3.0;
+    package acme:example@0.3.0;
 
     interface texts {
         record labelled { id: u32, name: string }
@@ -56,8 +56,8 @@ const TEXTS: &str = r#"
 #[rstest]
 fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, TEXTS), @r"
-    // wasi-example-texts.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-texts.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Texts
     			USING Std.Convert;
@@ -108,7 +108,7 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
     			/* `text` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `TEXT` reads, and its string in
     			   `value`, where the host writes it. */
-    			{extern 'wasi:example/texts@0.3.0' 'text'}
+    			{extern 'acme:example/texts@0.3.0' 'text'}
     			FUNCTION PRIVATE TEXT_RAW
     			VAR_INPUT
     				which : UDINT;
@@ -139,7 +139,7 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
     			/* `maybe` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `MAYBE` reads, and its string in
     			   `value`, where the host writes it. */
-    			{extern 'wasi:example/texts@0.3.0' 'maybe'}
+    			{extern 'acme:example/texts@0.3.0' 'maybe'}
     			FUNCTION PRIVATE MAYBE_RAW
     			VAR_INPUT
     				which : UDINT;
@@ -174,7 +174,7 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
     			/* `described` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `DESCRIBED` reads, and its string in
     			   `name`, where the host writes it. */
-    			{extern 'wasi:example/texts@0.3.0' 'described'}
+    			{extern 'acme:example/texts@0.3.0' 'described'}
     			FUNCTION PRIVATE DESCRIBED_RAW
     			VAR_INPUT
     				which : UDINT;
@@ -203,7 +203,7 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
     			/* `settled` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `SETTLED` reads, and its string in
     			   `value`, where the host writes it. */
-    			{extern 'wasi:example/texts@0.3.0' 'settled'}
+    			{extern 'acme:example/texts@0.3.0' 'settled'}
     			FUNCTION PRIVATE SETTLED_RAW
     			VAR_INPUT
     				which : UDINT;
@@ -243,7 +243,7 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
     			/* `failing` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `FAILING` reads, and its text in
     			   `other`, where the host writes it, cut to fit. */
-    			{extern 'wasi:example/texts@0.3.0' 'failing'}
+    			{extern 'acme:example/texts@0.3.0' 'failing'}
     			FUNCTION PRIVATE FAILING_RAW
     			VAR_INPUT
     				which : UDINT;
@@ -289,7 +289,7 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
     			/* `why` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `WHY` reads, and its text in `error`,
     			   where the host writes it, cut to fit. */
-    			{extern 'wasi:example/texts@0.3.0' 'why'}
+    			{extern 'acme:example/texts@0.3.0' 'why'}
     			FUNCTION PRIVATE WHY_RAW
     			VAR_INPUT
     				which : UDINT;
@@ -325,7 +325,7 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
     			/* `names` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `NAMES` reads, and its list in `value`,
     			   where the host writes it. */
-    			{extern 'wasi:example/texts@0.3.0' 'names'}
+    			{extern 'acme:example/texts@0.3.0' 'names'}
     			FUNCTION PRIVATE NAMES_RAW
     			VAR_IN_OUT
     				value : ARRAY[*] OF STRING;
@@ -353,7 +353,7 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
 
     			/* `twice` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `TWICE` reads. */
-    			{extern 'wasi:example/texts@0.3.0' 'twice'}
+    			{extern 'acme:example/texts@0.3.0' 'twice'}
     			FUNCTION PRIVATE TWICE_RAW
     			VAR_OUTPUT
     				w0 : LWORD;
@@ -386,7 +386,7 @@ fn a_string_comes_back_in_the_string_the_call_passes(mut with_db: RootDatabase) 
 
     			/* `letter` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `LETTER` reads. */
-    			{extern 'wasi:example/texts@0.3.0' 'letter'}
+    			{extern 'acme:example/texts@0.3.0' 'letter'}
     			FUNCTION PRIVATE LETTER_RAW
     			VAR_OUTPUT
     				w0 : LWORD;
@@ -440,7 +440,7 @@ fn texts_host(linker: &mut Linker<Host>) {
     };
     let string = |text: &str| Val::String(text.to_string());
     let mut texts = linker
-        .instance("wasi:example/texts@0.3.0")
+        .instance("acme:example/texts@0.3.0")
         .expect("the interface");
     texts
         .func_new("text", move |_, _, params, results| {
@@ -543,28 +543,28 @@ const READ: &str = r#"
         first : STRING[10];
         raised, known, failed : BOOL;
         value : UDINT;
-        labelled : Wasi.Example.Texts.LABELLED;
-        error : Wasi.Example.Texts.COLOR;
-        fault : Wasi.Example.Texts.FAULT;
+        labelled : Acme.Example.Texts.LABELLED;
+        error : Acme.Example.Texts.COLOR;
+        fault : Acme.Example.Texts.FAULT;
     END_VAR
         check := 0;
-        Wasi.Example.Texts.TEXT(which := 0, value := s);
+        Acme.Example.Texts.TEXT(which := 0, value := s);
         IF s <> 'hello' THEN check := -1; RETURN; END_IF;
         // A STRING that holds the string and no more.
-        Wasi.Example.Texts.TEXT(which := 0, value := exact);
+        Acme.Example.Texts.TEXT(which := 0, value := exact);
         IF exact <> 'hello' THEN check := -2; RETURN; END_IF;
         // An empty string empties the STRING.
-        Wasi.Example.Texts.TEXT(which := 1, value := s);
+        Acme.Example.Texts.TEXT(which := 1, value := s);
         IF s <> '' THEN check := -3; RETURN; END_IF;
-        Wasi.Example.Texts.TEXT(which := 2, value := s);
+        Acme.Example.Texts.TEXT(which := 2, value := s);
         IF s <> 'héllo, 漢字' OR bytes(s) <> 14 THEN check := -4; RETURN; END_IF;
-        Wasi.Example.Texts.TEXT(which := 3, value := long);
+        Acme.Example.Texts.TEXT(which := 3, value := long);
         IF bytes(long) <> 300 THEN check := -5; RETURN; END_IF;
 
         // A string longer than its STRING raises, and leaves it empty.
         tiny := 'old';
         __TRY
-            Wasi.Example.Texts.TEXT(which := 0, value := tiny);
+            Acme.Example.Texts.TEXT(which := 0, value := tiny);
         __CATCH(why)
             raised := TRUE;
         __END_TRY;
@@ -573,73 +573,73 @@ const READ: &str = r#"
         END_IF;
         IF tiny <> '' THEN check := -7; RETURN; END_IF;
         // The call after it is one like any other.
-        Wasi.Example.Texts.TEXT(which := 0, value := s);
+        Acme.Example.Texts.TEXT(which := 0, value := s);
         IF s <> 'hello' THEN check := -8; RETURN; END_IF;
 
-        Wasi.Example.Texts.MAYBE(which := 1, value := s, is_some => known);
+        Acme.Example.Texts.MAYBE(which := 1, value := s, is_some => known);
         IF NOT known OR s <> 'found' THEN check := -9; RETURN; END_IF;
         // None came: the STRING is empty, not what the call before left.
-        Wasi.Example.Texts.MAYBE(which := 0, value := s, is_some => known);
+        Acme.Example.Texts.MAYBE(which := 0, value := s, is_some => known);
         IF known OR s <> '' THEN check := -10; RETURN; END_IF;
 
         // A record's string, in its STRING member.
-        labelled := Wasi.Example.Texts.DESCRIBED(which := 6);
+        labelled := Acme.Example.Texts.DESCRIBED(which := 6);
         IF labelled.id <> 7 OR labelled.name <> 'motor' THEN check := -11; RETURN; END_IF;
 
-        Wasi.Example.Texts.SETTLED(which := 0, value := s, failed => failed, error => error);
+        Acme.Example.Texts.SETTLED(which := 0, value := s, failed => failed, error => error);
         IF failed OR s <> 'fine' OR error <> 0 THEN check := -12; RETURN; END_IF;
-        Wasi.Example.Texts.SETTLED(which := 1, value := s, failed => failed, error => error);
+        Acme.Example.Texts.SETTLED(which := 1, value := s, failed => failed, error => error);
         IF NOT failed OR s <> '' OR error <> 1 THEN check := -13; RETURN; END_IF;
 
         // An error's text, in its member and in no other STRING.
         s := 'kept';
         exact := 'kept!';
         long := 'kept';
-        Wasi.Example.Texts.FAILING(which := 0, failed => failed, value => value, error => fault);
-        IF NOT failed OR fault.kind <> Wasi.Example.Texts.FAULT_KIND#OTHER
+        Acme.Example.Texts.FAILING(which := 0, failed => failed, value => value, error => fault);
+        IF NOT failed OR fault.kind <> Acme.Example.Texts.FAULT_KIND#OTHER
             OR NOT fault.other_is_some OR fault.other <> 'disk on fire'
         THEN
             check := -14; RETURN;
         END_IF;
         IF s <> 'kept' OR exact <> 'kept!' OR long <> 'kept' THEN check := -15; RETURN; END_IF;
         // One too long is cut to its first 256 bytes, and raises nothing.
-        Wasi.Example.Texts.FAILING(which := 1, failed => failed, value => value, error => fault);
+        Acme.Example.Texts.FAILING(which := 1, failed => failed, value => value, error => fault);
         first := fault.other;
         IF NOT fault.other_is_some OR bytes(fault.other) <> 256 OR first <> '0123456789' THEN
             check := -16; RETURN;
         END_IF;
         // Before the character the 256th byte is in: 255 bytes, not 256.
-        Wasi.Example.Texts.FAILING(which := 2, failed => failed, value => value, error => fault);
+        Acme.Example.Texts.FAILING(which := 2, failed => failed, value => value, error => fault);
         IF bytes(fault.other) <> 255 THEN check := -17; RETURN; END_IF;
         // No text, another case, a value: the member is empty.
-        Wasi.Example.Texts.FAILING(which := 3, failed => failed, value => value, error => fault);
-        IF NOT failed OR fault.kind <> Wasi.Example.Texts.FAULT_KIND#OTHER
+        Acme.Example.Texts.FAILING(which := 3, failed => failed, value => value, error => fault);
+        IF NOT failed OR fault.kind <> Acme.Example.Texts.FAULT_KIND#OTHER
             OR fault.other_is_some OR fault.other <> ''
         THEN
             check := -18; RETURN;
         END_IF;
-        Wasi.Example.Texts.FAILING(which := 4, failed => failed, value => value, error => fault);
-        IF NOT failed OR fault.kind <> Wasi.Example.Texts.FAULT_KIND#BUSY OR fault.other <> '' THEN
+        Acme.Example.Texts.FAILING(which := 4, failed => failed, value => value, error => fault);
+        IF NOT failed OR fault.kind <> Acme.Example.Texts.FAULT_KIND#BUSY OR fault.other <> '' THEN
             check := -19; RETURN;
         END_IF;
-        Wasi.Example.Texts.FAILING(which := 5, failed => failed, value => value, error => fault);
+        Acme.Example.Texts.FAILING(which := 5, failed => failed, value => value, error => fault);
         IF failed OR value <> 42 OR fault.other <> '' THEN check := -20; RETURN; END_IF;
         // An error that is a text, in the output the FUNCTION gives it.
-        Wasi.Example.Texts.WHY(which := 0, failed => failed, value => value, error => reason);
+        Acme.Example.Texts.WHY(which := 0, failed => failed, value => value, error => reason);
         IF NOT failed OR reason <> 'not ready' THEN check := -21; RETURN; END_IF;
-        Wasi.Example.Texts.WHY(which := 1, failed => failed, value => value, error => reason);
+        Acme.Example.Texts.WHY(which := 1, failed => failed, value => value, error => reason);
         IF NOT failed OR bytes(reason) <> 256 THEN check := -22; RETURN; END_IF;
-        Wasi.Example.Texts.WHY(which := 2, failed => failed, value => value, error => reason);
+        Acme.Example.Texts.WHY(which := 2, failed => failed, value => value, error => reason);
         IF failed OR value <> 7 OR reason <> '' THEN check := -23; RETURN; END_IF;
         // Bound to a shorter STRING, the text is cut to that one.
-        Wasi.Example.Texts.WHY(which := 0, failed => failed, value => value, error => tiny);
+        Acme.Example.Texts.WHY(which := 0, failed => failed, value => value, error => tiny);
         IF tiny <> 'not ' THEN check := -24; RETURN; END_IF;
         check := 1;
     END_FUNCTION
 
     /* `both` declared by hand, which the generator leaves out: the host's
        first string goes into the STRING, its second where no STRING is. */
-    {extern 'wasi:example/texts@0.3.0' 'both'}
+    {extern 'acme:example/texts@0.3.0' 'both'}
     FUNCTION BOTH_BY_HAND
     VAR_IN_OUT
         first : STRING;
@@ -702,13 +702,13 @@ const BOUNDS: &str = r#"
         why : STRING;
         raised, failed : BOOL;
         value : UDINT;
-        fault : Wasi.Example.Texts.FAULT;
+        fault : Acme.Example.Texts.FAULT;
         i : DINT;
     END_VAR
         check := 0;
         // Ten bytes too long for a STRING longer than a page: it raises.
         __TRY
-            Wasi.Example.Texts.TEXT(which := 10, value := big);
+            Acme.Example.Texts.TEXT(which := 10, value := big);
         __CATCH(why)
             raised := TRUE;
         __END_TRY;
@@ -718,9 +718,9 @@ const BOUNDS: &str = r#"
         // A text too long for its STRING lands where the one before it did,
         // and is cut from there.
         FOR i := 1 TO 20000 DO
-            Wasi.Example.Texts.FAILING(which := 1, failed => failed, value => value, error => fault);
+            Acme.Example.Texts.FAILING(which := 1, failed => failed, value => value, error => fault);
         END_FOR;
-        IF NOT failed OR fault.kind <> Wasi.Example.Texts.FAULT_KIND#OTHER THEN
+        IF NOT failed OR fault.kind <> Acme.Example.Texts.FAULT_KIND#OTHER THEN
             check := -2; RETURN;
         END_IF;
         check := 1;
@@ -733,7 +733,7 @@ const BOUNDS: &str = r#"
         IF scans = 1 THEN
             output := check();
         ELSE
-            Wasi.Example.Texts.TEXT(which := 11, value := s);
+            Acme.Example.Texts.TEXT(which := 11, value := s);
             output := -100;
         END_IF;
     END_PROGRAM

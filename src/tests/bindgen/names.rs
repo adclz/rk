@@ -33,7 +33,7 @@ fn declared(db: &mut RootDatabase, wit: &str) -> String {
 #[rstest]
 fn words_in_each_place(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:many-words@0.3.0;
+        package acme:many-words@0.3.0;
 
         interface monotonic-clock-reader {
             enum read-mode { as-is, rounded-down }
@@ -45,8 +45,8 @@ fn words_in_each_place(mut with_db: RootDatabase) {
             import monotonic-clock-reader;
         }
     "#), @r"
-    // wasi-many-words-monotonic-clock-reader.st
-    NAMESPACE INTERNAL Wasi
+    // acme-many-words-monotonic-clock-reader.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE ManyWords
     		NAMESPACE MonotonicClockReader
     			TYPE READ_MODE : USINT (
@@ -56,7 +56,7 @@ fn words_in_each_place(mut with_db: RootDatabase) {
 
     			TYPE TICK_COUNT : ULINT; END_TYPE
 
-    			{extern 'wasi:many-words/monotonic-clock-reader@0.3.0' 'read-the-clock'}
+    			{extern 'acme:many-words/monotonic-clock-reader@0.3.0' 'read-the-clock'}
     			FUNCTION READ_THE_CLOCK : TICK_COUNT
     			VAR_INPUT
     				read_mode : READ_MODE;
@@ -75,7 +75,7 @@ fn words_in_each_place(mut with_db: RootDatabase) {
 #[rstest]
 fn a_keyword_takes_an_underscore_wherever_it_stands(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface exit {
             enum answer { true, do, maybe }
@@ -91,8 +91,8 @@ fn a_keyword_takes_an_underscore_wherever_it_stands(mut with_db: RootDatabase) {
             import exit;
         }
     "#), @r"
-    // wasi-example-exit.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-exit.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Exit_
     			TYPE ANSWER : USINT (
@@ -106,7 +106,7 @@ fn a_keyword_takes_an_underscore_wherever_it_stands(mut with_db: RootDatabase) {
     			TYPE TASK_ : UDINT; END_TYPE
 
     			/* Lets go of `handle`, a handle of `task` the host gave. */
-    			{extern 'wasi:example/exit@0.3.0' '[resource-drop]task'}
+    			{extern 'acme:example/exit@0.3.0' '[resource-drop]task'}
     			FUNCTION TASK_DROP
     			VAR_INPUT
     				handle : TASK_;
@@ -118,7 +118,7 @@ fn a_keyword_takes_an_underscore_wherever_it_stands(mut with_db: RootDatabase) {
     				of_ : UDINT;
     			END_STRUCT END_TYPE
 
-    			{extern 'wasi:example/exit@0.3.0' '[method]task.step'}
+    			{extern 'acme:example/exit@0.3.0' '[method]task.step'}
     			FUNCTION TASK_STEP : TIME_
     			VAR_INPUT
     				self : TASK_;
@@ -127,7 +127,7 @@ fn a_keyword_takes_an_underscore_wherever_it_stands(mut with_db: RootDatabase) {
 
     			/* `exit` as the host gives it: the values of its result, which `EXIT_`
     			   puts in its members. */
-    			{extern 'wasi:example/exit@0.3.0' 'exit'}
+    			{extern 'acme:example/exit@0.3.0' 'exit'}
     			FUNCTION PRIVATE EXIT__RAW
     			VAR_INPUT
     				by_ : ANSWER;
@@ -159,7 +159,7 @@ fn a_keyword_takes_an_underscore_wherever_it_stands(mut with_db: RootDatabase) {
 #[rstest]
 fn two_names_written_alike_leave_the_later_out(mut with_db: RootDatabase) {
     assert_snapshot!(declared(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface clash {
             resource x {
@@ -177,7 +177,7 @@ fn two_names_written_alike_leave_the_later_out(mut with_db: RootDatabase) {
             import clash;
         }
     "#), @r"
-    wasi-example-clash.st: X, X_DROP, Y, Y_DROP, X_NEW, Y_TURN, KEPT
+    acme-example-clash.st: X, X_DROP, Y, Y_DROP, X_NEW, Y_TURN, KEPT
         left out `x-new`: it would be `X_NEW`, which `[constructor]x` is already
         left out `[method]y.turn`: it would be `Y_TURN`, which `y-turn` is already
     ");
@@ -190,7 +190,7 @@ fn two_names_written_alike_leave_the_later_out(mut with_db: RootDatabase) {
 #[rstest]
 fn a_name_the_generator_makes_gives_way(mut with_db: RootDatabase) {
     assert_snapshot!(declared(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface clash {
             resource b {
@@ -204,7 +204,7 @@ fn a_name_the_generator_makes_gives_way(mut with_db: RootDatabase) {
         world example {
             import clash;
         }
-    "#), @"wasi-example-clash.st: B, B_DROP_, SHAPE_KIND, SHAPE, B_DROP, OPEN_RAW_, OPEN, OPEN_RAW");
+    "#), @"acme-example-clash.st: B, B_DROP_, SHAPE_KIND, SHAPE, B_DROP, OPEN_RAW_, OPEN, OPEN_RAW");
 }
 
 /// A function named as a type takes a `_` after its name, which a program
@@ -214,7 +214,7 @@ fn a_name_the_generator_makes_gives_way(mut with_db: RootDatabase) {
 #[rstest]
 fn a_function_named_as_a_type_takes_an_underscore(mut with_db: RootDatabase) {
     assert_snapshot!(declared(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface clash {
             record file-stat { size: u64 }
@@ -232,7 +232,7 @@ fn a_function_named_as_a_type_takes_an_underscore(mut with_db: RootDatabase) {
         world example {
             import clash;
         }
-    "#), @"wasi-example-clash.st: FILE_STAT, FILE, FILE_DROP, SHAPE_KIND, SHAPE, X, X_DROP, X_Y, X_Y_DROP, FILE_STAT__RAW, FILE_STAT_, SHAPE_KIND_, X_Y_");
+    "#), @"acme-example-clash.st: FILE_STAT, FILE, FILE_DROP, SHAPE_KIND, SHAPE, X, X_DROP, X_Y, X_Y_DROP, FILE_STAT__RAW, FILE_STAT_, SHAPE_KIND_, X_Y_");
 }
 
 /// A variable that would be the name of its FUNCTION's value, or a name
@@ -250,7 +250,7 @@ fn a_function_named_as_a_type_takes_an_underscore(mut with_db: RootDatabase) {
 #[rstest]
 fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface clash {
             record point { x: u32, y: u32 }
@@ -274,8 +274,8 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
             import clash;
         }
     "#), @r"
-    // wasi-example-clash.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-clash.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Clash
     			USING Std.Convert;
@@ -305,7 +305,7 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     				circle : REAL;
     			END_STRUCT END_TYPE
 
-    			{extern 'wasi:example/clash@0.3.0' 'f'}
+    			{extern 'acme:example/clash@0.3.0' 'f'}
     			FUNCTION F : UDINT
     			VAR_INPUT
     				f_ : UDINT;
@@ -314,7 +314,7 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
 
     			/* `get-x` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `GET_X` passes field by field. */
-    			{extern 'wasi:example/clash@0.3.0' 'get-x'}
+    			{extern 'acme:example/clash@0.3.0' 'get-x'}
     			FUNCTION PRIVATE GET_X_RAW : UDINT
     			VAR_INPUT
     				get_x : UDINT;
@@ -329,7 +329,7 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     				GET_X := GET_X_RAW(get_x := get.x, get_y := get.y);
     			END_FUNCTION
 
-    			{extern 'wasi:example/clash@0.3.0' 'exit'}
+    			{extern 'acme:example/clash@0.3.0' 'exit'}
     			FUNCTION EXIT_ : UDINT
     			VAR_INPUT
     				exit__ : UDINT;
@@ -338,7 +338,7 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
 
     			/* `run` as the host gives it: the one value of its result, which `RUN`
     			   puts in the member of `value`. */
-    			{extern async 'wasi:example/clash@0.3.0' 'run'}
+    			{extern async 'acme:example/clash@0.3.0' 'run'}
     			FUNCTION_BLOCK RUN_RAW
     			VAR_INPUT
     				done_ : UDINT;
@@ -369,7 +369,7 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
 
     			/* `aim` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `AIM` packs. */
-    			{extern 'wasi:example/clash@0.3.0' 'aim'}
+    			{extern 'acme:example/clash@0.3.0' 'aim'}
     			FUNCTION PRIVATE AIM_RAW
     			VAR_INPUT
     				a0_ : UDINT;
@@ -399,7 +399,7 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
 
     			/* `scan` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `SCAN` packs. */
-    			{extern 'wasi:example/clash@0.3.0' 'scan'}
+    			{extern 'acme:example/clash@0.3.0' 'scan'}
     			FUNCTION PRIVATE SCAN_RAW : UDINT
     			VAR_INPUT
     				scan_raw_ : UDINT;
@@ -429,7 +429,7 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
 
     			/* `probe` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `PROBE` reads. */
-    			{extern 'wasi:example/clash@0.3.0' 'probe'}
+    			{extern 'acme:example/clash@0.3.0' 'probe'}
     			FUNCTION PRIVATE PROBE_RAW
     			VAR_INPUT
     				w0_ : UDINT;
@@ -459,7 +459,7 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
 
     			/* `later` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `LATER` reads. */
-    			{extern async 'wasi:example/clash@0.3.0' 'later'}
+    			{extern async 'acme:example/clash@0.3.0' 'later'}
     			FUNCTION_BLOCK LATER_RAW
     			VAR_INPUT
     				call_ : UDINT;
@@ -495,7 +495,7 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
 
     			/* `status` as the host gives it: the one value of its result, which
     			   `STATUS` puts in its member. */
-    			{extern 'wasi:example/clash@0.3.0' 'status'}
+    			{extern 'acme:example/clash@0.3.0' 'status'}
     			FUNCTION PRIVATE STATUS_RAW
     			VAR_OUTPUT
     				done : BOOL;
@@ -506,7 +506,7 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
     				STATUS_RAW(done => STATUS.done);
     			END_FUNCTION
 
-    			{extern 'wasi:example/clash@0.3.0' 'plain'}
+    			{extern 'acme:example/clash@0.3.0' 'plain'}
     			FUNCTION PLAIN
     			VAR_INPUT
     				a0 : UDINT;
@@ -517,7 +517,7 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
 
     			/* `tally` as the host gives it: the values of its result, which `TALLY`
     			   puts in its members. */
-    			{extern 'wasi:example/clash@0.3.0' 'tally'}
+    			{extern 'acme:example/clash@0.3.0' 'tally'}
     			FUNCTION PRIVATE TALLY_RAW
     			VAR_OUTPUT
     				tally : UDINT;
@@ -540,7 +540,7 @@ fn a_variable_keeps_away_from_the_names_its_pou_has(mut with_db: RootDatabase) {
 fn two_interfaces_of_one_namespace_stop_the_generator() {
     let (resolve, world) = super::resolved(
         r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface foo-bar {
             a: func();
@@ -557,7 +557,7 @@ fn two_interfaces_of_one_namespace_stop_the_generator() {
     "#,
     )
     .expect("the WIT resolves");
-    assert_snapshot!(rk_bindgen::generate(&resolve, world).unwrap_err(), @"`wasi:example/foo-bar@0.3.0` and `wasi:example/foobar@0.3.0` would both be the namespace `Wasi.Example.Foobar`, which ST takes for one");
+    assert_snapshot!(rk_bindgen::generate(&resolve, world).unwrap_err(), @"`acme:example/foo-bar@0.3.0` and `acme:example/foobar@0.3.0` would both be the namespace `Acme.Example.Foobar`, which ST takes for one");
 }
 
 /// Two versions of one interface are one namespace too.
@@ -565,15 +565,15 @@ fn two_interfaces_of_one_namespace_stop_the_generator() {
 fn two_versions_of_an_interface_stop_the_generator() {
     let (resolve, world) = super::resolved(
         r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
-        package wasi:dep@0.1.0 {
+        package acme:dep@0.1.0 {
             interface a {
                 f: func();
             }
         }
 
-        package wasi:dep@0.2.0 {
+        package acme:dep@0.2.0 {
             interface a {
                 f: func();
                 g: func();
@@ -581,13 +581,13 @@ fn two_versions_of_an_interface_stop_the_generator() {
         }
 
         world example {
-            import wasi:dep/a@0.1.0;
-            import wasi:dep/a@0.2.0;
+            import acme:dep/a@0.1.0;
+            import acme:dep/a@0.2.0;
         }
     "#,
     )
     .expect("the WIT resolves");
-    assert_snapshot!(rk_bindgen::generate(&resolve, world).unwrap_err(), @"`wasi:dep/a@0.1.0` and `wasi:dep/a@0.2.0` would both be the namespace `Wasi.Dep.A`, which ST takes for one");
+    assert_snapshot!(rk_bindgen::generate(&resolve, world).unwrap_err(), @"`acme:dep/a@0.1.0` and `acme:dep/a@0.2.0` would both be the namespace `Acme.Dep.A`, which ST takes for one");
 }
 
 /// Two interfaces of two namespaces whose files would have one name: the
@@ -596,28 +596,28 @@ fn two_versions_of_an_interface_stop_the_generator() {
 fn two_interfaces_of_one_file_stop_the_generator() {
     let (resolve, world) = super::resolved(
         r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
-        package wasi:foo-bar@0.1.0 {
+        package acme:foo-bar@0.1.0 {
             interface baz {
                 f: func();
             }
         }
 
-        package wasi:foo@0.1.0 {
+        package acme:foo@0.1.0 {
             interface bar-baz {
                 f: func();
             }
         }
 
         world example {
-            import wasi:foo-bar/baz@0.1.0;
-            import wasi:foo/bar-baz@0.1.0;
+            import acme:foo-bar/baz@0.1.0;
+            import acme:foo/bar-baz@0.1.0;
         }
     "#,
     )
     .expect("the WIT resolves");
-    assert_snapshot!(rk_bindgen::generate(&resolve, world).unwrap_err(), @"`wasi:foo-bar/baz@0.1.0` and `wasi:foo/bar-baz@0.1.0` would both be the file `wasi-foo-bar-baz.st`");
+    assert_snapshot!(rk_bindgen::generate(&resolve, world).unwrap_err(), @"`acme:foo-bar/baz@0.1.0` and `acme:foo/bar-baz@0.1.0` would both be the file `acme-foo-bar-baz.st`");
 }
 
 /// Two variables of one POU that ST writes alike: a parameter `value` and
@@ -626,7 +626,7 @@ fn two_interfaces_of_one_file_stop_the_generator() {
 #[rstest]
 fn two_variables_written_alike_leave_the_function_out(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface clash {
             record p { x: u32 }
@@ -639,15 +639,15 @@ fn two_variables_written_alike_leave_the_function_out(mut with_db: RootDatabase)
             import clash;
         }
     "#), @r"
-    // wasi-example-clash.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-clash.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Clash
     			TYPE P_ : STRUCT
     				x : UDINT;
     			END_STRUCT END_TYPE
 
-    			{extern 'wasi:example/clash@0.3.0' 'fine'}
+    			{extern 'acme:example/clash@0.3.0' 'fine'}
     			FUNCTION FINE : UDINT
     			VAR_INPUT
     				value : UDINT;
@@ -670,7 +670,7 @@ fn two_variables_written_alike_leave_the_function_out(mut with_db: RootDatabase)
 #[rstest]
 fn an_output_of_the_import_keeps_clear_of_the_variables_beside_it(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface clash {
             record point { x: u32, y: u32 }
@@ -684,8 +684,8 @@ fn an_output_of_the_import_keeps_clear_of_the_variables_beside_it(mut with_db: R
             import clash;
         }
     "#), @r"
-    // wasi-example-clash.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-clash.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Clash
     			TYPE POINT : STRUCT
@@ -706,7 +706,7 @@ fn an_output_of_the_import_keeps_clear_of_the_variables_beside_it(mut with_db: R
     			/* `move-to` as the host has it: its parameters as the canonical ABI passes
     			   them, which `MOVE_TO` passes field by field, and the values of its
     			   result, which it puts in its members. */
-    			{extern 'wasi:example/clash@0.3.0' 'move-to'}
+    			{extern 'acme:example/clash@0.3.0' 'move-to'}
     			FUNCTION PRIVATE MOVE_TO_RAW
     			VAR_INPUT
     				spot_x : UDINT;
@@ -727,7 +727,7 @@ fn an_output_of_the_import_keeps_clear_of_the_variables_beside_it(mut with_db: R
 
     			/* `fetch` as the host gives it: the values of its result, which `FETCH`
     			   puts in the members of `value`. */
-    			{extern async 'wasi:example/clash@0.3.0' 'fetch'}
+    			{extern async 'acme:example/clash@0.3.0' 'fetch'}
     			FUNCTION_BLOCK FETCH_RAW
     			VAR_OUTPUT
     				DONE : BOOL;
@@ -766,7 +766,7 @@ fn an_output_of_the_import_keeps_clear_of_the_variables_beside_it(mut with_db: R
 #[rstest]
 fn two_members_written_alike_leave_the_type_out(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface clash {
             variant token { kind(u8), other }
@@ -787,11 +787,11 @@ fn two_members_written_alike_leave_the_type_out(mut with_db: RootDatabase) {
             import clash;
         }
     "#), @r"
-    // wasi-example-clash.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-clash.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Clash
-    			{extern 'wasi:example/clash@0.3.0' 'fine'}
+    			{extern 'acme:example/clash@0.3.0' 'fine'}
     			FUNCTION FINE : UDINT
     			END_FUNCTION
     		END_NAMESPACE

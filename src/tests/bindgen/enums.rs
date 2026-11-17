@@ -17,7 +17,7 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn an_enum_goes_in_and_comes_back(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface lights {
             /// What a light shows.
@@ -34,8 +34,8 @@ fn an_enum_goes_in_and_comes_back(mut with_db: RootDatabase) {
             import lights;
         }
     "#), @r"
-    // wasi-example-lights.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-lights.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Lights
     			/* What a light shows. */
@@ -50,7 +50,7 @@ fn an_enum_goes_in_and_comes_back(mut with_db: RootDatabase) {
     				lit : BOOL;
     			END_STRUCT END_TYPE
 
-    			{extern 'wasi:example/lights@0.3.0' 'set'}
+    			{extern 'acme:example/lights@0.3.0' 'set'}
     			FUNCTION SET : COLOR
     			VAR_INPUT
     				to_ : COLOR;
@@ -59,7 +59,7 @@ fn an_enum_goes_in_and_comes_back(mut with_db: RootDatabase) {
 
     			/* `look` as the host gives it: the values of its result, which `LOOK` puts
     			   in its members. */
-    			{extern 'wasi:example/lights@0.3.0' 'look'}
+    			{extern 'acme:example/lights@0.3.0' 'look'}
     			FUNCTION PRIVATE LOOK_RAW
     			VAR_OUTPUT
     				shown : COLOR;
@@ -71,7 +71,7 @@ fn an_enum_goes_in_and_comes_back(mut with_db: RootDatabase) {
     				LOOK_RAW(shown => LOOK.shown, lit => LOOK.lit);
     			END_FUNCTION
 
-    			{extern 'wasi:example/lights@0.3.0' 'guess'}
+    			{extern 'acme:example/lights@0.3.0' 'guess'}
     			FUNCTION GUESS
     			VAR_OUTPUT
     				is_some : BOOL;
@@ -79,7 +79,7 @@ fn an_enum_goes_in_and_comes_back(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/lights@0.3.0' 'check'}
+    			{extern 'acme:example/lights@0.3.0' 'check'}
     			FUNCTION CHECK
     			VAR_OUTPUT
     				failed : BOOL;
@@ -89,7 +89,7 @@ fn an_enum_goes_in_and_comes_back(mut with_db: RootDatabase) {
 
     			/* `place` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `PLACE` passes field by field. */
-    			{extern 'wasi:example/lights@0.3.0' 'place'}
+    			{extern 'acme:example/lights@0.3.0' 'place'}
     			FUNCTION PRIVATE PLACE_RAW
     			VAR_INPUT
     				at_shown : COLOR;
@@ -113,7 +113,7 @@ fn an_enum_goes_in_and_comes_back(mut with_db: RootDatabase) {
 fn wide(count: usize) -> String {
     let cases: Vec<String> = (0..count).map(|at| format!("c{at}")).collect();
     format!(
-        "package wasi:example@0.3.0;
+        "package acme:example@0.3.0;
         interface wide {{
             enum many {{ {} }}
             pick: func(what: many) -> many;
