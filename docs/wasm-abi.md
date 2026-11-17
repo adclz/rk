@@ -311,7 +311,8 @@ A WASI import may also be a stream's or a future's built-in, under the name of t
 The number counts the streams and futures of the function's type from 0, its parameters first, as wit-component counts them, and the build checks that it names one of the built-in's kind.
 A built-in that returns at once, a stream's or a future's `new` or one of their drops, is an `{extern}` FUNCTION.
 A `new` declares the two ends it makes, a `UDINT` `VAR_OUTPUT` each, the reading end first, and no return type (`E1516`).
-A stream's write waits for the reader, so it is an `{extern async}` FUNCTION_BLOCK, `[stream-write-N]f`: it takes the stream's writing end, a `UDINT`, and the bytes, a `STRING` whose length is passed as it is, unchecked, and after `DONE` gives how many went, a `UDINT`, and whether the reader left, a `BOOL` (`E1516` otherwise).
+A stream's write waits for the reader, so it is an `{extern async}` FUNCTION_BLOCK, `[stream-write-N]f`: it takes the stream's writing end, a `UDINT`, and the bytes, a `STRING` whose length is passed as it is, unchecked, or where they are, a `REF_TO BYTE`, and how many, a `UDINT`, and after `DONE` gives how many went, a `UDINT`, and whether the reader left, a `BOOL` (`E1516` otherwise).
+The bytes a reference points at are read where they are while the write runs, so they stay there, unchanged, until `DONE`: a block that writes from an array of its own keeps them so.
 Its call is a copy into the stream, which ends when the reader has taken some of the bytes or left: the block waits on the stream's end as it would on a call.
 The host reads the bytes from the block while the copy runs: a call made then checks the copy, and leaves the bytes as they are, whatever it passes.
 
