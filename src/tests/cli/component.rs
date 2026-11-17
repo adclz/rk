@@ -2242,6 +2242,108 @@ fn the_build_checks_what_a_stream_s_read_or_write_moves(
     assert_eq!(build(&mut with_db, source).err().as_deref(), Some(error));
 }
 
+/// A declaration's outputs hold the whole result, or a future read's whole
+/// value, which the build checks against WASI's WIT: one that is not passed
+/// as values the host writes where the call points, past outputs that are
+/// too few, over what follows. A sync call's record of two outputs takes 4
+/// bytes of a result of an address or an error code, and one output 8 of
+/// an instant; an async call's flag takes 1 of a result of flags or an error
+/// code, and no output none of it; a future read that declares no output
+/// takes nothing of the result stdin's future holds; a value returned as a
+/// UDINT takes half of a `u64`.
+#[rstest]
+#[case::a_sync_call_s_record(
+    "{extern 'wasi:sockets/types@0.3.0' '[method]tcp-socket.get-local-address'}
+     FUNCTION LOCAL_ADDRESS
+     VAR_INPUT self : UDINT; END_VAR
+     VAR_OUTPUT failed : BOOL; port : UINT; END_VAR
+     END_FUNCTION
+
+     PROGRAM P
+     VAR failed : BOOL; port : UINT; END_VAR
+         LOCAL_ADDRESS(self := 1, failed => failed, port => port);
+     END_PROGRAM",
+    "`LOCAL_ADDRESS` imports `[method]tcp-socket.get-local-address` of \
+     `wasi:sockets/types@0.3.0`, whose result takes 36 bytes, where its outputs take 4: \
+     declare outputs for the whole result"
+)]
+#[case::a_sync_call_s_one_output(
+    "{extern 'wasi:clocks/system-clock@0.3.0' 'now'}
+     FUNCTION NOW
+     VAR_OUTPUT seconds : LINT; END_VAR
+     END_FUNCTION
+
+     PROGRAM P
+     VAR seconds : LINT; END_VAR
+         NOW(seconds => seconds);
+     END_PROGRAM",
+    "`NOW` imports `now` of `wasi:clocks/system-clock@0.3.0`, whose result takes 16 bytes, \
+     where its outputs take 8: declare outputs for the whole result"
+)]
+#[case::an_async_call_s_result(
+    "{extern async 'wasi:filesystem/types@0.3.0' '[method]descriptor.get-flags'}
+     FUNCTION_BLOCK GET_FLAGS
+     VAR_INPUT self : UDINT; END_VAR
+     VAR_OUTPUT DONE : BOOL; failed : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR flags : GET_FLAGS; END_VAR
+         flags(self := 1);
+     END_PROGRAM",
+    "`GET_FLAGS` imports `[method]descriptor.get-flags` of `wasi:filesystem/types@0.3.0`, \
+     whose result takes 20 bytes, where its outputs take 1: declare outputs for the whole \
+     result"
+)]
+#[case::an_async_call_with_no_output(
+    "{extern async 'wasi:filesystem/types@0.3.0' '[method]descriptor.get-flags'}
+     FUNCTION_BLOCK GET_FLAGS
+     VAR_INPUT self : UDINT; END_VAR
+     VAR_OUTPUT DONE : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR flags : GET_FLAGS; END_VAR
+         flags(self := 1);
+     END_PROGRAM",
+    "`GET_FLAGS` imports `[method]descriptor.get-flags` of `wasi:filesystem/types@0.3.0`, \
+     whose result takes 20 bytes, where its outputs take 0: declare outputs for the whole \
+     result"
+)]
+#[case::a_future_s_value(
+    "{extern async 'wasi:cli/stdin@0.3.0' '[future-read-1]read-via-stream'}
+     FUNCTION_BLOCK READ_END
+     VAR_INPUT future : UDINT; END_VAR
+     VAR_OUTPUT DONE : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR ending : READ_END; END_VAR
+         ending(future := 1);
+     END_PROGRAM",
+    "`READ_END` imports `[future-read-1]read-via-stream` of `wasi:cli/stdin@0.3.0`, whose \
+     value takes 2 bytes, where its outputs take 0: declare outputs for the whole value"
+)]
+#[case::a_value_returned_narrower(
+    "{extern 'wasi:random/random@0.3.0' 'get-random-u64'}
+     FUNCTION RANDOM : UDINT
+     END_FUNCTION
+
+     PROGRAM P
+     VAR x : UDINT; END_VAR
+         x := RANDOM();
+     END_PROGRAM",
+    "`RANDOM` imports `get-random-u64` of `wasi:random/random@0.3.0`, whose result takes 8 \
+     bytes, where its outputs take 4: declare outputs for the whole result"
+)]
+fn the_build_checks_that_a_result_fits_its_outputs(
+    mut with_db: db::RootDatabase,
+    #[case] source: &str,
+    #[case] error: &str,
+) {
+    assert_eq!(build(&mut with_db, source).err().as_deref(), Some(error));
+}
+
 /// A resource's functions are imported under the names WIT gives them, and
 /// wit-component takes their core forms: a method that returns its result
 /// where the module points, an async method lowered async, the drop of a
@@ -2261,7 +2363,8 @@ fn a_resource_s_functions_build_into_a_component(mut with_db: db::RootDatabase) 
         VAR_INPUT
             dir : UDINT; path_flags : BYTE; path : STRING[255]; open_flags : BYTE; flags : BYTE;
         END_VAR
-        VAR_OUTPUT DONE : BOOL; failed : BOOL; value : UDINT; END_VAR
+        // The error code, past `value`, lands in the words after it.
+        VAR_OUTPUT DONE : BOOL; failed : BOOL; value : UDINT; w1 : LWORD; w2 : LWORD; END_VAR
         END_FUNCTION_BLOCK
 
         {extern 'wasi:filesystem/types@0.3.0' '[resource-drop]descriptor'}
