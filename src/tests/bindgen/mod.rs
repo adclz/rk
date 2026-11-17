@@ -10,7 +10,8 @@
 //! a result comes back in memory ([`short_results`]). `wasi` generates
 //! every interface of the WASI rk
 //! carries and builds them into a component, which checks each import
-//! against WASI's WIT; `runtime` runs generated declarations on wasmtime.
+//! against WASI's WIT; `runtime` runs generated declarations on wasmtime;
+//! `packages` generates for a package of any namespace, from a WIT folder.
 //! What a result read out of words holds is checked there too, against a
 //! host of the test's own ([`hosted`]): wasmtime lays out what the host
 //! returns, and the generated code reads it back; and what the generated
@@ -24,6 +25,7 @@ mod flags;
 mod lists;
 mod names;
 mod options_and_results;
+mod packages;
 mod records;
 mod resources;
 mod runtime;
