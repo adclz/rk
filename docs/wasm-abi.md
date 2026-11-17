@@ -303,6 +303,7 @@ A host that implements an async function asynchronously runs the component throu
 
 A WASI import may be a resource's function, under the name WIT gives it: the constructor `[constructor]R`, a method `[method]R.f`, whose first parameter is the handle it is called on, and a static function `[static]R.f`.
 A handle is a `UDINT`, and `[resource-drop]R`, an `{extern}` FUNCTION taking one, lets go of a handle the host gave (`E1516` otherwise).
+rk-bindgen names one type per resource, an alias of `UDINT`, `TYPE TCP_SOCKET : UDINT; END_TYPE`, and declares each handle with it: a declaration says which resource it takes or gives, and a handle passes as the `UDINT` it is.
 Only WASI's interfaces have resources: a host module's WIT is written from its declarations, which make none (`E1512`).
 The build checks that WASI's WIT declares the function, or the resource a drop names.
 
