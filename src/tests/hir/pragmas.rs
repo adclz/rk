@@ -105,7 +105,7 @@ END_FUNCTION"#;
        |                            ^^^|^^
        |                               `---- VAR_IN_OUT 'second' cannot take a string from the host: the import's first STRING VAR_IN_OUT does
        |
-       | Note: a WASI import gives one string, which the host writes into its one STRING VAR_IN_OUT
+       | Note: a package's import gives one string, which the host writes into its one STRING VAR_IN_OUT
     ---'
     [E1502] Error: not representable on an import
        ,-[ file:///test0.st:4:49 ]
@@ -175,7 +175,7 @@ END_FUNCTION"#;
        |            ^^|^^
        |              `---- VAR_IN_OUT 'cells' cannot take a list from the host: only an ARRAY[*] of scalars or STRINGs can
        |
-       | Note: a WASI import gives a list into ARRAY[*] VAR_IN_OUTs of one dimension, one for each field of its elements
+       | Note: a package's import gives a list into ARRAY[*] VAR_IN_OUTs of one dimension, one for each field of its elements
     ---'
     [E1502] Error: not representable on an import
        ,-[ file:///test0.st:6:40 ]
@@ -184,7 +184,7 @@ END_FUNCTION"#;
        |                                        ^^^^|^^^
        |                                            `----- VAR_IN_OUT 'anything' cannot take a list from the host: only an ARRAY[*] of scalars or STRINGs can
        |
-       | Note: a WASI import gives a list into ARRAY[*] VAR_IN_OUTs of one dimension, one for each field of its elements
+       | Note: a package's import gives a list into ARRAY[*] VAR_IN_OUTs of one dimension, one for each field of its elements
     ---'
     [E1502] Error: not representable on an import
        ,-[ file:///test0.st:6:61 ]
@@ -193,7 +193,7 @@ END_FUNCTION"#;
        |                                                             ^^|^^
        |                                                               `---- VAR_IN_OUT 'pairs' cannot take a list from the host: only an ARRAY[*] of scalars or STRINGs can
        |
-       | Note: a WASI import gives a list into ARRAY[*] VAR_IN_OUTs of one dimension, one for each field of its elements
+       | Note: a package's import gives a list into ARRAY[*] VAR_IN_OUTs of one dimension, one for each field of its elements
     ---'
     [E1502] Error: not representable on an import
         ,-[ file:///test0.st:12:40 ]
@@ -202,7 +202,7 @@ END_FUNCTION"#;
         |                                        ^^|^
         |                                          `--- VAR_IN_OUT 'text' cannot take a string from the host beside the list its ARRAY[*] VAR_IN_OUTs take
         |
-        | Note: a WASI import gives one string or one list, which the host writes into what the call passes
+        | Note: a package's import gives one string or one list, which the host writes into what the call passes
     ----'
     ");
 }
@@ -326,7 +326,7 @@ END_FUNCTION_BLOCK"#;
        |                            ^^^|^^
        |                               `---- VAR_OUTPUT 'second' cannot take a text from the host beside the string, list or text the import takes
        |
-       | Note: a WASI import gives one string, one list or one text, which the host writes into what the call passes
+       | Note: a package's import gives one string, one list or one text, which the host writes into what the call passes
     ---'
     [E1502] Error: not representable on an import
         ,-[ file:///test0.st:10:12 ]
@@ -335,7 +335,7 @@ END_FUNCTION_BLOCK"#;
         |            ^^|^^
         |              `---- VAR_OUTPUT 'other' cannot take a text from the host beside the string, list or text the import takes
         |
-        | Note: a WASI import gives one string, one list or one text, which the host writes into what the call passes
+        | Note: a package's import gives one string, one list or one text, which the host writes into what the call passes
     ----'
     [E1502] Error: not representable on an import
         ,-[ file:///test0.st:16:12 ]
@@ -344,7 +344,7 @@ END_FUNCTION_BLOCK"#;
         |            ^^|^^
         |              `---- VAR_OUTPUT 'other' cannot take a text from the host beside the string, list or text the import takes
         |
-        | Note: a WASI import gives one string, one list or one text, which the host writes into what the call passes
+        | Note: a package's import gives one string, one list or one text, which the host writes into what the call passes
     ----'
     [E1502] Error: not representable on an import
         ,-[ file:///test0.st:21:25 ]
@@ -448,27 +448,27 @@ END_FUNCTION"#;
         |
      11 |     p : Pt;
         |     |
-        |     `-- VAR_INPUT 'p' cannot cross a WASI import: no WASI function reads rk's own layout
+        |     `-- VAR_INPUT 'p' cannot cross a package's import: no function of a WIT reads rk's own layout
         |
-        | Note: a WASI import takes scalars, STRINGs, and a REF_TO where a record comes back
+        | Note: a package's import takes scalars, STRINGs, and a REF_TO where a record comes back
     ----'
     [E1502] Error: not representable on an import
         ,-[ file:///test0.st:12:5 ]
         |
      12 |     a : ARRAY[0..3] OF BYTE;
         |     |
-        |     `-- VAR_INPUT 'a' cannot cross a WASI import: no WASI function reads rk's own layout
+        |     `-- VAR_INPUT 'a' cannot cross a package's import: no function of a WIT reads rk's own layout
         |
-        | Note: a WASI import takes scalars, STRINGs, and a REF_TO where a record comes back
+        | Note: a package's import takes scalars, STRINGs, and a REF_TO where a record comes back
     ----'
     [E1502] Error: not representable on an import
         ,-[ file:///test0.st:13:5 ]
         |
      13 |     c : Counter;
         |     |
-        |     `-- VAR_INPUT 'c' cannot cross a WASI import: no WASI function reads rk's own layout
+        |     `-- VAR_INPUT 'c' cannot cross a package's import: no function of a WIT reads rk's own layout
         |
-        | Note: a WASI import takes scalars, STRINGs, and a REF_TO where a record comes back
+        | Note: a package's import takes scalars, STRINGs, and a REF_TO where a record comes back
     ----'
     ");
 }
@@ -1147,7 +1147,7 @@ END_FUNCTION_BLOCK
        |                 ^^^^^^^^^^^^^^|^^^^^^^^^^^^^
        |                               `--------------- '[method]descriptor.open-at' names a resource's function
        |
-       | Note: the WIT of a host module's interface is written from its declarations, which make no resource: only WASI's interfaces have resources
+       | Note: the WIT of a plain module's interface is written from its declarations, which make no resource: only a package's interfaces have resources
     ---'
     [E1512] Error: import name not a WIT name
        ,-[ file:///test0.st:7:17 ]
@@ -1156,7 +1156,7 @@ END_FUNCTION_BLOCK
        |                 ^^^^^^^^^^^^^|^^^^^^^^^^^^^
        |                              `--------------- '[resource-drop]descriptor' drops a resource's handle
        |
-       | Note: the WIT of a host module's interface is written from its declarations, which make no resource: only WASI's interfaces have resources
+       | Note: the WIT of a plain module's interface is written from its declarations, which make no resource: only a package's interfaces have resources
     ---'
     [E1512] Error: import name not a WIT name
         ,-[ file:///test0.st:12:39 ]
@@ -1805,7 +1805,7 @@ END_FUNCTION"#;
         |     |
         |     `-- VAR_INPUT 'r' cannot cross a component import: an address in the module means nothing to the host
         |
-        | Note: an {extern} FUNCTION from a module other than WASI's takes scalars and STRINGs
+        | Note: an {extern} FUNCTION from a plain module, typed in WIT from its declaration, takes scalars and STRINGs
     ----'
     [E1502] Error: not representable on an import
         ,-[ file:///test0.st:12:5 ]
@@ -1814,7 +1814,7 @@ END_FUNCTION"#;
         |     |
         |     `-- VAR_INPUT 'p' cannot cross a component import: only a scalar or a STRING can
         |
-        | Note: an {extern} FUNCTION from a module other than WASI's takes scalars and STRINGs
+        | Note: an {extern} FUNCTION from a plain module, typed in WIT from its declaration, takes scalars and STRINGs
     ----'
     [E1502] Error: not representable on an import
         ,-[ file:///test0.st:13:5 ]
@@ -1823,7 +1823,7 @@ END_FUNCTION"#;
         |     |
         |     `-- VAR_INPUT 'a' cannot cross a component import: only a scalar or a STRING can
         |
-        | Note: an {extern} FUNCTION from a module other than WASI's takes scalars and STRINGs
+        | Note: an {extern} FUNCTION from a plain module, typed in WIT from its declaration, takes scalars and STRINGs
     ----'
     [E1502] Error: not representable on an import
         ,-[ file:///test0.st:14:5 ]
@@ -1832,7 +1832,7 @@ END_FUNCTION"#;
         |     |
         |     `-- VAR_INPUT 'c' cannot cross a component import: only a scalar or a STRING can
         |
-        | Note: an {extern} FUNCTION from a module other than WASI's takes scalars and STRINGs
+        | Note: an {extern} FUNCTION from a plain module, typed in WIT from its declaration, takes scalars and STRINGs
     ----'
     ");
 }
