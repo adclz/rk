@@ -243,12 +243,15 @@ A string in an error, or in a variant's case, is a text, which the import declar
 A list that comes back is written into arrays of the caller's, which the import declares as its `ARRAY[*]` `VAR_IN_OUT`s of any length, one for each field of an element: the preopened directories are `GET_DIRECTORIES(item0 := handles, item1 := paths, count => n)`.
 The host writes a list of scalars into its array itself, and each string of a list into its element of a `STRING` array; the scalar fields of a list of records are copied into their arrays once the call returns.
 A list longer than one of its arrays raises `a list the host gave is longer than its array`.
+A list of bytes passed in is an array of the caller's too, `ARRAY[*] OF BYTE`, and a `count` of its first elements that go: UDP's send is `send(self := socket, data := frame, count := 6, ...)`, whatever the frame's length.
+The import takes what the canonical ABI passes for a list, the elements' address, a `REF_TO BYTE`, and their number; the code rk-bindgen writes checks the count against the array first, and raises `a list passed to the host is longer than its array` past it.
+The host reads the bytes when the call starts, an async call's too, so the array is free again once the call that started it returns.
 
 A module's memory is as large as it is built, and never grows.
 What a host passes, and what an import gives past the buffers of the call, lands in a scratch area the build sizes: the largest of what one call takes, then the largest `STRING` or list the program declares and 64 KiB more.
 A string or a list too long by up to that much raises as above; one longer still traps.
 
-A `REF_TO` input is an address, where a record can come back too.
+A `REF_TO` input is an address, where a record can come back too, or where a list passed in starts.
 A STRUCT, an ARRAY or an instance input is refused (`E1502`): it would go as an address into rk's own layout, which no WASI function reads.
 
 A host function WIT declares an `async func` is imported by a FUNCTION_BLOCK, with `{extern async 'module' 'name'}`, and so are a stream's read or write and a future's read (below).
