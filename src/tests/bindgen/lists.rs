@@ -13,6 +13,7 @@ use insta::assert_snapshot;
 use rstest::rstest;
 use wasmtime::component::{Linker, Val};
 
+use super::variants::Later;
 use super::{checked, hosted};
 use crate::tests::cli::component_host::Host;
 use crate::tests::utils::with_db;
@@ -771,4 +772,250 @@ fn each_call_starts_the_scratch_over(mut with_db: RootDatabase) {
     );
     let trap = plc.try_scan(0).expect_err("a list past the room traps");
     assert!(trap.contains("unreachable"), "{trap}");
+}
+
+/// Lists of bytes passed in: a function that takes one, one that takes it
+/// beside a parameter WIT names `count`, and an async one whose parameters
+/// go past 4 values, in memory.
+const FRAMES: &str = r#"
+    package wasi:example@0.3.0;
+
+    interface frames {
+        send: func(data: list<u8>) -> u32;
+        tally: func(count: u32, data: list<u8>) -> u32;
+        post: async func(data: list<u8>, a: u32, b: u32, c: u32) -> u32;
+    }
+
+    world example {
+        import frames;
+    }
+"#;
+
+/// A list of bytes passed in is the caller's `ARRAY[*] OF BYTE` and the
+/// count of its first elements that go: the import takes their address, a
+/// `REF_TO BYTE`, and that count, as the canonical ABI passes a list, and
+/// the code before it checks the count against the array's bounds. The
+/// generated code names the count, so WIT's own `count` takes a `_`.
+#[rstest]
+fn a_list_passed_in_is_an_array_and_a_count(mut with_db: RootDatabase) {
+    assert_snapshot!(checked(&mut with_db, FRAMES), @r"
+    // wasi-example-frames.st
+    NAMESPACE INTERNAL Wasi
+    	NAMESPACE Example
+    		NAMESPACE Frames
+    			USING Std.Convert;
+
+    			/* `send` as the host takes it: its parameters as the canonical ABI passes
+    			   them, which `SEND` takes from the caller's array. */
+    			{extern 'wasi:example/frames@0.3.0' 'send'}
+    			FUNCTION PRIVATE SEND_RAW : UDINT
+    			VAR_INPUT
+    				data : REF_TO BYTE;
+    				count : UDINT;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION SEND : UDINT
+    			VAR_INPUT
+    				count : UDINT;
+    			END_VAR
+    			VAR_IN_OUT
+    				data : ARRAY[*] OF BYTE;
+    			END_VAR
+    				IF count > DINT_TO_UDINT(Std.Arrays.UPPER_BOUND(data, 1) - Std.Arrays.LOWER_BOUND(data, 1) + 1) THEN
+    					__RAISE('a list passed to the host is longer than its array');
+    				END_IF;
+    				SEND := SEND_RAW(data := REF(data[Std.Arrays.LOWER_BOUND(data, 1)]), count := count);
+    			END_FUNCTION
+
+    			/* `tally` as the host takes it: its parameters as the canonical ABI passes
+    			   them, which `TALLY` takes from the caller's array. */
+    			{extern 'wasi:example/frames@0.3.0' 'tally'}
+    			FUNCTION PRIVATE TALLY_RAW : UDINT
+    			VAR_INPUT
+    				count_ : UDINT;
+    				data : REF_TO BYTE;
+    				count : UDINT;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION TALLY : UDINT
+    			VAR_INPUT
+    				count_ : UDINT;
+    				count : UDINT;
+    			END_VAR
+    			VAR_IN_OUT
+    				data : ARRAY[*] OF BYTE;
+    			END_VAR
+    				IF count > DINT_TO_UDINT(Std.Arrays.UPPER_BOUND(data, 1) - Std.Arrays.LOWER_BOUND(data, 1) + 1) THEN
+    					__RAISE('a list passed to the host is longer than its array');
+    				END_IF;
+    				TALLY := TALLY_RAW(count_ := count_, data := REF(data[Std.Arrays.LOWER_BOUND(data, 1)]), count := count);
+    			END_FUNCTION
+
+    			/* `post` as the host takes it: its parameters as the canonical ABI passes
+    			   them, which `POST` takes from the caller's array. */
+    			{extern async 'wasi:example/frames@0.3.0' 'post'}
+    			FUNCTION_BLOCK POST_RAW
+    			VAR_INPUT
+    				data : REF_TO BYTE;
+    				count : UDINT;
+    				a : UDINT;
+    				b : UDINT;
+    				c : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				value : UDINT;
+    			END_VAR
+    			END_FUNCTION_BLOCK
+
+    			FUNCTION_BLOCK POST
+    			VAR_INPUT
+    				count : UDINT;
+    				a : UDINT;
+    				b : UDINT;
+    				c : UDINT;
+    			END_VAR
+    			VAR_IN_OUT
+    				data : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				value : UDINT;
+    			END_VAR
+    			VAR
+    				call : POST_RAW;
+    			END_VAR
+    				IF count > DINT_TO_UDINT(Std.Arrays.UPPER_BOUND(data, 1) - Std.Arrays.LOWER_BOUND(data, 1) + 1) THEN
+    					__RAISE('a list passed to the host is longer than its array');
+    				END_IF;
+    				call(data := REF(data[Std.Arrays.LOWER_BOUND(data, 1)]), count := count, a := a, b := b, c := c);
+    				DONE := call.DONE;
+    				IF call.DONE THEN
+    					value := call.value;
+    				END_IF;
+    			END_FUNCTION_BLOCK
+    		END_NAMESPACE
+    	END_NAMESPACE
+    END_NAMESPACE
+    ");
+}
+
+/// The host's side of [`FRAMES`]: each function gives back how many bytes
+/// it was given and their sum, as `count * 1000 + sum`; `tally` adds its
+/// own `count` in millions, `post` its three numbers' sum in hundreds of
+/// thousands, at a later scan.
+fn frames_host(linker: &mut Linker<Host>) {
+    fn digest(list: &Val) -> u32 {
+        let Val::List(bytes) = list else {
+            panic!("a list: {list:?}");
+        };
+        let sum: u32 = bytes
+            .iter()
+            .map(|byte| match byte {
+                Val::U8(byte) => u32::from(*byte),
+                other => panic!("a byte: {other:?}"),
+            })
+            .sum();
+        bytes.len() as u32 * 1000 + sum
+    }
+    let number = |value: &Val| match value {
+        Val::U32(number) => *number,
+        other => panic!("a number: {other:?}"),
+    };
+    let mut frames = linker
+        .instance("wasi:example/frames@0.3.0")
+        .expect("the interface");
+    frames
+        .func_new("send", |_, _, params, results| {
+            results[0] = Val::U32(digest(&params[0]));
+            Ok(())
+        })
+        .expect("a function of the host");
+    frames
+        .func_new("tally", move |_, _, params, results| {
+            results[0] = Val::U32(number(&params[0]) * 1_000_000 + digest(&params[1]));
+            Ok(())
+        })
+        .expect("a function of the host");
+    frames
+        .func_new_concurrent("post", move |_, _, params, results| {
+            Box::pin(async move {
+                Later(false).await;
+                let numbers: u32 = params[1..].iter().map(number).sum();
+                results[0] = Val::U32(numbers * 100_000 + digest(&params[0]));
+                Ok(())
+            })
+        })
+        .expect("an async function of the host");
+}
+
+/// What the host of [`FRAMES`] is given, checked: 1 when each call passed
+/// the bytes it should, and otherwise the number of the check that failed,
+/// negative.
+const SENT: &str = r#"
+    PROGRAM P
+    VAR_EXTERNAL output : DINT; END_VAR
+    VAR
+        step : INT;
+        frame : ARRAY[0..9] OF BYTE := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        shifted : ARRAY[5..7] OF BYTE := [100, 101, 102];
+        n : UDINT;
+        raised : BOOL;
+        why : STRING;
+        post : Wasi.Example.Frames.POST;
+    END_VAR
+        CASE step OF
+        0:
+            step := 9;
+            // The first four bytes of ten, none of them, all of them.
+            n := Wasi.Example.Frames.SEND(data := frame, count := 4);
+            IF n <> 4010 THEN output := -1; RETURN; END_IF;
+            n := Wasi.Example.Frames.SEND(data := frame, count := 0);
+            IF n <> 0 THEN output := -2; RETURN; END_IF;
+            n := Wasi.Example.Frames.SEND(data := frame, count := 10);
+            IF n <> 10055 THEN output := -3; RETURN; END_IF;
+            // An array that starts past 0 is passed from its first element.
+            n := Wasi.Example.Frames.SEND(data := shifted, count := 2);
+            IF n <> 2201 THEN output := -4; RETURN; END_IF;
+            // A count past the array raises before the call.
+            __TRY
+                n := Wasi.Example.Frames.SEND(data := shifted, count := 4);
+            __CATCH(why)
+                raised := TRUE;
+            __END_TRY;
+            IF NOT raised OR why <> 'a list passed to the host is longer than its array' THEN
+                output := -5; RETURN;
+            END_IF;
+            // WIT's own `count`, beside the list's.
+            n := Wasi.Example.Frames.TALLY(count_ := 7, data := frame, count := 3);
+            IF n <> 7003006 THEN output := -6; RETURN; END_IF;
+            step := 1;
+        1:
+            // Async, its parameters in memory: the address among them.
+            post(data := frame, count := 5, a := 1, b := 2, c := 3);
+            IF post.DONE THEN
+                step := 9;
+                IF post.value <> 605015 THEN output := -7; RETURN; END_IF;
+                output := 1;
+            END_IF;
+        END_CASE;
+    END_PROGRAM
+"#;
+
+/// The host reads each list of bytes from the caller's array, as many as
+/// the count says from its first element, in a call that waits and in one
+/// that does not; a count past the array raises before the call.
+#[rstest]
+fn the_host_reads_a_list_from_the_array_passed(mut with_db: RootDatabase) {
+    let mut plc = hosted(&mut with_db, FRAMES, SENT, frames_host);
+    let mut output = 0;
+    for _ in 0..20 {
+        output = plc.scan(0);
+        if output != 0 {
+            break;
+        }
+    }
+    assert_eq!(output, 1, "the number of the check that failed, negative");
 }

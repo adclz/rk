@@ -698,3 +698,82 @@ fn a_listener_hands_over_the_sockets_it_accepts(mut with_db: RootDatabase) {
         "the number of the check that failed, negative"
     );
 }
+
+/// A datagram sent from the first bytes of an array, as a frame is: the
+/// program sends 6 bytes of an 8-byte frame to a socket the test listens
+/// on, from a UDP socket of its own bound to the loopback address. 1 when
+/// the send ended well, and otherwise the number of the check that failed,
+/// negative; the test then reads what came.
+#[rstest]
+fn a_datagram_goes_from_the_first_bytes_of_an_array(mut with_db: RootDatabase) {
+    let receiver = std::net::UdpSocket::bind("127.0.0.1:0").expect("a socket of the test's own");
+    receiver
+        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .expect("a time limit");
+    let port = receiver.local_addr().expect("its address").port();
+    let bindings = generated(&world_of(&["wasi:sockets/types@0.3.0"]));
+    let program = r#"
+        PROGRAM P
+        VAR_EXTERNAL output : DINT; END_VAR
+        VAR
+            step : INT;
+            failed : BOOL;
+            socket : UDINT;
+            loopback, target : Wasi.Sockets.Types.IP_SOCKET_ADDRESS;
+            frame : ARRAY[0..7] OF BYTE := [16#12, 16#34, 16#00, 16#00, 16#00, 16#06, 16#FF, 16#FF];
+            send : Wasi.Sockets.Types.UDP_SOCKET_SEND;
+        END_VAR
+            // 127.0.0.1, port 0: the host picks one.
+            loopback.kind := Wasi.Sockets.Types.IP_SOCKET_ADDRESS_KIND#IPV4;
+            loopback.ipv4.address.item0 := 127;
+            loopback.ipv4.address.item3 := 1;
+            CASE step OF
+            0:
+                step := 9;
+                Wasi.Sockets.Types.UDP_SOCKET_CREATE(
+                    address_family := Wasi.Sockets.Types.IP_ADDRESS_FAMILY#IPV4,
+                    failed => failed, value => socket);
+                IF failed THEN output := -1; RETURN; END_IF;
+                Wasi.Sockets.Types.UDP_SOCKET_BIND(self := socket, local_address := loopback,
+                    failed => failed);
+                IF failed THEN output := -2; RETURN; END_IF;
+                step := 1;
+            1:
+                target := loopback;
+                target.ipv4.port := PORT;
+                send(self := socket, data := frame, count := 6,
+                    remote_address_is_some := TRUE, remote_address := target);
+                IF send.DONE THEN
+                    step := 9;
+                    IF send.failed THEN output := -3; RETURN; END_IF;
+                    Wasi.Sockets.Types.UDP_SOCKET_DROP(handle := socket);
+                    output := 1;
+                END_IF;
+            END_CASE;
+        END_PROGRAM
+    "#
+    .replace("PORT", &port.to_string());
+    // WASI's sockets are tokio's: the host sends within its runtime while
+    // the scans check on it.
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .expect("a tokio runtime");
+    let _within = runtime.enter();
+    // What a guest may bind and send to is the host's to allow: here, this
+    // machine alone.
+    let mut ctx = WasiCtxBuilder::new();
+    ctx.allow_udp(true)
+        .socket_addr_check(|address, _| Box::pin(async move { address.ip().is_loopback() }));
+    let mut plc = plc_with(&mut with_db, &bindings, &program, ctx.build());
+    assert_eq!(
+        scan_until(&mut plc, 1, 500),
+        1,
+        "the number of the check that failed, negative"
+    );
+    let mut came = [0u8; 64];
+    let (length, from) = receiver.recv_from(&mut came).expect("the datagram");
+    assert_eq!(&came[..length], &[0x12, 0x34, 0x00, 0x00, 0x00, 0x06]);
+    assert!(from.ip().is_loopback(), "{from}");
+}

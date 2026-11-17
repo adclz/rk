@@ -1215,7 +1215,7 @@ fn failed(which: u32) -> Val {
 }
 
 /// A future that is not ready the first time it is asked.
-struct Later(bool);
+pub(super) struct Later(pub(super) bool);
 
 impl Future for Later {
     type Output = ();

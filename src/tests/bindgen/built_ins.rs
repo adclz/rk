@@ -102,7 +102,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_VAR
     			VAR_OUTPUT
     				DONE : BOOL;
-    				data : ARRAY[0..4095] OF BYTE;
+    				data : ARRAY[0..8191] OF BYTE;
     				read : UDINT;
     				closed : BOOL;
     			END_VAR
@@ -241,7 +241,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_VAR
     			VAR_OUTPUT
     				DONE : BOOL;
-    				data : ARRAY[0..4095] OF BYTE;
+    				data : ARRAY[0..8191] OF BYTE;
     				read : UDINT;
     				closed : BOOL;
     			END_VAR
@@ -440,7 +440,7 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     			END_VAR
     			VAR_OUTPUT
     				DONE : BOOL;
-    				data : ARRAY[0..4095] OF BYTE;
+    				data : ARRAY[0..8191] OF BYTE;
     				read : UDINT;
     				closed : BOOL;
     			END_VAR
@@ -1473,7 +1473,7 @@ fn std_s_built_ins() {
     			END_VAR
     			VAR_OUTPUT
     				DONE : BOOL;
-    				data : ARRAY[0..4095] OF BYTE;
+    				data : ARRAY[0..8191] OF BYTE;
     				read : UDINT;
     				closed : BOOL;
     			END_VAR

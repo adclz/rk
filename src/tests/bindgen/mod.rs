@@ -97,6 +97,7 @@ pub(super) fn std_convert() -> String {
         "LINT_TO_LWORD",
         "REAL_TO_DWORD",
         "LREAL_TO_LWORD",
+        "DINT_TO_UDINT",
     ] {
         let start = convert
             .find(&format!("\tFUNCTION {name}:"))
@@ -111,9 +112,30 @@ pub(super) fn std_convert() -> String {
     text
 }
 
+/// The bounds of an array, `LOWER_BOUND` and `UPPER_BOUND`, cut out of
+/// `Std.Arrays` as the standard library writes them, which the code that
+/// passes a list from the caller's array checks its count with.
+pub(super) fn std_arrays() -> String {
+    let arrays = include_str!("../../../stdlib/Arrays.st");
+    let mut text = String::from("NAMESPACE Std.Arrays\n");
+    for name in ["LOWER_BOUND", "UPPER_BOUND"] {
+        let start = arrays
+            .find(&format!("\tFUNCTION {name}:"))
+            .unwrap_or_else(|| panic!("`Std.Arrays` has `{name}`"));
+        let end = arrays[start..]
+            .find("END_FUNCTION")
+            .expect("the function ends");
+        text.push_str(&arrays[start..start + end]);
+        text.push_str("END_FUNCTION\n");
+    }
+    text.push_str("END_NAMESPACE\n");
+    text
+}
+
 /// The diagnostics rk reports on `files` and `extra`: none when it takes
 /// them, and then the workspace also lowers and validates. Code that
-/// converts what it reads is taken with `Std.Convert` as its library.
+/// converts what it reads is taken with `Std.Convert` as its library, and
+/// code that passes a list with the bounds of `Std.Arrays`.
 pub(super) fn reported(
     db: &mut RootDatabase,
     files: &[rk_bindgen::File],
@@ -121,8 +143,16 @@ pub(super) fn reported(
 ) -> String {
     let mut texts: Vec<&str> = files.iter().map(|file| file.text.as_str()).collect();
     texts.extend(extra);
+    let mut libraries = Vec::new();
     if texts.iter().any(|text| text.contains("USING Std.Convert;")) {
-        crate::tests::utils::add_library_sources(db, &[&std_convert()]);
+        libraries.push(std_convert());
+    }
+    if texts.iter().any(|text| text.contains("Std.Arrays.")) {
+        libraries.push(std_arrays());
+    }
+    if !libraries.is_empty() {
+        let libraries: Vec<&str> = libraries.iter().map(String::as_str).collect();
+        crate::tests::utils::add_library_sources(db, &libraries);
     }
     test_diagnostics(db, &texts)
 }

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! What ST cannot pass yet is left out, and the file says why at its end:
-//! a list passed in, a list of lists, more values than the canonical ABI
-//! passes as values. The rest of the interface is generated. A function the
+//! a list of anything but bytes passed in, a list of lists, more values
+//! than the canonical ABI passes as values. The rest of the interface is generated. A function the
 //! world imports itself, outside an interface, stops the generator.
 
 use db::RootDatabase;
@@ -13,8 +13,8 @@ use rstest::rstest;
 use super::checked;
 use crate::tests::utils::with_db;
 
-/// A list passed in, and a list of lists given back, are what ST cannot
-/// pass yet; what is left of the interface is generated.
+/// A list of numbers passed in, and a list of lists given back, are what
+/// ST cannot pass yet; what is left of the interface is generated.
 #[rstest]
 fn what_st_cannot_pass_yet(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
@@ -22,7 +22,7 @@ fn what_st_cannot_pass_yet(mut with_db: RootDatabase) {
 
         interface leftovers {
             type bytes = list<u8>;
-            send: func(data: list<u8>);
+            send: func(data: list<u32>);
             names: func() -> list<list<string>>;
             kept: func(x: u32) -> u32;
         }
