@@ -39,10 +39,10 @@ impl<'db> InitInference<'db> {
     /// The import an `{extern}` FUNCTION or FUNCTION_BLOCK is, as a
     /// component names and types it: its module a WIT name or an interface,
     /// its name a WIT name (E1512), a block's `DONE` declared as it must be
-    /// (E1514), and for a module other than WASI's, a WIT name
+    /// (E1514), and for a plain module, a WIT name
     /// for each parameter and each field of its result (E1512) and, for a
     /// FUNCTION, 16 values at most (E1502): an async call passes more in
-    /// memory. WASI's functions keep the types WASI's WIT gives them.
+    /// memory. A package's functions keep the types its WIT gives them.
     pub(crate) fn check_extern_import(&mut self, db: &'db dyn WorkspaceDataBase) {
         use crate::check::errors::e15_pragma::{ExternForbiddenKind, PragmaError};
         use crate::hir_def::expressions::spec::ElementarySpec;
@@ -73,11 +73,12 @@ impl<'db> InitInference<'db> {
                 .to_diagnostic(db, file),
             );
         }
-        // A WASI import may also be a stream's or a future's built-in,
-        // under the name of the function it serves, a resource's function,
-        // or the drop of a resource's handle: only WASI's interfaces have
-        // resources, since a host module's WIT is written from declarations.
-        let builtin = match pragma.is_wasi() {
+        // An import from a package's interface may also be a stream's or a
+        // future's built-in, under the name of the function it serves, a
+        // resource's function, or the drop of a resource's handle: only a
+        // package's interfaces have resources, since a plain module's WIT is
+        // written from declarations.
+        let builtin = match pragma.names_a_package() {
             true => crate::hir_def::pous::pragma::builtin_name(&pragma.name),
             false => None,
         };
@@ -85,7 +86,7 @@ impl<'db> InitInference<'db> {
             crate::hir_def::pous::pragma::resource_function_name(&pragma.name).is_some();
         let resource_drop =
             crate::hir_def::pous::pragma::resource_drop_name(&pragma.name).is_some();
-        if (resource_function || resource_drop) && !pragma.is_wasi() {
+        if (resource_function || resource_drop) && !pragma.names_a_package() {
             self.errors.push(
                 PragmaError::ExternResourceName {
                     name: pragma.name.clone(),
@@ -108,7 +109,7 @@ impl<'db> InitInference<'db> {
             );
         }
         // A resource's drop returns at once, and takes the handle it drops.
-        if resource_drop && pragma.is_wasi() {
+        if resource_drop && pragma.names_a_package() {
             use crate::check::errors::e15_pragma::BuiltinMisfit;
             if block.is_some() {
                 self.errors.push(
@@ -187,7 +188,7 @@ impl<'db> InitInference<'db> {
             self.errors
                 .push(PragmaError::DoneOutput { block, found }.to_diagnostic(db, file));
         }
-        if pragma.is_wasi() {
+        if pragma.names_a_package() {
             return;
         }
         // A block's DONE is no part of its call.

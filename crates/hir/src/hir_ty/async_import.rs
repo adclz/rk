@@ -3,8 +3,8 @@
 
 //! An `{extern async 'module' 'name'}` FUNCTION_BLOCK: an async import, a
 //! call its instance holds from one scan to the next, never waiting for it.
-//! The declaration says it is async: rk reads WIT it does not know yet only
-//! at the build, which checks it against WASI's.
+//! The declaration says it is async: rk reads the WIT of the package it is
+//! imported from only at the build, which checks it against that WIT.
 //!
 //! Each call of the block takes its call one step: it starts the call when
 //! none is running, and otherwise checks it. Its VAR_OUTPUT `DONE : BOOL` is
