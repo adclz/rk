@@ -123,6 +123,24 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION_BLOCK
 
+    			/* Writes the `count` bytes from the one `data` points at, as many as the
+    			   reader takes: `written` of them, after `DONE`. The host reads them where
+    			   they are while the write runs, so they stay there, unchanged, until
+    			   `DONE`. `closed` is TRUE once the reader has let go. */
+    			{extern async 'wasi:example/pipe@0.3.0' '[stream-write-0]send'}
+    			FUNCTION_BLOCK BYTES_STREAM_WRITE_ARRAY
+    			VAR_INPUT
+    				stream : UDINT;
+    				data : REF_TO BYTE;
+    				count : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				written : UDINT;
+    				closed : BOOL;
+    			END_VAR
+    			END_FUNCTION_BLOCK
+
     			/* Lets go of the stream's reading end, `stream`. */
     			{extern 'wasi:example/pipe@0.3.0' '[stream-drop-readable-0]send'}
     			FUNCTION BYTES_STREAM_DROP_READABLE
@@ -191,7 +209,8 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     /* Not generated:
        - `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel
          blocks the scan.
-       - `RESULT_FUTURE_WRITE`: a future's write is not imported yet.
+       - `RESULT_FUTURE_WRITE`: no function of the interface takes a future of
+         `result<_, error-code>` from the program.
        - `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel
          blocks the scan. */
 
@@ -262,6 +281,24 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION_BLOCK
 
+    			/* Writes the `count` bytes from the one `data` points at, as many as the
+    			   reader takes: `written` of them, after `DONE`. The host reads them where
+    			   they are while the write runs, so they stay there, unchanged, until
+    			   `DONE`. `closed` is TRUE once the reader has let go. */
+    			{extern async 'wasi:example/other@0.3.0' '[stream-write-0]relay'}
+    			FUNCTION_BLOCK BYTES_STREAM_WRITE_ARRAY
+    			VAR_INPUT
+    				stream : UDINT;
+    				data : REF_TO BYTE;
+    				count : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				written : UDINT;
+    				closed : BOOL;
+    			END_VAR
+    			END_FUNCTION_BLOCK
+
     			/* Lets go of the stream's reading end, `stream`. */
     			{extern 'wasi:example/other@0.3.0' '[stream-drop-readable-0]relay'}
     			FUNCTION BYTES_STREAM_DROP_READABLE
@@ -322,7 +359,8 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     /* Not generated:
        - `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel
          blocks the scan.
-       - `RESULT_FUTURE_WRITE`: a future's write is not imported yet.
+       - `RESULT_FUTURE_WRITE`: no function of the interface takes a future of
+         `result<_, error-code>` from the program.
        - `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel
          blocks the scan. */
     ");
@@ -463,6 +501,24 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION_BLOCK
 
+    			/* Writes the `count` bytes from the one `data` points at, as many as the
+    			   reader takes: `written` of them, after `DONE`. The host reads them where
+    			   they are while the write runs, so they stay there, unchanged, until
+    			   `DONE`. `closed` is TRUE once the reader has let go. */
+    			{extern async 'wasi:example/copy@0.3.0' '[stream-write-1][method]channel.transfer'}
+    			FUNCTION_BLOCK BYTES_STREAM_WRITE_ARRAY
+    			VAR_INPUT
+    				stream : UDINT;
+    				data : REF_TO BYTE;
+    				count : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				written : UDINT;
+    				closed : BOOL;
+    			END_VAR
+    			END_FUNCTION_BLOCK
+
     			/* Lets go of the stream's reading end, `stream`. */
     			{extern 'wasi:example/copy@0.3.0' '[stream-drop-readable-1][method]channel.transfer'}
     			FUNCTION BYTES_STREAM_DROP_READABLE
@@ -575,7 +631,8 @@ fn a_stream_of_handles_is_read_into_an_array(mut with_db: RootDatabase) {
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - `CONNECTION_STREAM_WRITE`: a stream's write moves bytes only.
+       - `CONNECTION_STREAM_WRITE`: no function of the interface takes a stream
+         of `own<connection>` from the program.
        - `CONNECTION_STREAM_CANCEL_READ` and `CONNECTION_STREAM_CANCEL_WRITE`:
          a cancel blocks the scan. */
     ");
@@ -778,6 +835,51 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
          bytes or handles only, and its write bytes only.
        - `EVENT_STREAM_CANCEL_READ` and `EVENT_STREAM_CANCEL_WRITE`: a cancel
          blocks the scan. */
+    ");
+}
+
+/// A write left out says why. Where a function of the interface takes a
+/// stream of handles or a future from the program, it is what rk does not
+/// write yet; where none does, a write would have no reader.
+#[rstest]
+fn a_write_left_out_says_why(mut with_db: RootDatabase) {
+    let bindings = generated(
+        r#"
+        package wasi:example@0.3.0;
+
+        interface hand {
+            resource connection;
+            accept: func() -> stream<connection>;
+            hand-over: func(connections: stream<connection>);
+            later: func() -> future<u32>;
+            give: func(value: future<u32>);
+        }
+
+        interface keep {
+            resource connection;
+            accept: func() -> stream<connection>;
+            later: func() -> future<u32>;
+        }
+
+        world example {
+            import hand;
+            import keep;
+        }
+    "#,
+    );
+    let (mir, module) = built(&mut with_db, &bindings.files, &[]);
+    assert_abi(&bindings, &mir, &module);
+    assert_snapshot!(summary(&bindings.files), @r"
+    wasi-example-hand.st: CONNECTION, CONNECTION_DROP, ACCEPT, CONNECTION_STREAM_NEW, CONNECTION_STREAM_READ, CONNECTION_STREAM_DROP_READABLE, CONNECTION_STREAM_DROP_WRITABLE, HAND_OVER, LATER, U32_FUTURE_NEW, U32_FUTURE_READ, U32_FUTURE_DROP_READABLE, U32_FUTURE_DROP_WRITABLE, GIVE
+        left out `CONNECTION_STREAM_WRITE`: a stream's write moves bytes only
+        left out `CONNECTION_STREAM_CANCEL_READ` and `CONNECTION_STREAM_CANCEL_WRITE`: a cancel blocks the scan
+        left out `U32_FUTURE_WRITE`: a future's write is not imported yet
+        left out `U32_FUTURE_CANCEL_READ` and `U32_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
+    wasi-example-keep.st: CONNECTION, CONNECTION_DROP, ACCEPT, CONNECTION_STREAM_NEW, CONNECTION_STREAM_READ, CONNECTION_STREAM_DROP_READABLE, CONNECTION_STREAM_DROP_WRITABLE, LATER, U32_FUTURE_NEW, U32_FUTURE_READ, U32_FUTURE_DROP_READABLE, U32_FUTURE_DROP_WRITABLE
+        left out `CONNECTION_STREAM_WRITE`: no function of the interface takes a stream of `own<connection>` from the program
+        left out `CONNECTION_STREAM_CANCEL_READ` and `CONNECTION_STREAM_CANCEL_WRITE`: a cancel blocks the scan
+        left out `U32_FUTURE_WRITE`: no function of the interface takes a future of `u32` from the program
+        left out `U32_FUTURE_CANCEL_READ` and `U32_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
     ");
 }
 
@@ -1160,27 +1262,34 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - `UNIT_FUTURE_WRITE`: a future's write is not imported yet.
+       - `UNIT_FUTURE_WRITE`: no function of the interface takes a future from
+         the program.
        - `UNIT_FUTURE_CANCEL_READ` and `UNIT_FUTURE_CANCEL_WRITE`: a cancel
          blocks the scan.
-       - `U32_FUTURE_WRITE`: a future's write is not imported yet.
+       - `U32_FUTURE_WRITE`: no function of the interface takes a future of
+         `u32` from the program.
        - `U32_FUTURE_CANCEL_READ` and `U32_FUTURE_CANCEL_WRITE`: a cancel
          blocks the scan.
-       - `RESULT_FUTURE_WRITE`: a future's write is not imported yet.
+       - `RESULT_FUTURE_WRITE`: no function of the interface takes a future of
+         `result<_, error-code>` from the program.
        - `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel
          blocks the scan.
-       - `OPTION_S64_FUTURE_WRITE`: a future's write is not imported yet.
+       - `OPTION_S64_FUTURE_WRITE`: no function of the interface takes a future
+         of `option<s64>` from the program.
        - `OPTION_S64_FUTURE_CANCEL_READ` and `OPTION_S64_FUTURE_CANCEL_WRITE`:
          a cancel blocks the scan.
-       - `POINT_FUTURE_WRITE`: a future's write is not imported yet.
+       - `POINT_FUTURE_WRITE`: no function of the interface takes a future of
+         `point` from the program.
        - `POINT_FUTURE_CANCEL_READ` and `POINT_FUTURE_CANCEL_WRITE`: a cancel
          blocks the scan.
        - `STRING_FUTURE_READ`: its value holds a string, which a read cannot
          give back yet.
-       - `STRING_FUTURE_WRITE`: a future's write is not imported yet.
+       - `STRING_FUTURE_WRITE`: no function of the interface takes a future of
+         `string` from the program.
        - `STRING_FUTURE_CANCEL_READ` and `STRING_FUTURE_CANCEL_WRITE`: a cancel
          blocks the scan.
-       - `RESULT_U64_FUTURE_WRITE`: a future's write is not imported yet.
+       - `RESULT_U64_FUTURE_WRITE`: no function of the interface takes a future
+         of `result<u64, error-code>` from the program.
        - `RESULT_U64_FUTURE_CANCEL_READ` and `RESULT_U64_FUTURE_CANCEL_WRITE`:
          a cancel blocks the scan. */
     ");
@@ -1402,10 +1511,12 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - `STATE_FUTURE_WRITE`: a future's write is not imported yet.
+       - `STATE_FUTURE_WRITE`: no function of the interface takes a future of
+         `state` from the program.
        - `STATE_FUTURE_CANCEL_READ` and `STATE_FUTURE_CANCEL_WRITE`: a cancel
          blocks the scan.
-       - `REPORT_FUTURE_WRITE`: a future's write is not imported yet.
+       - `REPORT_FUTURE_WRITE`: no function of the interface takes a future of
+         `report` from the program.
        - `REPORT_FUTURE_CANCEL_READ` and `REPORT_FUTURE_CANCEL_WRITE`: a cancel
          blocks the scan. */
     ");
@@ -1498,6 +1609,24 @@ fn std_s_built_ins() {
     			END_VAR
     			END_FUNCTION_BLOCK
 
+    			/* Writes the `count` bytes from the one `data` points at, as many as the
+    			   reader takes: `written` of them, after `DONE`. The host reads them where
+    			   they are while the write runs, so they stay there, unchanged, until
+    			   `DONE`. `closed` is TRUE once the reader has let go. */
+    			{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+    			FUNCTION_BLOCK BYTES_STREAM_WRITE_ARRAY
+    			VAR_INPUT
+    				stream : UDINT;
+    				data : REF_TO BYTE;
+    				count : UDINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				written : UDINT;
+    				closed : BOOL;
+    			END_VAR
+    			END_FUNCTION_BLOCK
+
     			/* Lets go of the stream's reading end, `stream`. */
     			{extern 'wasi:cli/stdout@0.3.0' '[stream-drop-readable-0]write-via-stream'}
     			FUNCTION BYTES_STREAM_DROP_READABLE
@@ -1558,7 +1687,8 @@ fn std_s_built_ins() {
     /* Not generated:
        - `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel
          blocks the scan.
-       - `RESULT_FUTURE_WRITE`: a future's write is not imported yet.
+       - `RESULT_FUTURE_WRITE`: no function of the interface takes a future of
+         `result<_, error-code>` from the program.
        - `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel
          blocks the scan. */
     ");
