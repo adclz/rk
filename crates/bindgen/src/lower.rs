@@ -19,6 +19,12 @@
 //! scalars or strings, is passed field by field instead, each field a
 //! parameter of the import named after the input and the field
 //! (`when_seconds := when.seconds`).
+//!
+//! A list of bytes passed in is the caller's `ARRAY[*] OF BYTE` and a
+//! `count` of its first elements that go: the import takes what the
+//! canonical ABI passes, the address of the elements, a `REF_TO BYTE`, and
+//! their number, and the code written here checks that the count stays in
+//! the array.
 
 use wit_parser::abi::{FlatTypes, WasmType};
 use wit_parser::{Function, Int, Resolve, SizeAlign, Type, TypeDefKind, TypeId, TypeOwner};
@@ -122,6 +128,11 @@ struct Put {
     kind: Kind,
 }
 
+/// The input that says how many of the first elements of a list passed in
+/// go: a `_` after a parameter WIT names so, as after any name the
+/// generated code uses.
+pub const LIST_COUNT: &str = "count";
+
 /// A function's parameters, as a call gives them and as its import takes
 /// them.
 #[derive(Debug, Default)]
@@ -129,6 +140,9 @@ pub struct Lowered {
     /// The inputs a call gives: each value by its name. One that is only
     /// passed with its case starts at zero.
     pub inputs: Vec<Var>,
+    /// The arrays a call gives, a list of bytes passed in each, whose
+    /// elements the import reads in place.
+    pub in_outs: Vec<Var>,
     /// The import's parameters, in order: an input passed as it is, or a
     /// word values are packed into.
     pub params: Vec<Var>,
@@ -144,6 +158,19 @@ pub struct Lowered {
     converts: bool,
 }
 
+/// Whether `ty` is a list of bytes, through the aliases that name it.
+fn byte_list(resolve: &Resolve, ty: Type) -> bool {
+    let mut ty = shapes::through_uses(resolve, ty);
+    while let Type::Id(id) = ty {
+        match &resolve.types[id].kind {
+            TypeDefKind::Type(inner) => ty = *inner,
+            TypeDefKind::List(Type::U8) => return true,
+            _ => return false,
+        }
+    }
+    false
+}
+
 impl Lowered {
     /// Whether the code that packs the inputs converts a value, and needs
     /// `Std.Convert`.
@@ -155,6 +182,11 @@ impl Lowered {
     /// then not the inputs a call gives.
     pub fn packs(&self) -> bool {
         !self.slots.is_empty()
+    }
+
+    /// Whether a list of bytes is passed in, from the caller's array.
+    pub fn lists(&self) -> bool {
+        !self.in_outs.is_empty()
     }
 
     /// Whether the import's parameters are not the inputs a call gives:
@@ -178,9 +210,20 @@ impl Lowered {
         self.slots.iter().map(Slot::var).collect()
     }
 
-    /// Writes the statements that pack the inputs into the words: each
-    /// word at zero first, then each value that is passed.
+    /// Writes the statements that check a list's count against its array,
+    /// then pack the inputs into the words: each word at zero first, then
+    /// each value that is passed.
     pub(crate) fn write(&self, out: &mut Out) {
+        for array in &self.in_outs {
+            out.line(&format!(
+                "IF {LIST_COUNT} > DINT_TO_UDINT(Std.Arrays.UPPER_BOUND({0}, 1) - Std.Arrays.LOWER_BOUND({0}, 1) + 1) THEN",
+                array.name
+            ));
+            out.depth += 1;
+            out.line("__RAISE('a list passed to the host is longer than its array');");
+            out.depth -= 1;
+            out.line("END_IF;");
+        }
         for slot in &self.slots {
             let zero = if slot.float { "0.0" } else { "0" };
             out.line(&format!("{} := {zero};", slot.name));
@@ -218,6 +261,32 @@ pub fn lower(
     };
     for (param, (offset, _)) in function.params.iter().zip(sizes.field_offsets(&types)) {
         let offset = offset.size_wasm32();
+        // A list of bytes: the address of the caller's elements, then how
+        // many go, where the canonical ABI has a list's.
+        if byte_list(resolve, param.ty) {
+            if in_memory {
+                lay(4, 4, Some(offset));
+                lay(4, 4, Some(offset + 4));
+            }
+            lowered.flat += 2;
+            let array = scope.variable(&param.name);
+            let var = |name: &str, ty: &str| Var {
+                name: name.to_string(),
+                ty: ty.to_string(),
+                flat: 1,
+                start: None,
+            };
+            lowered.params.push(var(&array, "REF_TO BYTE"));
+            lowered.params.push(var(LIST_COUNT, "UDINT"));
+            lowered.sources.push((
+                array.clone(),
+                format!("REF({array}[Std.Arrays.LOWER_BOUND({array}, 1)])"),
+            ));
+            lowered.in_outs.push(var(&array, "ARRAY[*] OF BYTE"));
+            lowered.inputs.push(var(LIST_COUNT, "UDINT"));
+            lowered.converts = true;
+            continue;
+        }
         // A scalar or a string is passed as it is, and so is a record or a
         // tuple of them passed as values, field after field.
         let single = shapes::single(resolve, &param.name, param.ty, here, scope);

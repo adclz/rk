@@ -56,7 +56,7 @@ use wit_parser::{
 };
 
 use names::Scope;
-use shapes::{HANDLES_AT_ONCE, STRING_LIMIT, Shape, Var};
+use shapes::{BYTES_AT_ONCE, HANDLES_AT_ONCE, STRING_LIMIT, Shape, Var};
 
 /// The interfaces `Std` reaches WASI through, as a world for [`resolve`].
 pub const STD_WORLD: &str = "package rk:std-wasi;
@@ -867,6 +867,10 @@ impl Generator<'_> {
             if asynchronous {
                 own.push("DONE".to_string());
             }
+            // A list's count is the generated code's name for it.
+            if lowered.lists() {
+                own.push(lower::LIST_COUNT.to_string());
+            }
             if apart {
                 if asynchronous {
                     own.push("call".to_string());
@@ -976,9 +980,10 @@ impl Generator<'_> {
         };
         // What the FUNCTION does to the import's parameters: packs values
         // into words, or passes the fields of a STRUCT one by one.
-        let packs = match lowered.packs() {
-            true => "packs",
-            false => "passes field by field",
+        let packs = match (lowered.packs(), lowered.lists()) {
+            (true, _) => "packs",
+            (false, true) => "takes from the caller's array",
+            (false, false) => "passes field by field",
         };
         // The values of a result the import gives as they are, and where
         // the POU puts them: in its own value, or in its output.
@@ -1067,7 +1072,7 @@ impl Generator<'_> {
             false => {
                 out.line(&format!("FUNCTION {pou}{pou_value}"));
                 out.vars("VAR_INPUT", &lowered.inputs);
-                out.vars("VAR_IN_OUT", &own_text);
+                out.vars("VAR_IN_OUT", &[lowered.in_outs.clone(), own_text].concat());
                 out.vars("VAR_OUTPUT", &[outputs.to_vec(), own_texts].concat());
                 let mut locals = words;
                 if let Returned::Words(_) = returned {
@@ -1104,6 +1109,7 @@ impl Generator<'_> {
             true => {
                 out.line(&format!("FUNCTION_BLOCK {pou}"));
                 out.vars("VAR_INPUT", &lowered.inputs);
+                out.vars("VAR_IN_OUT", &lowered.in_outs);
                 out.vars("VAR_OUTPUT", &[vec![done()], outputs.to_vec()].concat());
                 let mut locals = words;
                 locals.push(Var {
@@ -1614,7 +1620,7 @@ fn built_in_set(
                 ("READ", format!("STRING[{STRING_LIMIT}]")),
                 (
                     "READ_ARRAY",
-                    format!("ARRAY[0..{}] OF BYTE", STRING_LIMIT - 1),
+                    format!("ARRAY[0..{}] OF BYTE", BYTES_AT_ONCE - 1),
                 ),
             ] {
                 out.prose(

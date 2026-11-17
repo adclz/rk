@@ -20,6 +20,13 @@ use crate::names::{self, Scope};
 /// long as Linux allows, and what `Std.Console` writes at once.
 pub const STRING_LIMIT: u32 = 4096;
 
+/// The most bytes a generated stream read takes at once into an ARRAY OF
+/// BYTE: a whole message of most protocols a PLC speaks over TCP. A longer
+/// one comes over several calls. A read or a write through a STRING moves
+/// [`STRING_LIMIT`] at most, as long as any STRING a generated declaration
+/// takes.
+pub const BYTES_AT_ONCE: u32 = 8192;
+
 /// The most handles a generated stream read takes at once: what a
 /// listener's connections need, which come one by one.
 pub const HANDLES_AT_ONCE: u32 = 16;
