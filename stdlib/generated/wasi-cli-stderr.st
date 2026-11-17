@@ -52,7 +52,7 @@ NAMESPACE INTERNAL Wasi
 			END_VAR
 			VAR_OUTPUT
 				DONE : BOOL;
-				data : ARRAY[0..4095] OF BYTE;
+				data : ARRAY[0..8191] OF BYTE;
 				read : UDINT;
 				closed : BOOL;
 			END_VAR
