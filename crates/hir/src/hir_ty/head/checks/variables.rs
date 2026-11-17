@@ -417,8 +417,53 @@ impl<'db> InitInference<'db> {
         let extern_wasi = extern_fn
             .map(|(_, wasi)| wasi)
             .or(extern_block.map(|(_, wasi)| wasi));
-        // A stream read's bytes land in a STRING or an ARRAY OF BYTE, its
-        // buffer, which the block holds rather than the host returns: its
+        // A WASI FUNCTION gives a string by writing it into the STRING a
+        // call passes for it, its first STRING VAR_IN_OUT: no parameter of
+        // the import, whose types are WASI's.
+        let string_in_out = |var: &crate::hir_def::pous::variable::VariableDecl<'db>| {
+            var.kind(db) == crate::hir_def::pous::variable::VariableKind::InOut
+                && matches!(
+                    var.spec(db).infer(db).normalize(db),
+                    Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String)
+                )
+        };
+        let wasi_function = extern_fn.filter(|(_, wasi)| *wasi).map(|(func, _)| func);
+        let host_string =
+            wasi_function.and_then(|func| func.variables(db).iter().copied().find(string_in_out));
+        // It gives a list into the arrays a call passes for it, its
+        // ARRAY[*] VAR_IN_OUTs of scalars or STRINGs, one per field of an
+        // element: no parameters of the import either.
+        let list_array = |var: &crate::hir_def::pous::variable::VariableDecl<'db>| {
+            var.kind(db) == crate::hir_def::pous::variable::VariableKind::InOut
+                && var.conformand(db).is_some_and(|conformand| {
+                    conformand.rank(db) == 1
+                        && conformand.of_type(db).is_some_and(|of| {
+                            let element = of.infer(db);
+                            extern_scalar(db, element)
+                                || matches!(
+                                    element.normalize(db),
+                                    Type::Elementary(
+                                        crate::hir_def::expressions::spec::ElementarySpec::String
+                                    )
+                                )
+                        })
+                })
+        };
+        let gives_list =
+            wasi_function.is_some_and(|func| func.variables(db).iter().any(list_array));
+        // It gives the text of an error, or of a case, into its first STRING
+        // VAR_OUTPUT, cut to fit: no field of the import's result either.
+        let string_output = |var: &crate::hir_def::pous::variable::VariableDecl<'db>| {
+            var.kind(db) == crate::hir_def::pous::variable::VariableKind::Output
+                && matches!(
+                    var.spec(db).infer(db).normalize(db),
+                    Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String)
+                )
+        };
+        let host_text =
+            wasi_function.and_then(|func| func.variables(db).iter().copied().find(string_output));
+        // A stream read's bytes or handles land in its buffer, a STRING or
+        // an array, which the block holds rather than the host returns: its
         // outputs are its built-in's, which E1516 checks.
         let stream_read = extern_block.is_some_and(|(fb, _)| {
             fb.extern_pragma(db).is_some_and(|(_, pragma)| {
@@ -829,6 +874,19 @@ impl<'db> InitInference<'db> {
                 // Either returns a record of its VAR_OUTPUTs and its return
                 // value.
                 let forbidden = match var.kind(db) {
+                    VariableKind::InOut if wasi_function.is_some() && list_array(var) => None,
+                    VariableKind::InOut
+                        if wasi_function.is_some() && var.conformand(db).is_some() =>
+                    {
+                        Some(ExternForbiddenKind::ListElement)
+                    }
+                    VariableKind::InOut if host_string == Some(*var) && gives_list => {
+                        Some(ExternForbiddenKind::StringBesideList)
+                    }
+                    VariableKind::InOut if host_string == Some(*var) => None,
+                    VariableKind::InOut if host_string.is_some() && string_in_out(var) => {
+                        Some(ExternForbiddenKind::SecondString)
+                    }
                     VariableKind::InOut => Some(ExternForbiddenKind::InOut),
                     VariableKind::Input if var.conformand(db).is_some() => {
                         Some(ExternForbiddenKind::Conformand)
@@ -844,6 +902,15 @@ impl<'db> InitInference<'db> {
                     },
                     // E1516 checks every output of a stream read.
                     VariableKind::Output if stream_read => None,
+                    VariableKind::Output
+                        if host_text == Some(*var) && (host_string.is_some() || gives_list) =>
+                    {
+                        Some(ExternForbiddenKind::TextBeside)
+                    }
+                    VariableKind::Output if host_text == Some(*var) => None,
+                    VariableKind::Output if host_text.is_some() && string_output(var) => {
+                        Some(ExternForbiddenKind::TextBeside)
+                    }
                     VariableKind::Output if !extern_scalar(db, var.spec(db).infer(db)) => {
                         Some(ExternForbiddenKind::AggregateOutput)
                     }

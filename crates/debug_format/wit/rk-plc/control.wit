@@ -43,7 +43,8 @@ interface control {
     variant memory-error {
         /// The range at that place in the list is outside the memory.
         outside-memory(u32),
-        /// The ranges together are more than the memory can hold.
+        /// The ranges together are more than the module holds for an
+        /// answer, a fixed area: read them in parts.
         too-large,
         /// The bytes would not all land in the variables.
         outside-variables,

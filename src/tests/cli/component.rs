@@ -406,13 +406,13 @@ fn what_a_host_may_not_read_or_write_is_an_error(mut with_db: db::RootDatabase) 
     );
 }
 
-/// A read too large for the scratch area lands past everything the module
-/// laid out, after its ranges when they landed there themselves, in memory
-/// grown to hold it. Each range of 4 and 64 bytes takes 8 of the list, so a
-/// list written over its own ranges would read garbage. The component goes
-/// on, and reads again.
+/// A read lands in the scratch area, after its ranges. Each range of 4 and
+/// 64 bytes takes 8 of the list, so a list written over its own ranges
+/// would read garbage. A read larger than the area is `too-large`, the
+/// memory being as large as the module was built: the component goes on,
+/// and reads again.
 #[rstest]
-fn a_read_larger_than_the_scratch_area_lands_past_it(mut with_db: db::RootDatabase) {
+fn a_read_larger_than_the_scratch_area_is_too_large(mut with_db: db::RootDatabase) {
     let component = wrap(&compile_to_wasm_as_built(&mut with_db, COUNTER));
     let info = debug_format::DebugInfo::from_wasm(&component.bytes);
     let (count, note) = (range_of(&info, "Main.count"), range_of(&info, "Main.note"));
@@ -423,13 +423,16 @@ fn a_read_larger_than_the_scratch_area_lands_past_it(mut with_db: db::RootDataba
     let alone = plc.read_memory(&[note]).expect("the note alone");
     assert_eq!(&alone[4..12], b"counting");
 
-    let ranges: Vec<Range> = (0..5_000).flat_map(|_| [count, note]).collect();
+    let ranges: Vec<Range> = (0..500).flat_map(|_| [count, note]).collect();
     let bytes = plc.read_memory(&ranges).expect("the read");
-    assert_eq!(bytes.len(), 5_000 * (4 + 64));
+    assert_eq!(bytes.len(), 500 * (4 + 64));
     for pair in bytes.chunks(4 + 64) {
         assert_eq!(&pair[..4], 1i32.to_le_bytes());
         assert_eq!(&pair[4..], alone.as_slice());
     }
+
+    let ranges: Vec<Range> = (0..2_000).flat_map(|_| [count, note]).collect();
+    assert_eq!(plc.read_memory(&ranges), Err(MemoryError::TooLarge));
 
     plc.run_task(0, &[0; 16]).unwrap();
     assert_eq!(plc.read_memory(&[count]), Ok(2i32.to_le_bytes().to_vec()));
@@ -981,9 +984,12 @@ fn a_host_calls_the_exported_functions(mut with_db: db::RootDatabase) {
 }
 
 /// What stops a FUNCTION is the error of its result, and the next call
-/// runs: an exception, a STRING longer than its parameter, however long, a
-/// value outside its subrange, and a STRING returned that is not UTF-8.
-/// Nothing traps, so the component's store is never locked.
+/// runs: an exception, a STRING longer than its parameter, by up to the
+/// room the module keeps for what is too long (its largest STRING and a
+/// page more), a value outside its subrange, and a STRING returned that is
+/// not UTF-8. A STRING longer than that room traps, the memory being as
+/// large as the module was built, and a trap locks the store: it comes
+/// last.
 #[rstest]
 fn what_stops_an_exported_function_is_an_error(mut with_db: db::RootDatabase) {
     let component = build(&mut with_db, EXPORTED).expect("the module wraps");
@@ -1010,17 +1016,18 @@ fn what_stops_an_exported_function_is_an_error(mut with_db: db::RootDatabase) {
         plc.call::<_, String>("greet", ("abcdefghié", 1u8)),
         too_long
     );
-    let megabyte = "x".repeat(1 << 20);
+    let long = "x".repeat(60_000);
     assert_eq!(
-        plc.call::<_, String>("greet", (megabyte.as_str(), 1u8)),
+        plc.call::<_, String>("greet", (long.as_str(), 1u8)),
         too_long
     );
     assert_eq!(
-        plc.call::<_, String>("pick", ("ab", megabyte.as_str())),
+        plc.call::<_, String>("pick", ("ab", long.as_str())),
         too_long
     );
+    let half = "x".repeat(30_000);
     assert_eq!(
-        plc.call::<_, String>("pick", (megabyte.as_str(), megabyte.as_str())),
+        plc.call::<_, String>("pick", (half.as_str(), half.as_str())),
         too_long
     );
     assert_eq!(plc.call("pick", ("ab", "cd")), Ok("cd".to_string()));
@@ -1034,6 +1041,13 @@ fn what_stops_an_exported_function_is_an_error(mut with_db: db::RootDatabase) {
         Err("a STRING passed to the host is not UTF-8".to_string())
     );
     assert_eq!(plc.call("half", (100i16,)), Ok(50i16));
+
+    let megabyte = "x".repeat(1 << 20);
+    let greet = plc.function_of::<(&str, u8), (Result<String, String>,)>(EXPORTS, "greet");
+    let trap = greet
+        .call(&mut plc.store, (megabyte.as_str(), 1u8))
+        .expect_err("a megabyte traps");
+    assert!(format!("{trap:#}").contains("unreachable"), "{trap:#}");
 }
 
 /// Only the host calls an exported function, so the stack of recursive
@@ -2135,6 +2149,201 @@ fn the_build_checks_wasi_imports_against_wasi_s_wit(
     assert_eq!(build(&mut with_db, source).err().as_deref(), Some(error));
 }
 
+/// A stream's read or write moves what the stream carries, which the build
+/// checks against WASI's WIT: bytes, in a STRING or an ARRAY OF BYTE, or a
+/// resource's handles, which a read takes into an ARRAY OF UDINT. The host
+/// writes each element at the stream's own width, which a buffer of other
+/// elements does not hold. A stream of anything else no block moves yet.
+#[rstest]
+#[case::bytes_from_a_stream_of_handles(
+    "{extern async 'wasi:sockets/types@0.3.0' '[stream-read-0][method]tcp-socket.listen'}
+     FUNCTION_BLOCK ACCEPT
+     VAR_INPUT stream : UDINT; END_VAR
+     VAR_OUTPUT DONE : BOOL; data : ARRAY[0..15] OF BYTE; read : UDINT; closed : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR accept : ACCEPT; END_VAR
+         accept(stream := 1);
+     END_PROGRAM",
+    "`ACCEPT` imports `[stream-read-0][method]tcp-socket.listen` of \
+     `wasi:sockets/types@0.3.0`, and number 0 of the streams and futures of \
+     `[method]tcp-socket.listen`'s type carries a resource's handles, which an ARRAY OF \
+     UDINT holds"
+)]
+#[case::text_from_a_stream_of_handles(
+    "{extern async 'wasi:sockets/types@0.3.0' '[stream-read-0][method]tcp-socket.listen'}
+     FUNCTION_BLOCK ACCEPT
+     VAR_INPUT stream : UDINT; END_VAR
+     VAR_OUTPUT DONE : BOOL; data : STRING[16]; read : UDINT; closed : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR accept : ACCEPT; END_VAR
+         accept(stream := 1);
+     END_PROGRAM",
+    "`ACCEPT` imports `[stream-read-0][method]tcp-socket.listen` of \
+     `wasi:sockets/types@0.3.0`, and number 0 of the streams and futures of \
+     `[method]tcp-socket.listen`'s type carries a resource's handles, which an ARRAY OF \
+     UDINT holds"
+)]
+#[case::handles_from_a_stream_of_bytes(
+    "{extern async 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
+     FUNCTION_BLOCK READ_HANDLES
+     VAR_INPUT stream : UDINT; END_VAR
+     VAR_OUTPUT DONE : BOOL; data : ARRAY[0..15] OF UDINT; read : UDINT; closed : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR read : READ_HANDLES; END_VAR
+         read(stream := 1);
+     END_PROGRAM",
+    "`READ_HANDLES` imports `[stream-read-0]read-via-stream` of `wasi:cli/stdin@0.3.0`, \
+     and number 0 of the streams and futures of `read-via-stream`'s type carries bytes, \
+     which a STRING or an ARRAY OF BYTE holds"
+)]
+#[case::bytes_into_a_stream_of_handles(
+    "{extern async 'wasi:sockets/types@0.3.0' '[stream-write-0][method]tcp-socket.listen'}
+     FUNCTION_BLOCK HAND_OVER
+     VAR_INPUT stream : UDINT; data : STRING[16]; END_VAR
+     VAR_OUTPUT DONE : BOOL; written : UDINT; closed : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR hand_over : HAND_OVER; END_VAR
+         hand_over(stream := 1, data := 'socket');
+     END_PROGRAM",
+    "`HAND_OVER` imports `[stream-write-0][method]tcp-socket.listen` of \
+     `wasi:sockets/types@0.3.0`, and number 0 of the streams and futures of \
+     `[method]tcp-socket.listen`'s type carries a resource's handles, which no block \
+     writes yet"
+)]
+#[case::entries_of_a_directory(
+    "{extern async 'wasi:filesystem/types@0.3.0' '[stream-read-0][method]descriptor.read-directory'}
+     FUNCTION_BLOCK READ_ENTRIES
+     VAR_INPUT stream : UDINT; END_VAR
+     VAR_OUTPUT DONE : BOOL; data : ARRAY[0..15] OF BYTE; read : UDINT; closed : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR read : READ_ENTRIES; END_VAR
+         read(stream := 1);
+     END_PROGRAM",
+    "`READ_ENTRIES` imports `[stream-read-0][method]descriptor.read-directory` of \
+     `wasi:filesystem/types@0.3.0`, and number 0 of the streams and futures of \
+     `[method]descriptor.read-directory`'s type carries neither bytes nor handles, which \
+     no block moves yet"
+)]
+fn the_build_checks_what_a_stream_s_read_or_write_moves(
+    mut with_db: db::RootDatabase,
+    #[case] source: &str,
+    #[case] error: &str,
+) {
+    assert_eq!(build(&mut with_db, source).err().as_deref(), Some(error));
+}
+
+/// A declaration's outputs hold the whole result, or a future read's whole
+/// value, which the build checks against WASI's WIT: one that is not passed
+/// as values the host writes where the call points, past outputs that are
+/// too few, over what follows. A sync call's record of two outputs takes 4
+/// bytes of a result of an address or an error code, and one output 8 of
+/// an instant; an async call's flag takes 1 of a result of flags or an error
+/// code, and no output none of it; a future read that declares no output
+/// takes nothing of the result stdin's future holds; a value returned as a
+/// UDINT takes half of a `u64`.
+#[rstest]
+#[case::a_sync_call_s_record(
+    "{extern 'wasi:sockets/types@0.3.0' '[method]tcp-socket.get-local-address'}
+     FUNCTION LOCAL_ADDRESS
+     VAR_INPUT self : UDINT; END_VAR
+     VAR_OUTPUT failed : BOOL; port : UINT; END_VAR
+     END_FUNCTION
+
+     PROGRAM P
+     VAR failed : BOOL; port : UINT; END_VAR
+         LOCAL_ADDRESS(self := 1, failed => failed, port => port);
+     END_PROGRAM",
+    "`LOCAL_ADDRESS` imports `[method]tcp-socket.get-local-address` of \
+     `wasi:sockets/types@0.3.0`, whose result takes 36 bytes, where its outputs take 4: \
+     declare outputs for the whole result"
+)]
+#[case::a_sync_call_s_one_output(
+    "{extern 'wasi:clocks/system-clock@0.3.0' 'now'}
+     FUNCTION NOW
+     VAR_OUTPUT seconds : LINT; END_VAR
+     END_FUNCTION
+
+     PROGRAM P
+     VAR seconds : LINT; END_VAR
+         NOW(seconds => seconds);
+     END_PROGRAM",
+    "`NOW` imports `now` of `wasi:clocks/system-clock@0.3.0`, whose result takes 16 bytes, \
+     where its outputs take 8: declare outputs for the whole result"
+)]
+#[case::an_async_call_s_result(
+    "{extern async 'wasi:filesystem/types@0.3.0' '[method]descriptor.get-flags'}
+     FUNCTION_BLOCK GET_FLAGS
+     VAR_INPUT self : UDINT; END_VAR
+     VAR_OUTPUT DONE : BOOL; failed : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR flags : GET_FLAGS; END_VAR
+         flags(self := 1);
+     END_PROGRAM",
+    "`GET_FLAGS` imports `[method]descriptor.get-flags` of `wasi:filesystem/types@0.3.0`, \
+     whose result takes 20 bytes, where its outputs take 1: declare outputs for the whole \
+     result"
+)]
+#[case::an_async_call_with_no_output(
+    "{extern async 'wasi:filesystem/types@0.3.0' '[method]descriptor.get-flags'}
+     FUNCTION_BLOCK GET_FLAGS
+     VAR_INPUT self : UDINT; END_VAR
+     VAR_OUTPUT DONE : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR flags : GET_FLAGS; END_VAR
+         flags(self := 1);
+     END_PROGRAM",
+    "`GET_FLAGS` imports `[method]descriptor.get-flags` of `wasi:filesystem/types@0.3.0`, \
+     whose result takes 20 bytes, where its outputs take 0: declare outputs for the whole \
+     result"
+)]
+#[case::a_future_s_value(
+    "{extern async 'wasi:cli/stdin@0.3.0' '[future-read-1]read-via-stream'}
+     FUNCTION_BLOCK READ_END
+     VAR_INPUT future : UDINT; END_VAR
+     VAR_OUTPUT DONE : BOOL; END_VAR
+     END_FUNCTION_BLOCK
+
+     PROGRAM P
+     VAR ending : READ_END; END_VAR
+         ending(future := 1);
+     END_PROGRAM",
+    "`READ_END` imports `[future-read-1]read-via-stream` of `wasi:cli/stdin@0.3.0`, whose \
+     value takes 2 bytes, where its outputs take 0: declare outputs for the whole value"
+)]
+#[case::a_value_returned_narrower(
+    "{extern 'wasi:random/random@0.3.0' 'get-random-u64'}
+     FUNCTION RANDOM : UDINT
+     END_FUNCTION
+
+     PROGRAM P
+     VAR x : UDINT; END_VAR
+         x := RANDOM();
+     END_PROGRAM",
+    "`RANDOM` imports `get-random-u64` of `wasi:random/random@0.3.0`, whose result takes 8 \
+     bytes, where its outputs take 4: declare outputs for the whole result"
+)]
+fn the_build_checks_that_a_result_fits_its_outputs(
+    mut with_db: db::RootDatabase,
+    #[case] source: &str,
+    #[case] error: &str,
+) {
+    assert_eq!(build(&mut with_db, source).err().as_deref(), Some(error));
+}
+
 /// A resource's functions are imported under the names WIT gives them, and
 /// wit-component takes their core forms: a method that returns its result
 /// where the module points, an async method lowered async, the drop of a
@@ -2154,7 +2363,8 @@ fn a_resource_s_functions_build_into_a_component(mut with_db: db::RootDatabase) 
         VAR_INPUT
             dir : UDINT; path_flags : BYTE; path : STRING[255]; open_flags : BYTE; flags : BYTE;
         END_VAR
-        VAR_OUTPUT DONE : BOOL; failed : BOOL; value : UDINT; END_VAR
+        // The error code, past `value`, lands in the words after it.
+        VAR_OUTPUT DONE : BOOL; failed : BOOL; value : UDINT; w1 : LWORD; w2 : LWORD; END_VAR
         END_FUNCTION_BLOCK
 
         {extern 'wasi:filesystem/types@0.3.0' '[resource-drop]descriptor'}

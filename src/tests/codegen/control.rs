@@ -315,9 +315,9 @@ fn a_release_runs_no_test(mut with_db: db::RootDatabase) {
 }
 
 /// `cabi_realloc` hands out the scratch piece by piece, as large as the
-/// largest list a function of the interface takes, and a function that
-/// takes a list starts it over. What does not fit lands past everything the
-/// module laid out, in memory grown once to take it: nothing traps.
+/// largest list a function of the interface takes and a page more for what
+/// is too long, and a function that takes a list starts it over. What does
+/// not fit traps: the memory never grows.
 #[rstest]
 fn the_scratch_takes_what_a_host_passes(mut with_db: db::RootDatabase) {
     let wasm = compile_to_wasm(&mut with_db, COUNTER);
@@ -347,22 +347,32 @@ fn the_scratch_takes_what_a_host_passes(mut with_db: db::RootDatabase) {
         "the largest list fits at its start"
     );
 
-    // One byte more does not fit: it lands at the end of the memory, which
-    // grows to take it, once.
+    // A page more fits, for a list too long that a function cuts or refuses.
+    plc.restore_retain(&[]);
+    assert_eq!(
+        realloc
+            .call(&mut plc.store, (0, 0, 1, largest + 65536))
+            .ok(),
+        Some(scratch),
+        "a page past the largest list"
+    );
+
+    // Past the scratch, a block traps: the memory is as large as it was
+    // built, and stays so.
     let size = |plc: &Plc| plc.memory.data_size(&plc.store);
     let laid_out = size(&plc);
-    let long = 3 * 65536;
-    let spilled = realloc
-        .call(&mut plc.store, (0, 0, 1, long))
-        .expect("a list too long is no trap");
-    assert_eq!(spilled as usize, laid_out, "past what the module laid out");
-    assert_eq!(size(&plc), laid_out + long as usize, "grown to take it");
     assert_eq!(
-        realloc.call(&mut plc.store, (0, 0, 1, long)).ok(),
-        Some(spilled),
-        "the same place"
+        plc.memory.ty(&plc.store).maximum(),
+        Some(laid_out as u64 / 65536),
+        "the memory cannot grow"
     );
-    assert_eq!(size(&plc), laid_out + long as usize, "and no more memory");
+    plc.restore_retain(&[]);
+    let long = 3 * 65536;
+    assert!(
+        realloc.call(&mut plc.store, (0, 0, 1, long)).is_err(),
+        "a block past the scratch traps"
+    );
+    assert_eq!(size(&plc), laid_out, "and the memory did not grow");
 
     // A block that moves keeps its bytes.
     plc.restore_retain(&[]);
@@ -386,7 +396,7 @@ fn a_list_longer_than_its_band_is_cut(mut with_db: db::RootDatabase) {
     assert!(!retained.is_empty(), "COUNTER retains something");
     let mut long = retained.clone();
     long[0] ^= 0xFF;
-    long.extend(std::iter::repeat_n(0xAA, 200_000));
+    long.extend(std::iter::repeat_n(0xAA, 60_000));
     plc.restore_retain(&long);
     let restored = plc.save_retain();
     assert_eq!(restored.len(), retained.len());

@@ -4,8 +4,8 @@
 //! Async functions: an `{extern async}` FUNCTION_BLOCK, whose calls take the
 //! call a step at a time; `DONE`, then what it returns as outputs, a scalar
 //! as `value`. Past 4 values the call passes its parameters in memory, as
-//! a tuple: scalars and strings fine, a record not, whose fields the tuple
-//! would not hold one after the other.
+//! a tuple: scalars and strings as they are, a record in words its fields
+//! are packed into, since the tuple holds the record whole.
 
 use db::RootDatabase;
 use insta::assert_snapshot;
@@ -43,6 +43,11 @@ fn what_an_async_call_gives_back(mut with_db: RootDatabase) {
     				LATE := 0
     			); END_TYPE
 
+    			TYPE STAMP : STRUCT
+    				seconds : LINT;
+    				nanoseconds : UDINT;
+    			END_STRUCT END_TYPE
+
     			{extern async 'wasi:example/timers@0.3.0' 'wait-for'}
     			FUNCTION_BLOCK WAIT_FOR
     			VAR_INPUT
@@ -64,13 +69,31 @@ fn what_an_async_call_gives_back(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION_BLOCK
 
+    			/* `when` as the host gives it: the values of its result, which `WHEN` puts
+    			   in the members of `value`. */
     			{extern async 'wasi:example/timers@0.3.0' 'when'}
-    			FUNCTION_BLOCK WHEN
+    			FUNCTION_BLOCK WHEN_RAW
     			VAR_OUTPUT
     				DONE : BOOL;
     				seconds : LINT;
     				nanoseconds : UDINT;
     			END_VAR
+    			END_FUNCTION_BLOCK
+
+    			FUNCTION_BLOCK WHEN
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    				value : STAMP;
+    			END_VAR
+    			VAR
+    				call : WHEN_RAW;
+    			END_VAR
+    				call();
+    				DONE := call.DONE;
+    				IF call.DONE THEN
+    					value.seconds := call.seconds;
+    					value.nanoseconds := call.nanoseconds;
+    				END_IF;
     			END_FUNCTION_BLOCK
 
     			{extern async 'wasi:example/timers@0.3.0' 'pair'}
@@ -106,8 +129,9 @@ fn what_an_async_call_gives_back(mut with_db: RootDatabase) {
 }
 
 /// Parameters up to 4 values go as values, past them as a tuple: 5 scalars
-/// or strings are fine, a record among 5 values is left out, a record of 4
-/// values goes.
+/// or strings go as they are, a record among 5 values is packed into the
+/// words of the tuple it is laid out in, a record of 4 values goes field by
+/// field.
 #[rstest]
 fn an_async_call_s_parameters(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
@@ -132,6 +156,20 @@ fn an_async_call_s_parameters(mut with_db: RootDatabase) {
     NAMESPACE INTERNAL Wasi
     	NAMESPACE Example
     		NAMESPACE Motion
+    			USING Std.Convert;
+
+    			TYPE POINT : STRUCT
+    				x : LREAL;
+    				y : LREAL;
+    			END_STRUCT END_TYPE
+
+    			TYPE BOX : STRUCT
+    				a : USINT;
+    				b : ULINT;
+    				c : USINT;
+    				d_ : ULINT;
+    			END_STRUCT END_TYPE
+
     			{extern async 'wasi:example/motion@0.3.0' 'four'}
     			FUNCTION_BLOCK FOUR
     			VAR_INPUT
@@ -172,8 +210,10 @@ fn an_async_call_s_parameters(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION_BLOCK
 
+    			/* `move-to` as the host takes it: its parameters as the canonical ABI
+    			   passes them, which `MOVE_TO` passes field by field. */
     			{extern async 'wasi:example/motion@0.3.0' 'move-to'}
-    			FUNCTION_BLOCK MOVE_TO
+    			FUNCTION_BLOCK MOVE_TO_RAW
     			VAR_INPUT
     				target_x : LREAL;
     				target_y : LREAL;
@@ -183,8 +223,24 @@ fn an_async_call_s_parameters(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION_BLOCK
 
+    			FUNCTION_BLOCK MOVE_TO
+    			VAR_INPUT
+    				target : POINT;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    			END_VAR
+    			VAR
+    				call : MOVE_TO_RAW;
+    			END_VAR
+    				call(target_x := target.x, target_y := target.y);
+    				DONE := call.DONE;
+    			END_FUNCTION_BLOCK
+
+    			/* `fit` as the host takes it: its parameters as the canonical ABI passes
+    			   them, which `FIT` passes field by field. */
     			{extern async 'wasi:example/motion@0.3.0' 'fit'}
-    			FUNCTION_BLOCK FIT
+    			FUNCTION_BLOCK FIT_RAW
     			VAR_INPUT
     				b_a : USINT;
     				b_b : ULINT;
@@ -195,11 +251,61 @@ fn an_async_call_s_parameters(mut with_db: RootDatabase) {
     				DONE : BOOL;
     			END_VAR
     			END_FUNCTION_BLOCK
+
+    			FUNCTION_BLOCK FIT
+    			VAR_INPUT
+    				b : BOX;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    			END_VAR
+    			VAR
+    				call : FIT_RAW;
+    			END_VAR
+    				call(b_a := b.a, b_b := b.b, b_c := b.c, b_d := b.d_);
+    				DONE := call.DONE;
+    			END_FUNCTION_BLOCK
+
+    			/* `aim` as the host takes it: its parameters as the canonical ABI passes
+    			   them, which `AIM` packs. */
+    			{extern async 'wasi:example/motion@0.3.0' 'aim'}
+    			FUNCTION_BLOCK AIM_RAW
+    			VAR_INPUT
+    				a0 : LWORD;
+    				a1 : LWORD;
+    				speed : LREAL;
+    				turn : LREAL;
+    				lift : LREAL;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    			END_VAR
+    			END_FUNCTION_BLOCK
+
+    			FUNCTION_BLOCK AIM
+    			VAR_INPUT
+    				target : POINT;
+    				speed : LREAL;
+    				turn : LREAL;
+    				lift : LREAL;
+    			END_VAR
+    			VAR_OUTPUT
+    				DONE : BOOL;
+    			END_VAR
+    			VAR
+    				a0 : LWORD;
+    				a1 : LWORD;
+    				call : AIM_RAW;
+    			END_VAR
+    				a0 := 0;
+    				a1 := 0;
+    				a0 := LREAL_TO_LWORD(target.x);
+    				a1 := LREAL_TO_LWORD(target.y);
+    				call(a0 := a0, a1 := a1, speed := speed, turn := turn, lift := lift);
+    				DONE := call.DONE;
+    			END_FUNCTION_BLOCK
     		END_NAMESPACE
     	END_NAMESPACE
     END_NAMESPACE
-    /* Not generated:
-       - `aim`: it takes a record among 5 values, which an async call passes in
-         memory as a tuple holding the record whole. */
     ");
 }

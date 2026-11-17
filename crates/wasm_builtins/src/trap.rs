@@ -27,7 +27,6 @@ unsafe extern "C" {
 /// Throw an `$rk_exception` carrying `msg`; `#[inline]` so the (ptr, len)
 /// flattening happens at the call site.
 #[inline]
-#[allow(dead_code)]
 pub(crate) fn rk_raise(msg: &'static str) -> ! {
     unsafe { __iec_raise(msg.as_ptr(), msg.len() as u32) }
 }
@@ -106,6 +105,47 @@ pub extern "C" fn rk_char_check(c: u32) {
     if char::from_u32(c).is_none() {
         const MSG: &str = "a CHAR passed to the host is not a character";
         unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
+}
+
+/// Length check for the string an import gave: the host writes it into
+/// the STRING the call passed for it, and one longer than that STRING went
+/// nowhere the program reads (`landed` is 2).
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_host_string_check(landed: u32) {
+    if landed == 2 {
+        const MSG: &str = "a string the host gave is longer than its STRING";
+        unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
+}
+
+/// What the text an import gave keeps of itself in the STRING the call
+/// passed for it, `string`, of `capacity` bytes: the host wrote one that
+/// fits into it, and one longer, of `length` bytes, at `refused` (`landed`
+/// is 2), whose first bytes are copied into it up to the last whole
+/// character, so that the text stays UTF-8. Nothing raises: an error's text
+/// is cut to fit.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_host_text_cut(
+    landed: u32,
+    length: u32,
+    string: u32,
+    capacity: u32,
+    refused: u32,
+) {
+    if landed != 2 {
+        return;
+    }
+    let text =
+        unsafe { core::slice::from_raw_parts(refused as usize as *const u8, length as usize) };
+    let mut cut = (capacity as usize).min(text.len());
+    // A byte `0b10xx_xxxx` goes on with a character, and starts none.
+    while cut > 0 && cut < text.len() && text[cut] & 0xC0 == 0x80 {
+        cut -= 1;
+    }
+    unsafe {
+        core::ptr::copy_nonoverlapping(text.as_ptr(), (string as usize + 4) as *mut u8, cut);
+        core::ptr::write_unaligned(string as usize as *mut u32, cut as u32);
     }
 }
 

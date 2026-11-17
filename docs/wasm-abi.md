@@ -27,7 +27,7 @@ interface control {
 - `init` writes the starting value of every variable. A host calls it once, before anything else. Its error is the message of an exception a starting value raised.
 - `save-retain` gives the retain area, to keep across a power cycle, and `restore-retain` gives it back after `init` on a warm start.
 - `run-task` runs the task at that place in the `rk.schedule` section: `inputs` is copied into the input area, each program instance of the task runs, and the output area comes back. A host calls it for each task the section says is due, in the order the section lists them. The `located-map` section says where each address is in the two lists.
-- `read-memory` reads ranges of the memory between two scans, and `write-memory` forces bytes into the variables, at the addresses the `debug-symbols` section gives. Writing anywhere but the variables is refused.
+- `read-memory` reads ranges of the memory between two scans, and `write-memory` forces bytes into the variables, at the addresses the `debug-symbols` section gives. Writing anywhere but the variables is refused. A read larger than the module's scratch area, below, is `too-large`: a host reads the ranges in parts.
 - `run-test` runs the test at that place in the `test-manifest` section: a test FUNCTION whole, `passed` when it returns, or one cycle of a test FUNCTION_BLOCK, `running` until a cycle leaves its `DONE` TRUE. The block keeps its instance from one call to the next, and a host calls it again for its next cycle. A release build has no test.
 
 No function of the interface waits.
@@ -227,13 +227,36 @@ A record of two fields or more is written by the host at an address the call pas
 
 A WASI import keeps the types WASI's WIT gives it, in their core form: `VAR_INPUT` are the parameters, and the `VAR_OUTPUT` and the return type the result, as above.
 A record of scalars comes back in `VAR_OUTPUT`, one for each of its fields in their order.
-The system clock's `now` is declared this way, with `seconds: LINT` and `nanoseconds: UDINT`, and the zone's `utc-offset` with `is_some: BOOL` and `value: LINT`: its `option<s64>` is laid out as a record of a byte that says whether the value is there, then the value.
+The system clock's `now` is imported this way, with `seconds: LINT` and `nanoseconds: UDINT`, and the zone's `utc-offset` with `is_some: BOOL` and `value: LINT`: its `option<s64>` is laid out as a record of a byte that says whether the value is there, then the value.
+A host that has no value writes the byte alone, and the call clears the record's place before the host is called, so `value` is then zero.
 The standard library's WASI declarations are written by rk-bindgen from WASI's WIT, in `stdlib/generated/`, and only the standard library reaches them.
-A `REF_TO` input is an address, where a record can come back too.
+They give each record a `STRUCT` of its fields, and each variant whose cases hold values a `STRUCT` of its case, `kind`, and of what each case holds.
+WASI's `instant` is `Wasi.Clocks.SystemClock.INSTANT`: `NOW()` returns one, filled from the outputs of its import, `NOW_RAW`, and `UTC_OFFSET(when := instant, is_some => known, value => offset)` passes its fields one by one.
+A variant, and a result with a value and an error, are not laid out as a record: the values of all the cases share one place.
+Such a result is declared as `LWORD` outputs, which hold its bytes as the host wrote them, 8 to a word, and code rk-bindgen writes reads each value out of them: `failed := w0.%X0`, then `error := BYTE_TO_USINT(w0.%B4)`.
+A call that is not async declares two of them at least, since the canonical ABI returns one value as it is.
+A variant passed in goes the other way: the code rk-bindgen writes packs its case and what the case holds into words the import takes, the values the canonical ABI flattens it into, or, past 4 values in an async call, the bytes of the tuple the parameters are laid out in.
+A string that comes back is written by the host straight into a `STRING` of the caller's, which the import declares as its one `STRING` `VAR_IN_OUT`, of any length: the time zone's `iana-id` is `IANA_ID(value := zone, is_some => known)`.
+That `VAR_IN_OUT` is no parameter of the import: the call tells the host to write its string there, and empties it first, so it is empty when no string came.
+A string longer than the `STRING` raises `a string the host gave is longer than its STRING`, and leaves it empty.
+A string in an error, or in a variant's case, is a text, which the import declares as its first `STRING` `VAR_OUTPUT`: the call tells the host to write it into the `STRING` the output is bound to, `error.other` for a WASI error code, and one longer than that `STRING` is cut to fit, before the character its last byte would split, instead of raising.
+A list that comes back is written into arrays of the caller's, which the import declares as its `ARRAY[*]` `VAR_IN_OUT`s of any length, one for each field of an element: the preopened directories are `GET_DIRECTORIES(item0 := handles, item1 := paths, count => n)`.
+The host writes a list of scalars into its array itself, and each string of a list into its element of a `STRING` array; the scalar fields of a list of records are copied into their arrays once the call returns.
+A list longer than one of its arrays raises `a list the host gave is longer than its array`.
+A list of bytes passed in is an array of the caller's too, `ARRAY[*] OF BYTE`, and a `count` of its first elements that go: UDP's send is `send(self := socket, data := frame, count := 6, ...)`, whatever the frame's length.
+The import takes what the canonical ABI passes for a list, the elements' address, a `REF_TO BYTE`, and their number; the code rk-bindgen writes checks the count against the array first, and raises `a list passed to the host is longer than its array` past it.
+The host reads the bytes when the call starts, an async call's too, so the array is free again once the call that started it returns.
+
+A module's memory is as large as it is built, and never grows.
+What a host passes, and what an import gives past the buffers of the call, lands in a scratch area the build sizes: the largest of what one call takes, then the largest `STRING` or list the program declares and 64 KiB more.
+A string or a list too long by up to that much raises as above; one longer still traps.
+
+A `REF_TO` input is an address, where a record can come back too, or where a list passed in starts.
 A STRUCT, an ARRAY or an instance input is refused (`E1502`): it would go as an address into rk's own layout, which no WASI function reads.
 
-A host function WIT declares an `async func` is imported by a FUNCTION_BLOCK, with `{extern async 'module' 'name'}`.
-A scan never waits for it: each call of the block takes the call one step, starting it when none is running and checking it otherwise.
+A host function WIT declares an `async func` is imported by a FUNCTION_BLOCK, with `{extern async 'module' 'name'}`, and so are a stream's read or write and a future's read (below).
+`async` says how the import is lowered, as the component model's `[async-lower]` prefix does for calls and copies alike: its call returns at once, and its end comes later, as an event the block checks for.
+A scan never waits for it: each call of the block takes the operation one step, starting it when none is running and checking it otherwise.
 
 ```st
 {extern async 'wasi:clocks/monotonic-clock@0.3.0' 'wait-for'}
@@ -269,8 +292,9 @@ A FUNCTION can still call one it does not hold: the caller's, handed over as VAR
 REQ, BUSY or any other control a block's users need is written in ST, by a block that calls it.
 A call that has started cannot be cancelled: the component model's cancel needs a flag wasmtime has off by default.
 
-The declaration says the function is async, and the build checks it against WASI's WIT: `{extern async}` names an `async func`, and a plain `{extern}` a `func`, whose call a scan cannot wait for.
+For a function, the build checks the declaration against WASI's WIT: `{extern async}` names an `async func`, and a plain `{extern}` a `func`, whose call a scan cannot wait for.
 The build also checks that WASI's interface has the function, and names the declaration when it does not.
+It checks too that the outputs hold what the host writes in memory, a result past a call's values or a future's value: a declaration with too few would let the host write past them, over the variables that follow.
 For a host's own module, the WIT rk writes declares an `async func`, its result the record of the block's `VAR_OUTPUT` but `DONE`.
 
 In the core module, the block's call is the import lowered async, `[async-lower]wait-for`: the parameters, or past 4 values the address of a tuple of them, then the address the result is written at, and a word back, the call's state and handle.
@@ -279,6 +303,7 @@ A host that implements an async function asynchronously runs the component throu
 
 A WASI import may be a resource's function, under the name WIT gives it: the constructor `[constructor]R`, a method `[method]R.f`, whose first parameter is the handle it is called on, and a static function `[static]R.f`.
 A handle is a `UDINT`, and `[resource-drop]R`, an `{extern}` FUNCTION taking one, lets go of a handle the host gave (`E1516` otherwise).
+rk-bindgen names one type per resource, an alias of `UDINT`, `TYPE TCP_SOCKET : UDINT; END_TYPE`, and declares each handle with it: a declaration says which resource it takes or gives, and a handle passes as the `UDINT` it is.
 Only WASI's interfaces have resources: a host module's WIT is written from its declarations, which make none (`E1512`).
 The build checks that WASI's WIT declares the function, or the resource a drop names.
 
@@ -292,7 +317,10 @@ The host reads the bytes from the block while the copy runs: a call made then ch
 
 A stream's read, `[stream-read-N]f`, is the write the other way: an `{extern async}` FUNCTION_BLOCK that takes the stream's reading end, a `UDINT`, and after `DONE` gives the bytes, how many came, a `UDINT`, and whether the writer left, a `BOOL` (`E1516` otherwise).
 The bytes land in a `STRING`, whose length becomes how many came, or in an `ARRAY OF BYTE` of one dimension, a byte an element: either holds what a read takes at most, and the host writes into it while the read runs, so the bytes are whole in the call where `DONE` is `TRUE`.
+A stream of a resource's handles is read the same way into an `ARRAY OF UDINT` of one dimension, a handle an element, each one the program's own to drop: a listening TCP socket hands over the connections it accepts in one, the stream `listen` gives.
+The host writes each element as wide as the stream's own, so the build checks that the buffer holds what the stream carries, bytes or handles; a stream of anything else is read or written by no block yet.
 A future's read, `[future-read-N]f`, takes the future's reading end and gives after `DONE` the fields of its value, laid out as an async call's result is; a future's writer gives its value before it lets go, so a read always gets one.
+A future is a value, not a call: the function that gave it has returned, often with a stream beside it to read while the work runs, and the program reads the future when it wants, passes it on, or drops it, where a call that has started is followed to its end.
 A future's write is not imported yet (`E1516`).
 
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:

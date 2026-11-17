@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! What ST cannot pass yet is left out, and the file says why at its end:
-//! a list, a variant, flags, more values than the canonical ABI passes as
-//! values. The rest of the interface is generated. A function the world
-//! imports itself, outside an interface, stops the generator.
+//! a list of anything but bytes passed in, a list of lists, more values
+//! than the canonical ABI passes as values. The rest of the interface is generated. A function the
+//! world imports itself, outside an interface, stops the generator.
 
 use db::RootDatabase;
 use insta::assert_snapshot;
@@ -13,23 +13,17 @@ use rstest::rstest;
 use super::checked;
 use crate::tests::utils::with_db;
 
-/// Each kind of WIT type ST has no type for yet, as a type of the
-/// interface, taken and given; what is left of the interface is generated.
+/// A list of numbers passed in, and a list of lists given back, are what
+/// ST cannot pass yet; what is left of the interface is generated.
 #[rstest]
-fn what_st_has_no_type_for(mut with_db: RootDatabase) {
+fn what_st_cannot_pass_yet(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
         package wasi:example@0.3.0;
 
         interface leftovers {
-            variant shape { circle(f32), square }
-            flags mode { read, write }
             type bytes = list<u8>;
-            draw: func(figure: shape);
-            pick: func() -> shape;
-            set: func(how: mode);
-            get: func() -> mode;
-            send: func(data: list<u8>);
-            names: func() -> list<string>;
+            send: func(data: list<u32>);
+            names: func() -> list<list<string>>;
             kept: func(x: u32) -> u32;
         }
 
@@ -51,16 +45,7 @@ fn what_st_has_no_type_for(mut with_db: RootDatabase) {
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - `shape`: it is a variant, which ST has no type for yet.
-       - `mode`: it is flags, which ST has no type for yet.
        - `bytes`: it is a list, which ST has no type for yet.
-       - `draw`: its parameter `figure` holds a variant, which an import cannot
-         take yet.
-       - `pick`: its result holds a variant, which an import cannot give back
-         yet.
-       - `set`: its parameter `how` holds flags, which an import cannot take
-         yet.
-       - `get`: its result holds flags, which an import cannot give back yet.
        - `send`: its parameter `data` holds a list, which an import cannot take
          yet.
        - `names`: its result holds a list, which an import cannot give back
@@ -128,7 +113,7 @@ fn an_interface_with_nothing_to_declare(mut with_db: RootDatabase) {
         package wasi:example@0.3.0;
 
         interface empty-handed {
-            names: func() -> list<string>;
+            names: func() -> list<list<string>>;
         }
 
         world example {

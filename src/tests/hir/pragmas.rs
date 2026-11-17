@@ -59,10 +59,310 @@ END_FUNCTION"#;
     ");
 }
 
-/// An import returns a record of scalars: a STRUCT or a STRING output is
-/// refused, on a WASI import too, which keeps the core rules (the interface
-/// is made up), and on any other. An output or a return type that does not
-/// resolve is reported where the type is written, and nowhere else.
+/// A WASI import gives a string by writing it into the STRING a call
+/// passes for it: its one STRING VAR_IN_OUT, of any length, which is no
+/// parameter of the import. A call binds it as any VAR_IN_OUT.
+#[rstest]
+fn valid_wasi_extern_gives_a_string(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'wasi:test/rt@0.1.0' 'name-of'}
+FUNCTION name_of
+VAR_INPUT channel : INT; END_VAR
+VAR_IN_OUT text : STRING; END_VAR
+VAR_OUTPUT w0 : LWORD; w1 : LWORD; END_VAR
+END_FUNCTION
+
+FUNCTION Use : BOOL
+VAR
+    short : STRING[8];
+    long : STRING[200];
+END_VAR
+    name_of(channel := 1, text := short);
+    name_of(channel := 2, text := long);
+    Use := short = long;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// The host's string goes into the import's first STRING VAR_IN_OUT: a
+/// second one has none to take, and a VAR_IN_OUT of another type is no
+/// place for a string.
+#[rstest]
+fn invalid_wasi_extern_second_string(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'wasi:test/rt@0.1.0' 'names-of'}
+FUNCTION names_of
+VAR_IN_OUT first : STRING; second : STRING[20]; count : INT; END_VAR
+VAR_OUTPUT w0 : LWORD; w1 : LWORD; END_VAR
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:4:28 ]
+       |
+     4 | VAR_IN_OUT first : STRING; second : STRING[20]; count : INT; END_VAR
+       |                            ^^^|^^
+       |                               `---- VAR_IN_OUT 'second' cannot take a string from the host: the import's first STRING VAR_IN_OUT does
+       |
+       | Note: a WASI import gives one string, which the host writes into its one STRING VAR_IN_OUT
+    ---'
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:4:49 ]
+       |
+     4 | VAR_IN_OUT first : STRING; second : STRING[20]; count : INT; END_VAR
+       |                                                 ^^|^^
+       |                                                   `---- VAR_IN_OUT 'count' cannot cross a WASM import: an extern takes copies, not references
+       |
+       | Note: an extern FUNCTION receives copies of its VAR_INPUT
+    ---'
+    ");
+}
+
+/// A WASI import gives a list into the arrays a call passes for it: its
+/// ARRAY[*] VAR_IN_OUTs of scalars or STRINGs, one per field of an element,
+/// of any length. A call binds them as any VAR_IN_OUT.
+#[rstest]
+fn valid_wasi_extern_gives_a_list(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'wasi:test/rt@0.1.0' 'entries'}
+FUNCTION entries
+VAR_INPUT limit : UDINT; END_VAR
+VAR_IN_OUT ids : ARRAY[*] OF UDINT; names : ARRAY[*] OF STRING; END_VAR
+VAR_OUTPUT w0 : LWORD; w1 : LWORD; END_VAR
+END_FUNCTION
+
+FUNCTION Use : UDINT
+VAR
+    ids : ARRAY[1..4] OF UDINT;
+    names : ARRAY[0..3] OF STRING[16];
+    more : ARRAY[0..9] OF UDINT;
+    long : ARRAY[0..9] OF STRING[200];
+END_VAR
+    entries(limit := 4, ids := ids, names := names);
+    entries(limit := 10, ids := more, names := long);
+    Use := ids[1] + more[0];
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// What a list cannot come in: an ARRAY[*] of two dimensions, of any type,
+/// or of records; and a STRING beside the arrays, the host's first block
+/// being the list's.
+#[rstest]
+fn invalid_wasi_extern_list_arrays(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE pair : STRUCT a : INT; b : INT; END_STRUCT END_TYPE
+
+{extern 'wasi:test/rt@0.1.0' 'grid'}
+FUNCTION grid
+VAR_IN_OUT cells : ARRAY[*, *] OF INT; anything : ARRAY[*]; pairs : ARRAY[*] OF pair; END_VAR
+VAR_OUTPUT w0 : LWORD; w1 : LWORD; END_VAR
+END_FUNCTION
+
+{extern 'wasi:test/rt@0.1.0' 'both'}
+FUNCTION both
+VAR_IN_OUT values : ARRAY[*] OF UDINT; text : STRING; END_VAR
+VAR_OUTPUT w0 : LWORD; w1 : LWORD; END_VAR
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:6:12 ]
+       |
+     6 | VAR_IN_OUT cells : ARRAY[*, *] OF INT; anything : ARRAY[*]; pairs : ARRAY[*] OF pair; END_VAR
+       |            ^^|^^
+       |              `---- VAR_IN_OUT 'cells' cannot take a list from the host: only an ARRAY[*] of scalars or STRINGs can
+       |
+       | Note: a WASI import gives a list into ARRAY[*] VAR_IN_OUTs of one dimension, one for each field of its elements
+    ---'
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:6:40 ]
+       |
+     6 | VAR_IN_OUT cells : ARRAY[*, *] OF INT; anything : ARRAY[*]; pairs : ARRAY[*] OF pair; END_VAR
+       |                                        ^^^^|^^^
+       |                                            `----- VAR_IN_OUT 'anything' cannot take a list from the host: only an ARRAY[*] of scalars or STRINGs can
+       |
+       | Note: a WASI import gives a list into ARRAY[*] VAR_IN_OUTs of one dimension, one for each field of its elements
+    ---'
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:6:61 ]
+       |
+     6 | VAR_IN_OUT cells : ARRAY[*, *] OF INT; anything : ARRAY[*]; pairs : ARRAY[*] OF pair; END_VAR
+       |                                                             ^^|^^
+       |                                                               `---- VAR_IN_OUT 'pairs' cannot take a list from the host: only an ARRAY[*] of scalars or STRINGs can
+       |
+       | Note: a WASI import gives a list into ARRAY[*] VAR_IN_OUTs of one dimension, one for each field of its elements
+    ---'
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:12:40 ]
+        |
+     12 | VAR_IN_OUT values : ARRAY[*] OF UDINT; text : STRING; END_VAR
+        |                                        ^^|^
+        |                                          `--- VAR_IN_OUT 'text' cannot take a string from the host beside the list its ARRAY[*] VAR_IN_OUTs take
+        |
+        | Note: a WASI import gives one string or one list, which the host writes into what the call passes
+    ----'
+    ");
+}
+
+/// Only a WASI FUNCTION takes a string or a list so: a host module's import
+/// is typed from its declaration, where a VAR_IN_OUT has no place, and an
+/// async import's result is written when no call is running.
+#[rstest]
+fn invalid_extern_string_in_out_elsewhere(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'host' 'name-of'}
+FUNCTION name_of
+VAR_IN_OUT text : STRING; END_VAR
+END_FUNCTION
+
+{extern async 'wasi:test/rt@0.1.0' 'name-later'}
+FUNCTION_BLOCK name_later
+VAR_IN_OUT text : STRING; END_VAR
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern 'host' 'names'}
+FUNCTION names
+VAR_IN_OUT values : ARRAY[*] OF STRING; END_VAR
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:4:12 ]
+       |
+     4 | VAR_IN_OUT text : STRING; END_VAR
+       |            ^^|^
+       |              `--- VAR_IN_OUT 'text' cannot cross a WASM import: an extern takes copies, not references
+       |
+       | Note: an extern FUNCTION receives copies of its VAR_INPUT
+    ---'
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:9:12 ]
+       |
+     9 | VAR_IN_OUT text : STRING; END_VAR
+       |            ^^|^
+       |              `--- VAR_IN_OUT 'text' cannot cross a WASM import: an extern takes copies, not references
+       |
+       | Note: an extern FUNCTION receives copies of its VAR_INPUT
+    ---'
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:15:12 ]
+        |
+     15 | VAR_IN_OUT values : ARRAY[*] OF STRING; END_VAR
+        |            ^^^|^^
+        |               `---- VAR_IN_OUT 'values' cannot cross a WASM import: an extern takes copies, not references
+        |
+        | Note: an extern FUNCTION receives copies of its VAR_INPUT
+    ----'
+    ");
+}
+
+/// A WASI import gives a text, an error's or a case's, by writing it into
+/// the STRING its first STRING VAR_OUTPUT is bound to, cut to fit: no field
+/// of the import's result. A call binds it as any output, to a variable or
+/// a member, or leaves it out.
+#[rstest]
+fn valid_wasi_extern_gives_a_text(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE fault : STRUCT kind : USINT; other : STRING[256]; END_STRUCT END_TYPE
+
+{extern 'wasi:test/rt@0.1.0' 'why'}
+FUNCTION why
+VAR_INPUT code : INT; END_VAR
+VAR_OUTPUT w0 : LWORD; w1 : LWORD; other : STRING[256]; END_VAR
+END_FUNCTION
+
+FUNCTION Use : BOOL
+VAR
+    short : STRING[8];
+    error : fault;
+END_VAR
+    why(code := 1, other => short);
+    why(code := 2, other => error.other);
+    why(code := 3);
+    Use := short = error.other;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// The host's one block goes into one place: a second STRING VAR_OUTPUT, or
+/// one beside the STRING VAR_IN_OUT or the ARRAY[*] VAR_IN_OUTs, has none to
+/// take. Only a WASI FUNCTION takes a text so: an async import's result is
+/// written when no call is running.
+#[rstest]
+fn invalid_wasi_extern_text_beside(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'wasi:test/rt@0.1.0' 'two-texts'}
+FUNCTION two_texts
+VAR_OUTPUT first : STRING; second : STRING[20]; END_VAR
+END_FUNCTION
+
+{extern 'wasi:test/rt@0.1.0' 'text-and-string'}
+FUNCTION text_and_string
+VAR_IN_OUT name : STRING; END_VAR
+VAR_OUTPUT other : STRING; END_VAR
+END_FUNCTION
+
+{extern 'wasi:test/rt@0.1.0' 'text-and-list'}
+FUNCTION text_and_list
+VAR_IN_OUT values : ARRAY[*] OF UDINT; END_VAR
+VAR_OUTPUT other : STRING; END_VAR
+END_FUNCTION
+
+{extern async 'wasi:test/rt@0.1.0' 'why-later'}
+FUNCTION_BLOCK why_later
+VAR_OUTPUT DONE : BOOL; other : STRING; END_VAR
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:4:28 ]
+       |
+     4 | VAR_OUTPUT first : STRING; second : STRING[20]; END_VAR
+       |                            ^^^|^^
+       |                               `---- VAR_OUTPUT 'second' cannot take a text from the host beside the string, list or text the import takes
+       |
+       | Note: a WASI import gives one string, one list or one text, which the host writes into what the call passes
+    ---'
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:10:12 ]
+        |
+     10 | VAR_OUTPUT other : STRING; END_VAR
+        |            ^^|^^
+        |              `---- VAR_OUTPUT 'other' cannot take a text from the host beside the string, list or text the import takes
+        |
+        | Note: a WASI import gives one string, one list or one text, which the host writes into what the call passes
+    ----'
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:16:12 ]
+        |
+     16 | VAR_OUTPUT other : STRING; END_VAR
+        |            ^^|^^
+        |              `---- VAR_OUTPUT 'other' cannot take a text from the host beside the string, list or text the import takes
+        |
+        | Note: a WASI import gives one string, one list or one text, which the host writes into what the call passes
+    ----'
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:21:25 ]
+        |
+     21 | VAR_OUTPUT DONE : BOOL; other : STRING; END_VAR
+        |                         ^^|^^
+        |                           `---- VAR_OUTPUT 'other' cannot be a field of the import's result: only a scalar can
+        |
+        | Note: an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars
+    ----'
+    ");
+}
+
+/// An import returns a record of scalars: a STRUCT output is refused, on a
+/// WASI import too, which keeps the core rules (the interface is made up),
+/// and on any other; a STRING one on any import but a WASI FUNCTION, whose
+/// first is its text. An output or a return type that does not resolve is
+/// reported where the type is written, and nowhere else.
 #[rstest]
 fn invalid_extern_aggregate_output(mut with_db: RootDatabase) {
     let source = r#"
@@ -89,15 +389,6 @@ END_FUNCTION"#;
      6 | VAR_OUTPUT p : Pt; s : STRING; END_VAR
        |            |
        |            `-- VAR_OUTPUT 'p' cannot be a field of the import's result: only a scalar can
-       |
-       | Note: an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars
-    ---'
-    [E1502] Error: not representable on an import
-       ,-[ file:///test0.st:6:20 ]
-       |
-     6 | VAR_OUTPUT p : Pt; s : STRING; END_VAR
-       |                    |
-       |                    `-- VAR_OUTPUT 's' cannot be a field of the import's result: only a scalar can
        |
        | Note: an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars
     ---'
@@ -254,7 +545,7 @@ END_FUNCTION"#;
        |
        | Help: write {extern async 'module' 'name'}
        |
-       | Note: a FUNCTION_BLOCK imports an async function, whose call its instance holds from one scan to the next
+       | Note: a FUNCTION_BLOCK imports the call of an async func, a stream's read or write, or a future's read, which its instance holds from one scan to the next
     ---'
     [E1501] Error: extern pragma outside a FUNCTION or FUNCTION_BLOCK
        ,-[ file:///test0.st:7:1 ]
@@ -645,7 +936,7 @@ END_FUNCTION"#;
         |
         | Help: declare the VAR_INPUT stream : UDINT, and the VAR_OUTPUTs data : STRING, read : UDINT and closed : BOOL after DONE
         |
-        | Note: a stream read takes the stream's reading end, a UDINT, and gives after DONE the bytes, a STRING or an ARRAY OF BYTE, how many came, a UDINT, then whether the writer left, a BOOL
+        | Note: a stream read takes the stream's reading end, a UDINT, and gives after DONE what came, bytes in a STRING or an ARRAY OF BYTE and handles in an ARRAY OF UDINT, how many came, a UDINT, then whether the writer left, a BOOL
     ----'
     [E1516] Error: built-in that does not fit its declaration
         ,-[ file:///test0.st:18:16 ]
@@ -821,10 +1112,11 @@ END_FUNCTION_BLOCK
 }
 
 /// A stream's read and a future's read are `{extern async}` blocks, as a
-/// stream's write is: a read takes the stream's reading end and gives the
-/// bytes, in a STRING or an ARRAY OF BYTE, how many came and whether the
-/// writer left; a future read takes the future's reading end and gives the
-/// value's fields. Accepted, and the module they build is valid.
+/// stream's write is: a read takes the stream's reading end and gives what
+/// came, bytes in a STRING or an ARRAY OF BYTE and a listener's sockets in
+/// an ARRAY OF UDINT, how many came and whether the writer left; a future
+/// read takes the future's reading end and gives the value's fields.
+/// Accepted, and the module they build is valid.
 #[rstest]
 fn valid_stream_and_future_reads(mut with_db: RootDatabase) {
     let source = r#"
@@ -851,25 +1143,34 @@ VAR_INPUT future : UDINT; END_VAR
 VAR_OUTPUT DONE : BOOL; failed : BOOL; code : USINT; END_VAR
 END_FUNCTION_BLOCK
 
+{extern async 'wasi:sockets/types@0.3.0' '[stream-read-0][method]tcp-socket.listen'}
+FUNCTION_BLOCK ACCEPT
+VAR_INPUT stream : UDINT; END_VAR
+VAR_OUTPUT DONE : BOOL; data : ARRAY[0..3] OF UDINT; read : UDINT; closed : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
 PROGRAM Main
 VAR
-    stream, finished : UDINT;
+    stream, finished, connections : UDINT;
     text : READ_TEXT;
     bytes : READ_BYTES;
     ending : READ_END;
+    accept : ACCEPT;
 END_VAR
     READ_STDIN(stream => stream, finished => finished);
     text(stream := stream);
     bytes(stream := stream);
     ending(future := finished);
+    accept(stream := connections);
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
 /// A read declares its built-in's variables (E1516): a stream read gives
-/// its bytes in a STRING or an ARRAY OF BYTE, then how many came and whether
-/// the writer left, and a future read takes the future's reading end alone.
+/// what came in a STRING, or in an ARRAY OF BYTE or OF UDINT of one
+/// dimension, then how many came and whether the writer left, and a future
+/// read takes the future's reading end alone.
 /// A future's write is imported by no block yet (E1516).
 #[rstest]
 fn invalid_stream_and_future_reads(mut with_db: RootDatabase) {
@@ -878,6 +1179,12 @@ fn invalid_stream_and_future_reads(mut with_db: RootDatabase) {
 FUNCTION_BLOCK READ_WORDS
 VAR_INPUT stream : UDINT; END_VAR
 VAR_OUTPUT DONE : BOOL; data : ARRAY[0..15] OF WORD; read : UDINT; closed : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
+FUNCTION_BLOCK READ_GRID
+VAR_INPUT stream : UDINT; END_VAR
+VAR_OUTPUT DONE : BOOL; data : ARRAY[0..3, 0..3] OF BYTE; read : UDINT; closed : BOOL; END_VAR
 END_FUNCTION_BLOCK
 
 {extern async 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
@@ -914,23 +1221,34 @@ END_FUNCTION
        |
        | Help: declare the VAR_INPUT stream : UDINT, and the VAR_OUTPUTs data : STRING, read : UDINT and closed : BOOL after DONE
        |
-       | Note: a stream read takes the stream's reading end, a UDINT, and gives after DONE the bytes, a STRING or an ARRAY OF BYTE, how many came, a UDINT, then whether the writer left, a BOOL
+       | Note: a stream read takes the stream's reading end, a UDINT, and gives after DONE what came, bytes in a STRING or an ARRAY OF BYTE and handles in an ARRAY OF UDINT, how many came, a UDINT, then whether the writer left, a BOOL
     ---'
     [E1516] Error: built-in that does not fit its declaration
        ,-[ file:///test0.st:9:16 ]
        |
-     9 | FUNCTION_BLOCK READ_NO_COUNT
-       |                ^^^^^^|^^^^^^
-       |                      `-------- 'READ_NO_COUNT' does not declare a stream read's variables
+     9 | FUNCTION_BLOCK READ_GRID
+       |                ^^^^|^^^^
+       |                    `------ 'READ_GRID' does not declare a stream read's variables
        |
        | Help: declare the VAR_INPUT stream : UDINT, and the VAR_OUTPUTs data : STRING, read : UDINT and closed : BOOL after DONE
        |
-       | Note: a stream read takes the stream's reading end, a UDINT, and gives after DONE the bytes, a STRING or an ARRAY OF BYTE, how many came, a UDINT, then whether the writer left, a BOOL
+       | Note: a stream read takes the stream's reading end, a UDINT, and gives after DONE what came, bytes in a STRING or an ARRAY OF BYTE and handles in an ARRAY OF UDINT, how many came, a UDINT, then whether the writer left, a BOOL
     ---'
     [E1516] Error: built-in that does not fit its declaration
         ,-[ file:///test0.st:15:16 ]
         |
-     15 | FUNCTION_BLOCK READ_END_TWICE
+     15 | FUNCTION_BLOCK READ_NO_COUNT
+        |                ^^^^^^|^^^^^^
+        |                      `-------- 'READ_NO_COUNT' does not declare a stream read's variables
+        |
+        | Help: declare the VAR_INPUT stream : UDINT, and the VAR_OUTPUTs data : STRING, read : UDINT and closed : BOOL after DONE
+        |
+        | Note: a stream read takes the stream's reading end, a UDINT, and gives after DONE what came, bytes in a STRING or an ARRAY OF BYTE and handles in an ARRAY OF UDINT, how many came, a UDINT, then whether the writer left, a BOOL
+    ----'
+    [E1516] Error: built-in that does not fit its declaration
+        ,-[ file:///test0.st:21:16 ]
+        |
+     21 | FUNCTION_BLOCK READ_END_TWICE
         |                ^^^^^^^|^^^^^^
         |                       `-------- 'READ_END_TWICE' does not take the future's reading end alone
         |
@@ -939,18 +1257,18 @@ END_FUNCTION
         | Note: a future read takes the future's reading end, a UDINT, and gives after DONE the fields of the value the future holds
     ----'
     [E1516] Error: built-in that does not fit its declaration
-        ,-[ file:///test0.st:20:39 ]
+        ,-[ file:///test0.st:26:39 ]
         |
-     20 | {extern async 'wasi:cli/stdout@0.3.0' '[future-write-1]write-via-stream'}
+     26 | {extern async 'wasi:cli/stdout@0.3.0' '[future-write-1]write-via-stream'}
         |                                       ^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^
         |                                                        `------------------ '[future-write-1]write-via-stream' writes a future
         |
         | Note: an {extern async} FUNCTION_BLOCK imports the call of an async func, a stream's read or write, or a future's read
     ----'
     [E1516] Error: built-in that does not fit its declaration
-        ,-[ file:///test0.st:26:32 ]
+        ,-[ file:///test0.st:32:32 ]
         |
-     26 | {extern 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
+     32 | {extern 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
         |                                ^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^
         |                                                `----------------- '[stream-read-0]read-via-stream' waits for the other end
         |

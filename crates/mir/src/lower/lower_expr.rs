@@ -2325,6 +2325,32 @@ impl<'db> ExprLowerCtx<'db> {
                     for value in values {
                         let value = *value;
                         let lowered = self.lower_expr(value)?;
+                        // An import's `ARRAY[*]`, where the host writes the
+                        // list it gives: the array's address, how many
+                        // elements it has, the bytes from one to the next
+                        // and a STRING element's capacity.
+                        if is_extern && var.conformand(self.db).is_some() {
+                            let MirExpr::Load(_, MirType::Array(array)) = &lowered else {
+                                return Err(LowerTypeError::UnsupportedType(
+                                    "an import's ARRAY[*] is bound to what is no array".to_string(),
+                                ));
+                            };
+                            let capacity = match array.element_type.as_ref() {
+                                MirType::String { capacity } => *capacity,
+                                _ => array.element_size,
+                            };
+                            let shape = [array.total_elements, array.element_size, capacity];
+                            args.push(to_byref(lowered)?);
+                            for value in shape {
+                                args.push(MirCallArg {
+                                    value: MirExpr::Constant(crate::expr::MirConstant::I32(
+                                        value as i32,
+                                    )),
+                                    kind: MirArgKind::ByValue,
+                                });
+                            }
+                            continue;
+                        }
                         if by_ref {
                             args.push(to_byref(lowered)?);
                             continue;
@@ -2532,7 +2558,15 @@ impl<'db> ExprLowerCtx<'db> {
                         }
                         None => self.lower_variable_access(*variable)?,
                     };
-                    if is_extern && *not {
+                    if is_extern && matches!(ty, MirType::String { .. }) {
+                        // An import's text: the host writes it into the
+                        // STRING the output is bound to, cut to fit, as it
+                        // writes a string into a STRING `VAR_IN_OUT`.
+                        args.push(MirCallArg {
+                            value: MirExpr::AddrOf(place),
+                            kind: MirArgKind::ByRef,
+                        });
+                    } else if is_extern && *not {
                         // Popped into a scratch, negated into the bound place
                         // once the call returns.
                         let scratch = self.extern_result_scratch(ty.clone());
@@ -2662,6 +2696,23 @@ impl<'db> ExprLowerCtx<'db> {
                             // A discarded extern output still pops off the stack: a scratch, no
                             // destination.
                             let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
+                            // A discarded text still goes somewhere: a STRING
+                            // in a scratch of the call's.
+                            if let MirType::String { .. } = ty {
+                                let scratch = hir::hir_def::interned::identifier::Ident::new(
+                                    self.db,
+                                    compact_str::CompactString::from(format!(
+                                        "$outcopy${}",
+                                        self.call_scratch.borrow().memory.len()
+                                    )),
+                                );
+                                self.call_scratch.borrow_mut().memory.push((scratch, ty));
+                                args.push(MirCallArg {
+                                    value: MirExpr::AddrOf(MirPlace::Local(scratch)),
+                                    kind: MirArgKind::ByRef,
+                                });
+                                continue;
+                            }
                             let scratch = self.extern_result_scratch(ty.clone());
                             extern_results.push(crate::expr::ExternResultBind {
                                 scratch,

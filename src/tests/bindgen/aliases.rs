@@ -108,9 +108,11 @@ fn a_used_type_is_named_where_it_is_defined(mut with_db: RootDatabase) {
     ");
 }
 
-/// An alias of a record, a tuple, an option, a result or a string writes
+/// An alias of a record is a TYPE of its STRUCT, and a tuple WIT names a
+/// STRUCT of its items. An alias of an option, a result or a string writes
 /// no TYPE: the functions that take or give one pass it as they would pass
-/// what it names. An alias of a list is left out, with the functions.
+/// what it names. An alias of a list writes none either, and is listed as
+/// left out; a function that gives one gives its elements into arrays.
 #[rstest]
 fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
@@ -139,8 +141,25 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
     NAMESPACE INTERNAL Wasi
     	NAMESPACE Example
     		NAMESPACE Shapes
+    			USING Std.Convert;
+
+    			TYPE POINT : STRUCT
+    				x : LREAL;
+    				y : LREAL;
+    			END_STRUCT END_TYPE
+
+    			TYPE SPOT : POINT; END_TYPE
+
+    			TYPE PAIR : STRUCT
+    				item0 : UDINT;
+    				item1 : UDINT;
+    			END_STRUCT END_TYPE
+
+    			/* `move-to` as the host has it: its parameters as the canonical ABI passes
+    			   them, which `MOVE_TO` passes field by field, and the values of its
+    			   result, which it puts in its members. */
     			{extern 'wasi:example/shapes@0.3.0' 'move-to'}
-    			FUNCTION MOVE_TO
+    			FUNCTION PRIVATE MOVE_TO_RAW
     			VAR_INPUT
     				where_x : LREAL;
     				where_y : LREAL;
@@ -149,6 +168,13 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
     				item0 : UDINT;
     				item1 : UDINT;
     			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION MOVE_TO : PAIR
+    			VAR_INPUT
+    				where : SPOT;
+    			END_VAR
+    				MOVE_TO_RAW(where_x := where.x, where_y := where.y, item0 => MOVE_TO.item0, item1 => MOVE_TO.item1);
     			END_FUNCTION
 
     			{extern 'wasi:example/shapes@0.3.0' 'find'}
@@ -169,14 +195,64 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
     				value : UDINT;
     			END_VAR
     			END_FUNCTION
+
+    			/* `list-all` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `LIST_ALL` reads, and its list in
+    			   `value`, where the host writes it. */
+    			{extern 'wasi:example/shapes@0.3.0' 'list-all'}
+    			FUNCTION PRIVATE LIST_ALL_RAW
+    			VAR_IN_OUT
+    				value : ARRAY[*] OF STRING;
+    			END_VAR
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION LIST_ALL
+    			VAR_IN_OUT
+    				value : ARRAY[*] OF STRING;
+    			END_VAR
+    			VAR_OUTPUT
+    				count : UDINT;
+    			END_VAR
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    				LIST_ALL_RAW(value := value, w0 => w0, w1 => w1);
+    				count := DWORD_TO_UDINT(w0.%D1);
+    			END_FUNCTION
+
+    			/* `here` as the host gives it: its result in words of 8 bytes, as the
+    			   canonical ABI lays it out, which `HERE` reads, and its string in
+    			   `value`, where the host writes it. */
+    			{extern 'wasi:example/shapes@0.3.0' 'here'}
+    			FUNCTION PRIVATE HERE_RAW
+    			VAR_IN_OUT
+    				value : STRING;
+    			END_VAR
+    			VAR_OUTPUT
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    			END_FUNCTION
+
+    			FUNCTION HERE
+    			VAR_IN_OUT
+    				value : STRING;
+    			END_VAR
+    			VAR
+    				w0 : LWORD;
+    				w1 : LWORD;
+    			END_VAR
+    				HERE_RAW(value := value, w0 => w0, w1 => w1);
+    			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - `names`: it is a list, which ST has no type for yet.
-       - `list-all`: its result holds a list, which an import cannot give back
-         yet.
-       - `here`: its result holds a string, which an import cannot give back
-         yet. */
+       - `names`: it is a list, which ST has no type for yet. */
     ");
 }

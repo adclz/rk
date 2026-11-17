@@ -838,6 +838,8 @@ fn lower_module_from_pous<'db>(
         located_map: debug_format::LocatedMap::new(Vec::new(), Vec::new()),
         source_files: Vec::new(),
         stack_size: None,
+        longest_lists: Vec::new(),
+        largest_string: 0,
     };
 
     // Phase 4.5: relocate RETAIN variables into one contiguous band above
@@ -1213,12 +1215,108 @@ fn lower_module_from_pous<'db>(
         ));
     }
 
+    // The buffers a host writes into, which the scratch is sized by.
+    module.longest_lists = longest_lists(&module);
+    module.largest_string = largest_string(&module, global_table.values().map(|(_, ty)| ty));
+
     Ok(module)
 }
 
+/// For each import of `module`, the most elements any call of it passes an
+/// `ARRAY[*]` of. A call passes each of an import's parameters as one
+/// argument, in order, but an `ARRAY[*]`: its address, then its length, its
+/// stride and a STRING element's capacity, as constants (`build_call_args`).
+fn longest_lists(module: &MirModule) -> Vec<u32> {
+    use crate::expr::{MirConstant, MirExpr};
+    let is_list = |param: &MirParam| {
+        param.kind == MirParamKind::InOut
+            && matches!(&param.ty, MirType::Pointer(inner) if matches!(inner.as_ref(), MirType::Array(_)))
+    };
+    let mut longest = vec![0; module.extern_functions.len()];
+    // By name, as codegen resolves a call: its index is not set yet.
+    let giving: FxHashMap<hir::hir_def::interned::identifier::Ident, usize> = module
+        .extern_functions
+        .iter()
+        .enumerate()
+        .filter(|(_, ext)| ext.params.iter().any(is_list))
+        .map(|(at, ext)| (ext.name, at))
+        .collect();
+    if giving.is_empty() {
+        return longest;
+    }
+    for func in &module.functions {
+        crate::stmt::for_each_call(&func.body, &mut |call| {
+            let Some(&at) = giving.get(&call.callee) else {
+                return;
+            };
+            let mut arg = 0;
+            for param in &module.extern_functions[at].params {
+                if !is_list(param) {
+                    arg += 1;
+                    continue;
+                }
+                match call.args.get(arg + 1).map(|length| &length.value) {
+                    Some(MirExpr::Constant(MirConstant::I32(length))) => {
+                        longest[at] = longest[at].max(*length as u32);
+                    }
+                    other => unreachable!(
+                        "internal compiler error: an import's ARRAY[*] is passed with its \
+                         length, as a constant: {other:?}"
+                    ),
+                }
+                arg += 4;
+            }
+        });
+    }
+    longest
+}
+
+/// The capacity of the largest STRING `module` declares: in a parameter, a
+/// local or a result of a function, or one of `globals`, and in a STRUCT or
+/// an array any of them holds. An instance's variables come with the
+/// functions of its type, as their locals or as fields of the instance a
+/// body takes.
+fn largest_string<'a>(module: &'a MirModule, globals: impl Iterator<Item = &'a MirType>) -> u32 {
+    fn walk(ty: &MirType, largest: &mut u32) {
+        match ty {
+            MirType::String { capacity } => *largest = (*largest).max(*capacity),
+            MirType::Struct(strukt) => {
+                for field in &strukt.fields {
+                    walk(&field.ty, largest);
+                }
+            }
+            MirType::Array(array) => walk(&array.element_type, largest),
+            MirType::Pointer(inner) => walk(inner, largest),
+            MirType::RefTarget(crate::types::MirRefTarget::Type(target)) => walk(target, largest),
+            MirType::RefTarget(crate::types::MirRefTarget::Conformand { element, .. }) => {
+                walk(element, largest)
+            }
+            _ => {}
+        }
+    }
+    let mut largest = 0;
+    for func in &module.functions {
+        for param in &func.params {
+            walk(&param.ty, &mut largest);
+        }
+        for local in &func.locals {
+            walk(&local.ty, &mut largest);
+        }
+        if let Some(ty) = &func.return_type {
+            walk(ty, &mut largest);
+        }
+    }
+    for ty in globals {
+        walk(ty, &mut largest);
+    }
+    largest
+}
+
 /// Lower an `{extern}` FUNCTION: `VAR_INPUT` are the params, scalar
-/// `VAR_OUTPUT` the results in declaration order, the return type last
-/// (E1502 refused the rest).
+/// `VAR_OUTPUT` the results in declaration order, the return type last,
+/// and a STRING `VAR_IN_OUT` where the host writes the string it gives, the
+/// `ARRAY[*]` ones where it writes a list, or a STRING `VAR_OUTPUT` where it
+/// writes a text (E1502 refused the rest).
 fn lower_extern_function<'db>(
     db: &'db dyn WorkspaceDataBase,
     func: Function<'db>,
@@ -1239,7 +1337,43 @@ fn lower_extern_function<'db>(
             }
             VariableKind::Output => {
                 let ty = lower_type(db, var.spec(db).infer(db))?;
-                out_results.push((var.name(db), ty));
+                match ty {
+                    // No field of the result: a call passes the STRING it is
+                    // bound to, which the wrapper cuts the text to.
+                    MirType::String { .. } => params.push(MirParam {
+                        name: var.name(db),
+                        ty: MirType::Pointer(Box::new(ty)),
+                        kind: MirParamKind::Output,
+                    }),
+                    ty => out_results.push((var.name(db), ty)),
+                }
+            }
+            // No parameter of the import: a call passes it to the wrapper
+            // that tells the host's next block where to go. An `ARRAY[*]`
+            // is its elements' type alone: each call says its bounds.
+            VariableKind::InOut => {
+                let ty = match var
+                    .conformand(db)
+                    .and_then(|conformand| conformand.of_type(db))
+                {
+                    Some(of) => {
+                        let element = super::lower_type::lower_spec(db, of)?;
+                        MirType::Array(crate::types::MirArrayType {
+                            element_size: element.size_bytes(),
+                            align: element.alignment(),
+                            element_type: Box::new(element),
+                            dimensions: Vec::new(),
+                            total_elements: 0,
+                            size: 0,
+                        })
+                    }
+                    None => lower_type(db, var.spec(db).infer(db))?,
+                };
+                params.push(MirParam {
+                    name: var.name(db),
+                    ty: MirType::Pointer(Box::new(ty)),
+                    kind: MirParamKind::InOut,
+                });
             }
             _ => {}
         }

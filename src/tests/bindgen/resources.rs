@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Resources: a handle is a UDINT; a resource's constructor, methods and
-//! static functions are FUNCTIONs named after it, a method taking the
-//! handle it is called on first as `self`; an async method is a block; the
-//! drop lets go of a handle the host gave.
+//! Resources: a handle is its resource's own type, a UDINT under the name
+//! of the resource, from another interface by its full name; a resource's
+//! constructor, methods and static functions are FUNCTIONs named after it,
+//! a method taking the handle it is called on first as `self`; an async
+//! method is a block; the drop lets go of a handle the host gave.
 
 use db::RootDatabase;
 use insta::assert_snapshot;
@@ -13,7 +14,8 @@ use rstest::rstest;
 use super::checked;
 use crate::tests::utils::with_db;
 
-/// Every kind of function a resource has, and its drop.
+/// Every kind of function a resource has, and its drop; an alias of the
+/// resource names its type.
 #[rstest]
 fn a_resource_s_functions_and_its_drop(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
@@ -28,6 +30,7 @@ fn a_resource_s_functions_and_its_drop(mut with_db: RootDatabase) {
                 flush: async func();
                 read-at: async func(offset: u64) -> u32;
             }
+            type file = descriptor;
         }
 
         world example {
@@ -38,16 +41,20 @@ fn a_resource_s_functions_and_its_drop(mut with_db: RootDatabase) {
     NAMESPACE INTERNAL Wasi
     	NAMESPACE Example
     		NAMESPACE Files
+    			TYPE DESCRIPTOR : UDINT; END_TYPE
+
     			/* Lets go of `handle`, a handle of `descriptor` the host gave. */
     			{extern 'wasi:example/files@0.3.0' '[resource-drop]descriptor'}
     			FUNCTION DESCRIPTOR_DROP
     			VAR_INPUT
-    				handle : UDINT;
+    				handle : DESCRIPTOR;
     			END_VAR
     			END_FUNCTION
 
+    			TYPE FILE : DESCRIPTOR; END_TYPE
+
     			{extern 'wasi:example/files@0.3.0' '[constructor]descriptor'}
-    			FUNCTION DESCRIPTOR_NEW : UDINT
+    			FUNCTION DESCRIPTOR_NEW : DESCRIPTOR
     			VAR_INPUT
     				mode : UDINT;
     			END_VAR
@@ -56,20 +63,20 @@ fn a_resource_s_functions_and_its_drop(mut with_db: RootDatabase) {
     			{extern 'wasi:example/files@0.3.0' '[method]descriptor.size'}
     			FUNCTION DESCRIPTOR_SIZE : ULINT
     			VAR_INPUT
-    				self : UDINT;
+    				self : DESCRIPTOR;
     			END_VAR
     			END_FUNCTION
 
     			{extern 'wasi:example/files@0.3.0' '[method]descriptor.resize'}
     			FUNCTION DESCRIPTOR_RESIZE : BOOL
     			VAR_INPUT
-    				self : UDINT;
+    				self : DESCRIPTOR;
     				to_ : ULINT;
     			END_VAR
     			END_FUNCTION
 
     			{extern 'wasi:example/files@0.3.0' '[static]descriptor.open'}
-    			FUNCTION DESCRIPTOR_OPEN : UDINT
+    			FUNCTION DESCRIPTOR_OPEN : DESCRIPTOR
     			VAR_INPUT
     				at_ : UDINT;
     			END_VAR
@@ -78,7 +85,7 @@ fn a_resource_s_functions_and_its_drop(mut with_db: RootDatabase) {
     			{extern async 'wasi:example/files@0.3.0' '[method]descriptor.flush'}
     			FUNCTION_BLOCK DESCRIPTOR_FLUSH
     			VAR_INPUT
-    				self : UDINT;
+    				self : DESCRIPTOR;
     			END_VAR
     			VAR_OUTPUT
     				DONE : BOOL;
@@ -88,7 +95,7 @@ fn a_resource_s_functions_and_its_drop(mut with_db: RootDatabase) {
     			{extern async 'wasi:example/files@0.3.0' '[method]descriptor.read-at'}
     			FUNCTION_BLOCK DESCRIPTOR_READ_AT
     			VAR_INPUT
-    				self : UDINT;
+    				self : DESCRIPTOR;
     				offset : ULINT;
     			END_VAR
     			VAR_OUTPUT
@@ -103,9 +110,10 @@ fn a_resource_s_functions_and_its_drop(mut with_db: RootDatabase) {
 }
 
 /// A constructor that takes nothing, and handles owned and borrowed, of
-/// this interface's resources and of another's, in and out.
+/// this interface's resources and of another's, in and out, each its
+/// resource's type.
 #[rstest]
-fn handles_go_in_and_come_back_as_udint(mut with_db: RootDatabase) {
+fn handles_go_in_and_come_back_as_their_resource_s_type(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
         package wasi:example@0.3.0;
 
@@ -132,11 +140,13 @@ fn handles_go_in_and_come_back_as_udint(mut with_db: RootDatabase) {
     NAMESPACE INTERNAL Wasi
     	NAMESPACE Example
     		NAMESPACE Types
+    			TYPE SOCKET : UDINT; END_TYPE
+
     			/* Lets go of `handle`, a handle of `socket` the host gave. */
     			{extern 'wasi:example/types@0.3.0' '[resource-drop]socket'}
     			FUNCTION SOCKET_DROP
     			VAR_INPUT
-    				handle : UDINT;
+    				handle : SOCKET;
     			END_VAR
     			END_FUNCTION
     		END_NAMESPACE
@@ -147,46 +157,48 @@ fn handles_go_in_and_come_back_as_udint(mut with_db: RootDatabase) {
     NAMESPACE INTERNAL Wasi
     	NAMESPACE Example
     		NAMESPACE Network
+    			TYPE POOL : UDINT; END_TYPE
+
     			/* Lets go of `handle`, a handle of `pool` the host gave. */
     			{extern 'wasi:example/network@0.3.0' '[resource-drop]pool'}
     			FUNCTION POOL_DROP
     			VAR_INPUT
-    				handle : UDINT;
+    				handle : POOL;
     			END_VAR
     			END_FUNCTION
 
     			{extern 'wasi:example/network@0.3.0' '[constructor]pool'}
-    			FUNCTION POOL_NEW : UDINT
+    			FUNCTION POOL_NEW : POOL
     			END_FUNCTION
 
     			{extern 'wasi:example/network@0.3.0' '[method]pool.take'}
-    			FUNCTION POOL_TAKE : UDINT
+    			FUNCTION POOL_TAKE : Wasi.Example.Types.SOCKET
     			VAR_INPUT
-    				self : UDINT;
+    				self : POOL;
     			END_VAR
     			END_FUNCTION
 
     			{extern 'wasi:example/network@0.3.0' '[method]pool.give'}
     			FUNCTION POOL_GIVE
     			VAR_INPUT
-    				self : UDINT;
-    				s_ : UDINT;
+    				self : POOL;
+    				s_ : Wasi.Example.Types.SOCKET;
     			END_VAR
     			END_FUNCTION
 
     			{extern 'wasi:example/network@0.3.0' '[method]pool.peek'}
     			FUNCTION POOL_PEEK : BOOL
     			VAR_INPUT
-    				self : UDINT;
-    				s_ : UDINT;
+    				self : POOL;
+    				s_ : Wasi.Example.Types.SOCKET;
     			END_VAR
     			END_FUNCTION
 
     			{extern 'wasi:example/network@0.3.0' 'swap'}
-    			FUNCTION SWAP : UDINT
+    			FUNCTION SWAP : POOL
     			VAR_INPUT
-    				a : UDINT;
-    				b : UDINT;
+    				a : POOL;
+    				b : POOL;
     			END_VAR
     			END_FUNCTION
     		END_NAMESPACE
@@ -215,33 +227,37 @@ fn methods_of_one_name_on_two_resources(mut with_db: RootDatabase) {
     NAMESPACE INTERNAL Wasi
     	NAMESPACE Example
     		NAMESPACE Pair
+    			TYPE INPUT : UDINT; END_TYPE
+
     			/* Lets go of `handle`, a handle of `input` the host gave. */
     			{extern 'wasi:example/pair@0.3.0' '[resource-drop]input'}
     			FUNCTION INPUT_DROP
     			VAR_INPUT
-    				handle : UDINT;
+    				handle : INPUT;
     			END_VAR
     			END_FUNCTION
+
+    			TYPE OUTPUT : UDINT; END_TYPE
 
     			/* Lets go of `handle`, a handle of `output` the host gave. */
     			{extern 'wasi:example/pair@0.3.0' '[resource-drop]output'}
     			FUNCTION OUTPUT_DROP
     			VAR_INPUT
-    				handle : UDINT;
+    				handle : OUTPUT;
     			END_VAR
     			END_FUNCTION
 
     			{extern 'wasi:example/pair@0.3.0' '[method]input.get'}
     			FUNCTION INPUT_GET : UDINT
     			VAR_INPUT
-    				self : UDINT;
+    				self : INPUT;
     			END_VAR
     			END_FUNCTION
 
     			{extern 'wasi:example/pair@0.3.0' '[method]output.get'}
     			FUNCTION OUTPUT_GET : UDINT
     			VAR_INPUT
-    				self : UDINT;
+    				self : OUTPUT;
     			END_VAR
     			END_FUNCTION
     		END_NAMESPACE

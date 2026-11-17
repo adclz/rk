@@ -47,11 +47,30 @@ pub enum ImportMember {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ExternForbiddenKind {
     /// `VAR_IN_OUT` hands the host a pointer into caller storage with a
-    /// mutation contract; an extern's interface is copies only.
+    /// mutation contract; an extern's interface is copies only. A WASI
+    /// FUNCTION's first STRING `VAR_IN_OUT` is no parameter: the host
+    /// writes the string the import gives into it.
     InOut,
+    /// A second STRING `VAR_IN_OUT` of a WASI FUNCTION: the host's first
+    /// string goes into the first, and nothing says where another goes.
+    SecondString,
+    /// An `ARRAY[*]` `VAR_IN_OUT` of a WASI FUNCTION that cannot take the
+    /// elements of a list: of more than one dimension, of any type, or of
+    /// what is neither a scalar nor a STRING.
+    ListElement,
+    /// A STRING `VAR_IN_OUT` beside the `ARRAY[*]` ones of a WASI FUNCTION:
+    /// the host's first block is the list's, and nothing says where a string
+    /// outside it goes.
+    StringBesideList,
     /// A STRUCT, ARRAY, instance, reference or STRING `VAR_OUTPUT`: the
-    /// import's result is a record of scalars.
+    /// import's result is a record of scalars. A WASI FUNCTION's first
+    /// STRING `VAR_OUTPUT` is none of it: the host writes the text it gives
+    /// into it, cut to fit.
     AggregateOutput,
+    /// A STRING `VAR_OUTPUT` of a WASI FUNCTION beside its first one, its
+    /// STRING `VAR_IN_OUT` or its `ARRAY[*]` ones: the host's one block goes
+    /// into one of them, and nothing says where another goes.
+    TextBeside,
     /// An `ARRAY[*]` `VAR_INPUT` has the size of each call's array, and an
     /// import's copies have one size.
     Conformand,
@@ -78,8 +97,10 @@ pub enum ExternForbiddenKind {
 impl ExternForbiddenKind {
     fn section(self) -> &'static str {
         match self {
-            Self::InOut => "VAR_IN_OUT",
-            Self::AggregateOutput => "VAR_OUTPUT",
+            Self::InOut | Self::SecondString | Self::ListElement | Self::StringBesideList => {
+                "VAR_IN_OUT"
+            }
+            Self::AggregateOutput | Self::TextBeside => "VAR_OUTPUT",
             Self::Conformand
             | Self::Variadic
             | Self::Reference
@@ -92,7 +113,19 @@ impl ExternForbiddenKind {
     fn message(self) -> &'static str {
         match self {
             Self::InOut => "cannot cross a WASM import: an extern takes copies, not references",
+            Self::SecondString => {
+                "cannot take a string from the host: the import's first STRING VAR_IN_OUT does"
+            }
+            Self::ListElement => {
+                "cannot take a list from the host: only an ARRAY[*] of scalars or STRINGs can"
+            }
+            Self::StringBesideList => {
+                "cannot take a string from the host beside the list its ARRAY[*] VAR_IN_OUTs take"
+            }
             Self::AggregateOutput => "cannot be a field of the import's result: only a scalar can",
+            Self::TextBeside => {
+                "cannot take a text from the host beside the string, list or text the import takes"
+            }
             Self::Conformand => {
                 "cannot cross a WASM import: an ARRAY[*] has the size of each call's array"
             }
@@ -117,8 +150,20 @@ impl ExternForbiddenKind {
     fn note(self) -> &'static str {
         match self {
             Self::InOut => "an extern FUNCTION receives copies of its VAR_INPUT",
+            Self::SecondString => {
+                "a WASI import gives one string, which the host writes into its one STRING VAR_IN_OUT"
+            }
+            Self::ListElement => {
+                "a WASI import gives a list into ARRAY[*] VAR_IN_OUTs of one dimension, one for each field of its elements"
+            }
+            Self::StringBesideList => {
+                "a WASI import gives one string or one list, which the host writes into what the call passes"
+            }
             Self::AggregateOutput => {
                 "an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars"
+            }
+            Self::TextBeside => {
+                "a WASI import gives one string, one list or one text, which the host writes into what the call passes"
             }
             Self::Conformand => "an extern FUNCTION receives VAR_INPUT copies of a fixed size",
             Self::Variadic => "a WASM import has one signature",
@@ -748,8 +793,8 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                     .call();
                 diag.with_note(
                     "a stream read takes the stream's reading end, a UDINT, and gives after DONE \
-                     the bytes, a STRING or an ARRAY OF BYTE, how many came, a UDINT, then \
-                     whether the writer left, a BOOL"
+                     what came, bytes in a STRING or an ARRAY OF BYTE and handles in an ARRAY \
+                     OF UDINT, how many came, a UDINT, then whether the writer left, a BOOL"
                         .to_string(),
                 );
                 diag.with_help(
@@ -935,8 +980,9 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 let (message, note, help) = match block {
                     true => (
                         "an {extern} pragma on a FUNCTION_BLOCK needs async",
-                        "a FUNCTION_BLOCK imports an async function, whose call its instance \
-                         holds from one scan to the next",
+                        "a FUNCTION_BLOCK imports the call of an async func, a stream's read \
+                         or write, or a future's read, which its instance holds from one scan \
+                         to the next",
                         "write {extern async 'module' 'name'}",
                     ),
                     false => (

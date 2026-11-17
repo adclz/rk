@@ -457,6 +457,9 @@ struct WasmGen<'a> {
     /// is added once the graft has placed the bundle's.
     stack_bounds: Option<(u32, u32)>,
     stack: Option<Stack>,
+    /// The global holding where the next block lands in the scratch
+    /// ([`control::ControlArea::scratch`]), added after the stack's.
+    arena: u32,
     /// The functions of the control interface, by index, for the `name`
     /// section ([`control`]).
     control_names: Vec<(u32, String)>,
@@ -630,6 +633,12 @@ pub(crate) fn core_memory_pages(module: &MirModule) -> u64 {
 /// Name of the builtin that faults a null dereference.
 pub(crate) const NULL_CHECK: &str = "rk.null_check";
 
+/// Name of the builtin that raises when the string an import gave was
+/// longer than the STRING the call passed for it.
+const HOST_STRING_CHECK: &str = "rk.host_string_check";
+/// Cuts the text an import gave to its STRING, when it was longer.
+const HOST_TEXT_CUT: &str = "rk.host_text_cut";
+
 impl<'a> WasmGen<'a> {
     fn new(db: &'a dyn WorkspaceDataBase, module: &'a MirModule) -> Self {
         // The module defines its own memory (`finish`): a component cannot
@@ -668,6 +677,7 @@ impl<'a> WasmGen<'a> {
             local_type_table: mir::debug_symbols::TypeTable::new(),
             stack_bounds: stack_bounds(module),
             stack: None,
+            arena: 0,
             control_names: Vec::new(),
             import_wrappers: Vec::new(),
         }
@@ -762,10 +772,14 @@ impl<'a> WasmGen<'a> {
             wasm_idx += 1;
         }
         // 3b. An import passed a STRING or a CHAR is called through a
-        //     wrapper that checks them first, after the user functions.
+        //     wrapper that checks them first, after the user functions,
+        //     and so is one that gives a string, whose wrapper tells the
+        //     host where to write it.
         // An async call's block checks them itself, before the call.
         for (at, ext_fn) in self.module.extern_functions.iter().enumerate() {
-            if !ext_fn.asynchronous && ext_fn.params.iter().any(|p| import_check(&p.ty).is_some()) {
+            let checked = ext_fn.params.iter().any(|p| import_check(&p.ty).is_some());
+            let gives = control::gives_string(ext_fn) || !control::list_fields(ext_fn).is_empty();
+            if !ext_fn.asynchronous && (checked || gives) {
                 index_remap.insert(ext_fn.index, wasm_idx);
                 self.import_wrappers.push((at, wasm_idx));
                 wasm_idx += 1;
@@ -846,6 +860,21 @@ impl<'a> WasmGen<'a> {
                 end,
             });
         }
+
+        // 7.6. Where the next block lands in the scratch: each function a
+        //      host calls starts it over, and so does each import call the
+        //      host writes a string or a list for.
+        self.arena = self.global_section.len();
+        self.global_section.global(
+            wasm_encoder::GlobalType {
+                val_type: ValType::I32,
+                mutable: true,
+                shared: false,
+            },
+            &wasm_encoder::ConstExpr::i32_const(
+                control::control_area(self.module, tests_end(self.module)).scratch as i32,
+            ),
+        );
 
         // 8. Emit user functions. The call indices are the same for each:
         //    rebuilt per function, they cost functions × functions.
@@ -1108,11 +1137,25 @@ impl<'a> WasmGen<'a> {
         for check in crate::exports::builtins(self.module) {
             found.insert(check.to_string());
         }
-        // An import's wrapper checks what a STRING or a CHAR passes.
+        // An import's wrapper checks what a STRING or a CHAR passes, and
+        // the length of the string the import gave.
         for ext_fn in &self.module.extern_functions {
             for param in &ext_fn.params {
                 if let Some(check) = import_check(&param.ty) {
                     found.insert(check.to_string());
+                }
+            }
+            if control::gives_string(ext_fn) {
+                found.insert(match control::cuts_text(ext_fn) {
+                    true => HOST_TEXT_CUT.to_string(),
+                    false => HOST_STRING_CHECK.to_string(),
+                });
+            }
+            // An import that gives a list: the bundle places its blocks,
+            // then checks and spreads them.
+            if !control::list_fields(ext_fn).is_empty() {
+                for name in [control::LIST_BLOCK, control::LIST_PLACED, control::LIST_END] {
+                    found.insert(name.to_string());
                 }
             }
         }
@@ -1165,7 +1208,8 @@ impl<'a> WasmGen<'a> {
     /// and otherwise writes in memory at the address the call passes last
     /// ([`canonical`]).
     fn import_signature(&self, ext_fn: &MirExternFunction) -> (Vec<ValType>, Vec<ValType>) {
-        let (mut params, _) = build_signature(&ext_fn.params, &None);
+        let passed: Vec<MirParam> = ext_fn.passed().cloned().collect();
+        let (mut params, _) = build_signature(&passed, &None);
         // Lowered async: the parameters, or past 4 values the address of a
         // tuple of them, the address the result is written at, and the
         // call's status and handle back.
@@ -1206,31 +1250,207 @@ impl<'a> WasmGen<'a> {
     /// character, raising where the component model would trap and stop
     /// the PLC, then calls the import with the same values and returns
     /// what it returns.
+    ///
+    /// An import that gives a string takes the STRING for it here, as its
+    /// address and how many bytes it holds, which the import itself does
+    /// not: the wrapper makes it the place of the host's next string
+    /// ([`control::ControlArea::host_string`]) for the call alone, once
+    /// the checks have passed, and raises after the call when the string
+    /// was longer than the STRING. One that gives a text, an error's or a
+    /// case's, does the same with its STRING `VAR_OUTPUT`, and cuts the
+    /// text to it instead of raising.
+    ///
+    /// One that gives a list takes each `ARRAY[*]` it goes into as its
+    /// address, how many elements it has, the bytes from one to the next
+    /// and a STRING element's capacity: the wrapper describes them in the
+    /// state the builtin bundle reads ([`control::ControlArea::host_list`]),
+    /// with how the canonical ABI lays out an element, and after the call
+    /// lets the bundle check what came and copy the scalar fields.
     fn emit_import_wrapper(&mut self, at: usize, index: u32) {
         let ext_fn = &self.module.extern_functions[at];
-        let (params, results) = self.import_signature(ext_fn);
+        let (import_params, results) = self.import_signature(ext_fn);
+        let builtin = |name: &str| {
+            self.builtin_indices
+                .get(name)
+                .copied()
+                .unwrap_or_else(|| panic!("internal compiler error: `{name}` was not grafted"))
+        };
         let mut f = wasm_encoder::Function::new([]);
+        // The wrapper's own parameters, the locals it passes on, the
+        // STRING's two and each array's four.
+        let mut params = Vec::new();
+        let mut passed = Vec::new();
+        let mut string = None;
+        let mut lists = Vec::new();
         let mut local = 0;
         for param in &ext_fn.params {
-            let lanes = match param.ty {
-                MirType::String { .. } => 2,
-                _ => 1,
-            };
+            // The STRING `VAR_OUTPUT` a text goes into, the only output an
+            // import takes, comes as the STRING `VAR_IN_OUT` does.
+            if matches!(param.kind, MirParamKind::InOut | MirParamKind::Output) {
+                match &param.ty {
+                    MirType::Pointer(inner) if matches!(inner.as_ref(), MirType::Array(_)) => {
+                        let MirType::Array(array) = inner.as_ref() else {
+                            unreachable!()
+                        };
+                        lists.push((array.element_type.as_ref().clone(), local));
+                        params.extend([ValType::I32; 4]);
+                        local += 4;
+                    }
+                    _ => {
+                        string = Some((local, local + 1));
+                        params.extend([ValType::I32; 2]);
+                        local += 2;
+                    }
+                }
+                continue;
+            }
+            let (lanes_of, _) = build_signature(std::slice::from_ref(param), &None);
+            params.extend(lanes_of.iter().copied());
+            let lanes = lanes_of.len() as u32;
             if let Some(check) = import_check(&param.ty) {
                 for lane in 0..lanes {
                     f.instruction(&Instruction::LocalGet(local + lane));
                 }
-                let check = self.builtin_indices.get(check).copied().unwrap_or_else(|| {
-                    panic!("internal compiler error: `{check}` was not grafted")
-                });
-                f.instruction(&Instruction::Call(check));
+                f.instruction(&Instruction::Call(builtin(check)));
             }
+            passed.extend(local..local + lanes);
             local += lanes;
         }
-        for local in 0..params.len() as u32 {
-            f.instruction(&Instruction::LocalGet(local));
+        // What the call passes past the declared parameters: the address
+        // a record comes back at.
+        for extra in &import_params[passed.len()..] {
+            passed.push(params.len() as u32);
+            params.push(*extra);
+        }
+        let area = control::control_area(self.module, tests_end(self.module));
+        let host_string = string.map(|locals| {
+            let at = area.host_string.expect(
+                "internal compiler error: an import gives a string, and the module has no place \
+                 for it",
+            );
+            (locals, at as i32)
+        });
+        if let Some(((address, capacity), at)) = host_string {
+            for (offset, value) in [
+                (control::HOST_STRING_AT, Some(address)),
+                (control::HOST_STRING_CAPACITY, Some(capacity)),
+                (control::HOST_STRING_LANDED, None),
+            ] {
+                f.instruction(&Instruction::I32Const(at));
+                match value {
+                    Some(local) => f.instruction(&Instruction::LocalGet(local)),
+                    None => f.instruction(&Instruction::I32Const(0)),
+                };
+                f.instruction(&Instruction::I32Store(emit_expr::mem_arg(offset, 2)));
+            }
+            // Empty until the host writes one: an option that is none
+            // brings no string.
+            f.instruction(&Instruction::LocalGet(address));
+            f.instruction(&Instruction::I32Const(0));
+            f.instruction(&Instruction::I32Store(emit_expr::mem_arg(0, 2)));
+        }
+        let host_list = (!lists.is_empty()).then(|| {
+            let state = area.host_list.expect(
+                "internal compiler error: an import gives a list, and the module has no place \
+                 for it",
+            ) as i32;
+            let store = |f: &mut wasm_encoder::Function, word: u32, value: Result<i32, u32>| {
+                f.instruction(&Instruction::I32Const(state));
+                match value {
+                    Ok(constant) => f.instruction(&Instruction::I32Const(constant)),
+                    Err(local) => f.instruction(&Instruction::LocalGet(local)),
+                };
+                f.instruction(&Instruction::I32Store(emit_expr::mem_arg(
+                    4 * u64::from(word),
+                    2,
+                )));
+            };
+            let (fields, offsets, element_size) = control::list_layout(ext_fn)
+                .expect("internal compiler error: an import with an ARRAY[*] gives a list");
+            let strings = fields
+                .iter()
+                .filter(|field| field.elementary.is_none())
+                .count();
+            store(&mut f, control::LIST_ARMED, Ok(1));
+            store(&mut f, control::LIST_ELEMENT_SIZE, Ok(element_size as i32));
+            store(&mut f, control::LIST_FIELDS, Ok(fields.len() as i32));
+            store(&mut f, control::LIST_STRINGS, Ok(strings as i32));
+            for word in control::LIST_STRINGS + 1..control::LIST_REFUSED_AT {
+                store(&mut f, word, Ok(0));
+            }
+            store(&mut f, control::LIST_REFUSED_AT, Ok(area.refused as i32));
+            store(
+                &mut f,
+                control::LIST_REFUSED_SIZE,
+                Ok(area.refused_size as i32),
+            );
+            for (index, ((field, offset), (_, locals))) in
+                fields.iter().zip(&offsets).zip(&lists).enumerate()
+            {
+                let at = control::LIST_HEADER + control::LIST_FIELD * index as u32;
+                let (base, length, stride, capacity) =
+                    (*locals, locals + 1, locals + 2, locals + 3);
+                store(&mut f, at, Ok(i32::from(field.elementary.is_none())));
+                store(&mut f, at + 1, Ok(*offset as i32));
+                store(&mut f, at + 2, Ok(field.size as i32));
+                store(&mut f, at + 3, Err(base));
+                store(&mut f, at + 4, Err(stride));
+                store(&mut f, at + 5, Err(capacity));
+                store(&mut f, at + 6, Err(length));
+            }
+            state
+        });
+        for local in &passed {
+            f.instruction(&Instruction::LocalGet(*local));
         }
         f.instruction(&Instruction::Call(at as u32));
+        // What the host wrote landed from the start of the scratch, where
+        // nothing was in use: a function a host calls has copied what it
+        // takes by the time its body runs. Once the host returns, before
+        // what came is checked, which may raise, the scratch starts over:
+        // the next call of an import, and whatever a host passes next, land
+        // from its start again.
+        if host_string.is_some() || host_list.is_some() {
+            f.instruction(&Instruction::I32Const(area.scratch as i32));
+            f.instruction(&Instruction::GlobalSet(self.arena));
+        }
+        if let Some(state) = host_list {
+            f.instruction(&Instruction::I32Const(state));
+            f.instruction(&Instruction::Call(builtin(control::LIST_END)));
+        }
+        if let Some(((address, capacity), at)) = host_string {
+            // The host's next string is no longer this one's, whatever
+            // came.
+            f.instruction(&Instruction::I32Const(at));
+            f.instruction(&Instruction::I32Const(0));
+            f.instruction(&Instruction::I32Store(emit_expr::mem_arg(
+                control::HOST_STRING_AT,
+                2,
+            )));
+            f.instruction(&Instruction::I32Const(at));
+            f.instruction(&Instruction::I32Load(emit_expr::mem_arg(
+                control::HOST_STRING_LANDED,
+                2,
+            )));
+            match control::cuts_text(ext_fn) {
+                // A text longer than its STRING: its first bytes, from
+                // where it landed.
+                true => {
+                    f.instruction(&Instruction::I32Const(at));
+                    f.instruction(&Instruction::I32Load(emit_expr::mem_arg(
+                        control::HOST_STRING_LENGTH,
+                        2,
+                    )));
+                    f.instruction(&Instruction::LocalGet(address));
+                    f.instruction(&Instruction::LocalGet(capacity));
+                    f.instruction(&Instruction::I32Const(area.refused as i32));
+                    f.instruction(&Instruction::Call(builtin(HOST_TEXT_CUT)));
+                }
+                false => {
+                    f.instruction(&Instruction::Call(builtin(HOST_STRING_CHECK)));
+                }
+            }
+        }
         f.instruction(&Instruction::End);
 
         let type_idx = self.next_type_idx;
@@ -2019,11 +2239,13 @@ impl<'a> WasmGen<'a> {
         module.section(&self.type_section);
         module.section(&self.import_section);
         module.section(&self.fn_section);
-        // The one memory, as large as the layout needs, growable.
+        // The one memory, as large as the layout needs, and never larger:
+        // what a host passes lands in the scratch, or traps.
+        let pages = core_memory_pages(self.module);
         let mut memories = wasm_encoder::MemorySection::new();
         memories.memory(wasm_encoder::MemoryType {
-            minimum: core_memory_pages(self.module),
-            maximum: None,
+            minimum: pages,
+            maximum: Some(pages),
             memory64: false,
             shared: false,
             page_size_log2: None,

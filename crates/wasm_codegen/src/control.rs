@@ -65,26 +65,153 @@ pub(crate) enum Raised {
 
 /// The memory the functions a host calls need, past the `{test}` result
 /// areas: a return area, the message, and the scratch what a host passes
-/// lands in (`cabi_realloc`), as large as the largest list the control
-/// interface takes and as the STRINGs any one `{export}` FUNCTION does.
-/// Past them, where an import's record is written, and where an `{export}`
-/// FUNCTION's VAR_OUTPUTs land before they are written in its record.
+/// and what an import gives land in. Past them, where an import's record is
+/// written, and where an `{export}` FUNCTION's VAR_OUTPUTs land before they
+/// are written in its record.
 pub(crate) struct ControlArea {
     /// Where a result is written: a tag at 0, then its payload, at 4 or,
     /// holding a 64-bit value, at 8. 16 bytes at least, more for the record
     /// of an `{export}` FUNCTION with VAR_OUTPUTs.
     pub ret: u32,
     pub too_long: u32,
+    /// Where what a host passes lands (`cabi_realloc`), one block after the
+    /// other from the start: each function a host calls starts it over, and
+    /// so does each call of an import that gives a string or a list. As large
+    /// as what one call places and reads (the inputs or the retain data the
+    /// control interface takes, the STRINGs one `{export}` FUNCTION does, the
+    /// elements of a list an import gives), then [`Self::refused`]. The
+    /// memory never grows: a block past it traps.
     pub scratch: u32,
     pub scratch_size: u32,
+    /// The end of the scratch, where a block nobody reads lands: a string
+    /// longer than its STRING, a list longer than its arrays, what an import
+    /// gives that no call keeps. Each such block of a call lands there, on
+    /// the one before it. As long as the largest buffer a host writes into,
+    /// and a page more.
+    pub refused: u32,
+    pub refused_size: u32,
     /// Where an import that returns a record of two fields or more has it
     /// written ([`crate::canonical`]).
     pub import_record: u32,
     /// Where an `{export}` FUNCTION's VAR_OUTPUTs are written by the
     /// FUNCTION, one slot each ([`crate::exports`]).
     pub outputs: u32,
+    /// Where the host's next string goes, when an import gives one
+    /// ([`HOST_STRING_AT`]): four words an import's wrapper sets around
+    /// its call and `cabi_import_realloc` reads.
+    pub host_string: Option<u32>,
+    /// Where the host's next blocks go, when an import gives a list: the
+    /// state its wrapper writes before the call, of [`LIST_HEADER`] words
+    /// and [`LIST_FIELD`] more for each field of an element, which the
+    /// builtin bundle reads (`wasm_builtins::host`).
+    pub host_list: Option<u32>,
     /// The first byte past the area.
     pub end: u32,
+}
+
+/// The words of [`ControlArea::host_string`], by their offset: the STRING
+/// the host's next string goes into, 0 outside a call that gives one; how
+/// many bytes that STRING holds; what became of the string, 0 while none
+/// came, [`LANDED`] once it is in the STRING, [`TOO_LONG_FOR_IT`] when it
+/// was longer; and then how long it was, which a text that is cut to fit
+/// is copied from ([`ControlArea::refused`], where it landed).
+pub(crate) const HOST_STRING_AT: u64 = 0;
+pub(crate) const HOST_STRING_CAPACITY: u64 = 4;
+pub(crate) const HOST_STRING_LANDED: u64 = 8;
+pub(crate) const HOST_STRING_LENGTH: u64 = 12;
+const LANDED: i32 = 1;
+const TOO_LONG_FOR_IT: i32 = 2;
+
+/// The words of [`ControlArea::host_list`], as `wasm_builtins::host` reads
+/// them: whether a call that gives a list runs, an element's size, how many
+/// fields it has and how many of them are strings, then what the bundle
+/// keeps, zero before the call, through the tenth word, then where a block
+/// nobody reads goes and how long it may be ([`ControlArea::refused`]);
+/// each field's words follow, whether it is a string, its offset and size
+/// in an element, then its array's address, stride, STRING capacity and
+/// length.
+pub(crate) const LIST_ARMED: u32 = 0;
+pub(crate) const LIST_ELEMENT_SIZE: u32 = 1;
+pub(crate) const LIST_FIELDS: u32 = 2;
+pub(crate) const LIST_STRINGS: u32 = 3;
+pub(crate) const LIST_REFUSED_AT: u32 = 10;
+pub(crate) const LIST_REFUSED_SIZE: u32 = 11;
+pub(crate) const LIST_HEADER: u32 = 12;
+pub(crate) const LIST_FIELD: u32 = 7;
+
+/// Whether `ext` gives a string, which the host writes into its STRING
+/// `VAR_IN_OUT`, or a text, into its STRING `VAR_OUTPUT`.
+pub(crate) fn gives_string(ext: &mir::function::MirExternFunction) -> bool {
+    ext.params.iter().any(|param| {
+        matches!(
+            param.kind,
+            mir::function::MirParamKind::InOut | mir::function::MirParamKind::Output
+        ) && matches!(&param.ty, mir::types::MirType::Pointer(inner)
+                if matches!(inner.as_ref(), mir::types::MirType::String { .. }))
+    })
+}
+
+/// Whether what `ext` gives is a text, an error's or a case's, which is
+/// cut to fit its STRING rather than refused when longer.
+pub(crate) fn cuts_text(ext: &mir::function::MirExternFunction) -> bool {
+    ext.params
+        .iter()
+        .any(|param| param.kind == mir::function::MirParamKind::Output)
+}
+
+/// The elements of the arrays `ext` gives a list into, its `ARRAY[*]`
+/// `VAR_IN_OUT`s, one per field of an element.
+pub(crate) fn list_fields(ext: &mir::function::MirExternFunction) -> Vec<&mir::types::MirType> {
+    ext.params
+        .iter()
+        .filter(|param| param.kind == mir::function::MirParamKind::InOut)
+        .filter_map(|param| match &param.ty {
+            mir::types::MirType::Pointer(inner) => match inner.as_ref() {
+                mir::types::MirType::Array(array) => Some(array.element_type.as_ref()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
+/// How an element of the list `ext` gives is laid out, as the canonical ABI
+/// lays out the record of its fields, one per array: each field's place
+/// and offset, and the element's size. `None` when it gives no list.
+pub(crate) fn list_layout(
+    ext: &mir::function::MirExternFunction,
+) -> Option<(Vec<crate::canonical::Canonical>, Vec<u32>, u32)> {
+    let elements = list_fields(ext);
+    if elements.is_empty() {
+        return None;
+    }
+    let fields: Vec<crate::canonical::Canonical> = elements
+        .iter()
+        .map(|element| {
+            crate::canonical::canonical(element).unwrap_or_else(|| {
+                panic!(
+                    "internal compiler error: a list's element is a scalar or a STRING \
+                     (E1502): {element:?}"
+                )
+            })
+        })
+        .collect();
+    let (offsets, size, _) = crate::canonical::record_layout(&fields);
+    Some((fields, offsets, size))
+}
+
+/// The bytes of the elements of the longest list a call keeps of what an
+/// import gives, as the host writes them.
+fn list_elements(module: &MirModule) -> u64 {
+    module
+        .extern_functions
+        .iter()
+        .zip(&module.longest_lists)
+        .filter_map(|(ext, longest)| {
+            list_layout(ext).map(|(_, _, size)| u64::from(size) * u64::from(*longest))
+        })
+        .max()
+        .unwrap_or(0)
 }
 
 /// The control area of `module`, which starts at `base`: where its `{test}`
@@ -95,20 +222,49 @@ pub(crate) fn control_area(module: &MirModule, base: u32) -> ControlArea {
     // A list of bytes and a string ask for an alignment of 1, a list of
     // ranges 4; 8 serves any.
     let scratch = (too_long + crate::exports::TOO_LONG.len() as u32).next_multiple_of(8);
-    let scratch_size = module
-        .input_size
-        .max(module.retain_size)
-        .max(crate::exports::strings_passed(module));
+    let lists = list_elements(module);
+    let placed = u64::from(
+        module
+            .input_size
+            .max(module.retain_size)
+            .max(crate::exports::strings_passed(module)),
+    )
+    .max(lists);
+    let narrow = |bytes: u64| u32::try_from(bytes).unwrap_or(u32::MAX);
+    let refused = narrow((u64::from(scratch) + placed).next_multiple_of(8));
+    let refused_size =
+        narrow(u64::from(module.largest_string).max(lists) + u64::from(crate::WASM_PAGE));
+    let scratch_size = narrow(u64::from(refused) + u64::from(refused_size) - u64::from(scratch));
     let import_record = (scratch + scratch_size).next_multiple_of(8);
     let outputs = (import_record + import_records_size(module)).next_multiple_of(8);
     let end = outputs + crate::exports::output_slots_size(module);
+    // Past the rest, so that a module no import gives a string to is laid
+    // out as before.
+    let host_string = module
+        .extern_functions
+        .iter()
+        .any(gives_string)
+        .then_some(end.next_multiple_of(4));
+    let end = host_string.map_or(end, |at| at + 16);
+    let fields = module
+        .extern_functions
+        .iter()
+        .map(|ext| list_fields(ext).len() as u32)
+        .max()
+        .unwrap_or(0);
+    let host_list = (fields > 0).then_some(end.next_multiple_of(4));
+    let end = host_list.map_or(end, |at| at + 4 * (LIST_HEADER + LIST_FIELD * fields));
     ControlArea {
         ret,
         too_long,
         scratch,
         scratch_size,
+        refused,
+        refused_size,
         import_record,
         outputs,
+        host_string,
+        host_list,
         end,
     }
 }
@@ -153,17 +309,7 @@ impl WasmGen<'_> {
             (tag, ty)
         });
 
-        // Where the next thing a host passes lands in the scratch: each
-        // function that takes one starts it over.
-        let arena = self.global_section.len();
-        self.global_section.global(
-            wasm_encoder::GlobalType {
-                val_type: ValType::I32,
-                mutable: true,
-                shared: false,
-            },
-            &ConstExpr::i32_const(area.scratch as i32),
-        );
+        let arena = self.arena;
 
         let init = self.export_index("__init");
         let f = self.control_init(area, init, caught);
@@ -183,10 +329,7 @@ impl WasmGen<'_> {
         let f = self.control_restore_retain(area, arena);
         self.add_control_function("restore-retain", &[ValType::I32, ValType::I32], &[], &f);
 
-        // Past everything the module laid out: where what does not fit in
-        // the scratch lands.
-        let spill = crate::core_memory_pages(self.module) * u64::from(crate::WASM_PAGE);
-        let f = control_read_memory(area, arena, spill);
+        let f = control_read_memory(area, arena);
         self.add_control_function(
             "read-memory",
             &[ValType::I32, ValType::I32],
@@ -213,11 +356,33 @@ impl WasmGen<'_> {
 
         self.emit_exports(area, caught, arena);
 
-        let f = control_realloc(area, arena, spill);
+        let f = control_realloc(area, arena);
         let index = self.add_function(&[ValType::I32; 4], &[ValType::I32], &f);
         self.export_section
             .export("cabi_realloc", wasm_encoder::ExportKind::Func, index);
         self.control_names.push((index, "cabi_realloc".to_string()));
+
+        // What an import gives lands through a realloc of its own, which
+        // the component takes for every import when the module has one.
+        if !self.module.extern_functions.is_empty() {
+            let list = area.host_list.map(|state| {
+                let builtin = |name: &str| {
+                    self.builtin_indices.get(name).copied().unwrap_or_else(|| {
+                        panic!("internal compiler error: `{name}` was not grafted")
+                    })
+                };
+                (state, builtin(LIST_BLOCK), builtin(LIST_PLACED))
+            });
+            let f = import_realloc(area, list, index);
+            let index = self.add_function(&[ValType::I32; 4], &[ValType::I32], &f);
+            self.export_section.export(
+                "cabi_import_realloc",
+                wasm_encoder::ExportKind::Func,
+                index,
+            );
+            self.control_names
+                .push((index, "cabi_import_realloc".to_string()));
+        }
     }
 
     pub(crate) fn add_type(&mut self, params: &[ValType], results: &[ValType]) -> u32 {
@@ -431,20 +596,19 @@ impl WasmGen<'_> {
 /// after the other, in a list of the module's that the host copies when the
 /// call returns. Each range of 8 bytes is an address, then a size.
 ///
-/// The list goes after the ranges in the scratch when it fits there, and
-/// otherwise past everything the module laid out (`spill`), or past the
-/// ranges when they are there themselves, in memory grown to hold it: the
-/// buffers that follow the scratch are the outputs', which a pending write
-/// may still hold.
-fn control_read_memory(area: &ControlArea, arena: u32, spill: u64) -> Function {
+/// The list goes in the scratch, after the ranges when they are there: one
+/// that does not fit is `too-large`, the memory never growing. The buffers
+/// that follow the scratch are the outputs', which a pending write may
+/// still hold.
+fn control_read_memory(area: &ControlArea, arena: u32) -> Function {
     // Params: the ranges 0 and their count 1; locals: the range at hand 2,
     // its address 3 and size 4, where the list goes 5, where the next bytes
-    // go 6, the error's case 7, and in 64 bits the list's size 8, where the
-    // ranges end 9, and where the list starts past the scratch 10.
-    let mut f = Function::new([(6, ValType::I32), (3, ValType::I64)]);
+    // go 6, the error's case 7, and in 64 bits the list's size 8 and where
+    // the ranges end 9.
+    let mut f = Function::new([(6, ValType::I32), (2, ValType::I64)]);
     let (ptr, count) = (0, 1);
     let (i, address, size, out, cursor, why) = (2, 3, 4, 5, 6, 7);
-    let (total, ranges_end, start) = (8, 9, 10);
+    let (total, ranges_end) = (8, 9);
     let scratch_end = u64::from(area.scratch) + u64::from(area.scratch_size);
     let why_is = |f: &mut Function, case: u8| {
         f.instruction(&Instruction::I32Const(i32::from(case)));
@@ -500,7 +664,8 @@ fn control_read_memory(area: &ControlArea, arena: u32, spill: u64) -> Function {
     f.instruction(&Instruction::End);
     f.instruction(&Instruction::End);
 
-    // Where the list goes.
+    // Where the list goes: after the ranges when they are in the scratch,
+    // at its start otherwise.
     f.instruction(&Instruction::LocalGet(ptr));
     f.instruction(&Instruction::I64ExtendI32U);
     f.instruction(&Instruction::LocalGet(count));
@@ -508,64 +673,22 @@ fn control_read_memory(area: &ControlArea, arena: u32, spill: u64) -> Function {
     f.instruction(&Instruction::I64Const(3));
     f.instruction(&Instruction::I64Shl);
     f.instruction(&Instruction::I64Add);
-    f.instruction(&Instruction::LocalSet(ranges_end));
-    // After the ranges in the scratch, when they are there and it fits.
+    f.instruction(&Instruction::I64Const(i64::from(area.scratch)));
     f.instruction(&Instruction::LocalGet(ptr));
     f.instruction(&Instruction::I32Const(area.scratch as i32));
     f.instruction(&Instruction::I32GeU);
+    f.instruction(&Instruction::Select);
+    f.instruction(&Instruction::LocalTee(ranges_end));
+    f.instruction(&Instruction::I32WrapI64);
+    f.instruction(&Instruction::LocalSet(out));
+    // Too large when it ends past the scratch.
+    why_is(&mut f, TOO_LARGE);
     f.instruction(&Instruction::LocalGet(ranges_end));
     f.instruction(&Instruction::LocalGet(total));
     f.instruction(&Instruction::I64Add);
     f.instruction(&Instruction::I64Const(scratch_end as i64));
-    f.instruction(&Instruction::I64LeU);
-    f.instruction(&Instruction::I32And);
-    f.instruction(&Instruction::If(BlockType::Empty));
-    f.instruction(&Instruction::LocalGet(ranges_end));
-    f.instruction(&Instruction::I32WrapI64);
-    f.instruction(&Instruction::LocalSet(out));
-    f.instruction(&Instruction::Else);
-    // Otherwise past the spill, or past the ranges when they are there.
-    f.instruction(&Instruction::LocalGet(ranges_end));
-    f.instruction(&Instruction::I64Const(spill as i64));
-    f.instruction(&Instruction::LocalGet(ranges_end));
-    f.instruction(&Instruction::I64Const(spill as i64));
     f.instruction(&Instruction::I64GtU);
-    f.instruction(&Instruction::Select);
-    f.instruction(&Instruction::LocalSet(start));
-    why_is(&mut f, TOO_LARGE);
-    f.instruction(&Instruction::LocalGet(start));
-    f.instruction(&Instruction::LocalGet(total));
-    f.instruction(&Instruction::I64Add);
-    f.instruction(&Instruction::I64Const(1 << 32));
-    f.instruction(&Instruction::I64GtU);
-    f.instruction(&Instruction::BrIf(1));
-    f.instruction(&Instruction::LocalGet(start));
-    f.instruction(&Instruction::I32WrapI64);
-    f.instruction(&Instruction::LocalSet(out));
-    // The pages `start + total` bytes take, less those the memory has.
-    f.instruction(&Instruction::LocalGet(start));
-    f.instruction(&Instruction::LocalGet(total));
-    f.instruction(&Instruction::I64Add);
-    f.instruction(&Instruction::I64Const(i64::from(crate::WASM_PAGE) - 1));
-    f.instruction(&Instruction::I64Add);
-    f.instruction(&Instruction::I64Const(16));
-    f.instruction(&Instruction::I64ShrU);
-    f.instruction(&Instruction::I32WrapI64);
-    f.instruction(&Instruction::MemorySize(0));
-    f.instruction(&Instruction::I32Sub);
-    f.instruction(&Instruction::LocalTee(size));
-    f.instruction(&Instruction::I32Const(0));
-    f.instruction(&Instruction::I32GtS);
-    f.instruction(&Instruction::If(BlockType::Empty));
-    f.instruction(&Instruction::LocalGet(size));
-    f.instruction(&Instruction::MemoryGrow(0));
-    f.instruction(&Instruction::I32Const(-1));
-    f.instruction(&Instruction::I32Eq);
-    f.instruction(&Instruction::If(BlockType::Empty));
-    f.instruction(&Instruction::Unreachable);
-    f.instruction(&Instruction::End);
-    f.instruction(&Instruction::End);
-    f.instruction(&Instruction::End);
+    f.instruction(&Instruction::BrIf(0));
 
     // The bytes of each range, one after the other.
     f.instruction(&Instruction::LocalGet(out));
@@ -675,13 +798,10 @@ fn control_write_memory(area: &ControlArea, arena: u32, variables: (u32, u32)) -
 /// the scratch, which every function that takes a list or a string starts
 /// over (`arena`).
 ///
-/// What does not fit there is longer than anything the functions take: it
-/// lands at `spill`, past everything the module laid out, in memory grown
-/// to hold it, and only a host refusing the memory traps. The function it
-/// was passed to cuts it or refuses it. Two such blocks of one call share
-/// that place, and neither is read: an `{export}` FUNCTION refuses a call
-/// that passed one too long, and the control interface takes one list.
-fn control_realloc(area: &ControlArea, arena: u32, spill: u64) -> Function {
+/// The scratch holds what one call places and a page more
+/// ([`ControlArea::refused`]): what is longer, the function it is passed to
+/// would cut or refuse, and it traps instead, the memory never growing.
+fn control_realloc(area: &ControlArea, arena: u32) -> Function {
     // Params: the old block 0 and its size 1, the alignment 2, the size 3;
     // local: where the block is 4.
     let mut f = Function::new([(1, ValType::I32)]);
@@ -708,39 +828,14 @@ fn control_realloc(area: &ControlArea, arena: u32, spill: u64) -> Function {
     f.instruction(&Instruction::I32Sub);
     f.instruction(&Instruction::I32LeU);
     f.instruction(&Instruction::I32And);
+    f.instruction(&Instruction::I32Eqz);
     f.instruction(&Instruction::If(BlockType::Empty));
+    f.instruction(&Instruction::Unreachable);
+    f.instruction(&Instruction::End);
     f.instruction(&Instruction::LocalGet(at));
     f.instruction(&Instruction::LocalGet(size));
     f.instruction(&Instruction::I32Add);
     f.instruction(&Instruction::GlobalSet(arena));
-    f.instruction(&Instruction::Else);
-    // The pages `spill + size` bytes take, less those the memory has.
-    f.instruction(&Instruction::I64Const(spill as i64));
-    f.instruction(&Instruction::LocalGet(size));
-    f.instruction(&Instruction::I64ExtendI32U);
-    f.instruction(&Instruction::I64Add);
-    f.instruction(&Instruction::I64Const(i64::from(crate::WASM_PAGE) - 1));
-    f.instruction(&Instruction::I64Add);
-    f.instruction(&Instruction::I64Const(16));
-    f.instruction(&Instruction::I64ShrU);
-    f.instruction(&Instruction::I32WrapI64);
-    f.instruction(&Instruction::MemorySize(0));
-    f.instruction(&Instruction::I32Sub);
-    f.instruction(&Instruction::LocalTee(at));
-    f.instruction(&Instruction::I32Const(0));
-    f.instruction(&Instruction::I32GtS);
-    f.instruction(&Instruction::If(BlockType::Empty));
-    f.instruction(&Instruction::LocalGet(at));
-    f.instruction(&Instruction::MemoryGrow(0));
-    f.instruction(&Instruction::I32Const(-1));
-    f.instruction(&Instruction::I32Eq);
-    f.instruction(&Instruction::If(BlockType::Empty));
-    f.instruction(&Instruction::Unreachable);
-    f.instruction(&Instruction::End);
-    f.instruction(&Instruction::End);
-    f.instruction(&Instruction::I32Const(spill as u32 as i32));
-    f.instruction(&Instruction::LocalSet(at));
-    f.instruction(&Instruction::End);
     // A block that moved keeps its bytes, as many as both sizes hold.
     f.instruction(&Instruction::LocalGet(old));
     f.instruction(&Instruction::If(BlockType::Empty));
@@ -761,6 +856,145 @@ fn control_realloc(area: &ControlArea, arena: u32, spill: u64) -> Function {
     f.instruction(&Instruction::End);
     f
 }
+
+/// `cabi_import_realloc`, where what an import gives lands. Inside a call
+/// that gives a string, the first block the host asks for, a string's, is
+/// the STRING the call passed for it: the host writes the bytes there, and
+/// the block's size is the STRING's length. A string longer than the STRING
+/// lands with the blocks nobody reads, and how long it is is kept: once the
+/// host returns, the call raises, or for a text copies the first bytes that
+/// fit into the STRING.
+///
+/// The host asks for a string's bytes once, at their exact size and with an
+/// alignment of 1, and never grows the block.
+///
+/// Inside a call that gives a list, `list` (the state, and the bundle's
+/// functions that read it) says where each block goes: the bundle answers,
+/// and the block of the elements it leaves goes where `cabi_realloc` puts
+/// it, which it is told.
+///
+/// Every block nobody reads, a string or a list refused and what an import
+/// gives that no call keeps, lands at [`ControlArea::refused`], on the one
+/// before it; one longer than that place traps.
+fn import_realloc(
+    area: &ControlArea,
+    list: Option<(u32, u32, u32)>,
+    cabi_realloc: u32,
+) -> Function {
+    // Params: the old block 0 and its size 1, the alignment 2, the size 3;
+    // local: where a block goes 4.
+    let mut f = Function::new([(1, ValType::I32)]);
+    let (old, old_size, align, size, at) = (0, 1, 2, 3, 4);
+    let fallback = |f: &mut Function| {
+        f.instruction(&Instruction::LocalGet(old));
+        f.instruction(&Instruction::LocalGet(old_size));
+        f.instruction(&Instruction::LocalGet(align));
+        f.instruction(&Instruction::LocalGet(size));
+        f.instruction(&Instruction::Call(cabi_realloc));
+    };
+    let refuse = |f: &mut Function| {
+        f.instruction(&Instruction::LocalGet(size));
+        f.instruction(&Instruction::I32Const(area.refused_size as i32));
+        f.instruction(&Instruction::I32GtU);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::Unreachable);
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::I32Const(area.refused as i32));
+        f.instruction(&Instruction::Return);
+    };
+    // Any other new block: nobody reads it.
+    let refuse_new = |f: &mut Function| {
+        f.instruction(&Instruction::LocalGet(old));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        refuse(f);
+        f.instruction(&Instruction::End);
+        fallback(f);
+        f.instruction(&Instruction::End);
+    };
+    if let Some((state, block, placed)) = list {
+        // A call that gives a list runs, and this is a new block: one the
+        // host grows keeps where `cabi_realloc` put it.
+        f.instruction(&Instruction::I32Const(state as i32));
+        f.instruction(&Instruction::I32Load(mem_arg(4 * u64::from(LIST_ARMED), 2)));
+        f.instruction(&Instruction::LocalGet(old));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::I32And);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::I32Const(state as i32));
+        f.instruction(&Instruction::LocalGet(size));
+        f.instruction(&Instruction::Call(block));
+        f.instruction(&Instruction::LocalTee(at));
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(at));
+        f.instruction(&Instruction::Return);
+        f.instruction(&Instruction::End);
+        fallback(&mut f);
+        f.instruction(&Instruction::LocalSet(at));
+        f.instruction(&Instruction::I32Const(state as i32));
+        f.instruction(&Instruction::LocalGet(at));
+        f.instruction(&Instruction::Call(placed));
+        f.instruction(&Instruction::LocalGet(at));
+        f.instruction(&Instruction::Return);
+        f.instruction(&Instruction::End);
+    }
+    let Some(host_string) = area.host_string else {
+        refuse_new(&mut f);
+        return f;
+    };
+    let word = |f: &mut Function, offset: u64| {
+        f.instruction(&Instruction::I32Const(host_string as i32));
+        f.instruction(&Instruction::I32Load(mem_arg(offset, 2)));
+    };
+    let set_landed = |f: &mut Function, landed: i32| {
+        f.instruction(&Instruction::I32Const(host_string as i32));
+        f.instruction(&Instruction::I32Const(landed));
+        f.instruction(&Instruction::I32Store(mem_arg(HOST_STRING_LANDED, 2)));
+    };
+    // A STRING waits, none came yet, and this is a new block of bytes.
+    word(&mut f, HOST_STRING_AT);
+    f.instruction(&Instruction::I32Const(0));
+    f.instruction(&Instruction::I32Ne);
+    word(&mut f, HOST_STRING_LANDED);
+    f.instruction(&Instruction::I32Eqz);
+    f.instruction(&Instruction::I32And);
+    f.instruction(&Instruction::LocalGet(old));
+    f.instruction(&Instruction::I32Eqz);
+    f.instruction(&Instruction::I32And);
+    f.instruction(&Instruction::LocalGet(align));
+    f.instruction(&Instruction::I32Const(1));
+    f.instruction(&Instruction::I32Eq);
+    f.instruction(&Instruction::I32And);
+    f.instruction(&Instruction::If(BlockType::Empty));
+    f.instruction(&Instruction::LocalGet(size));
+    word(&mut f, HOST_STRING_CAPACITY);
+    f.instruction(&Instruction::I32LeU);
+    f.instruction(&Instruction::If(BlockType::Empty));
+    // Its length, then where its bytes go.
+    word(&mut f, HOST_STRING_AT);
+    f.instruction(&Instruction::LocalGet(size));
+    f.instruction(&Instruction::I32Store(mem_arg(0, 2)));
+    set_landed(&mut f, LANDED);
+    word(&mut f, HOST_STRING_AT);
+    f.instruction(&Instruction::I32Const(4));
+    f.instruction(&Instruction::I32Add);
+    f.instruction(&Instruction::Return);
+    f.instruction(&Instruction::Else);
+    set_landed(&mut f, TOO_LONG_FOR_IT);
+    // How long it is: a text cut to fit is copied from where it lands.
+    f.instruction(&Instruction::I32Const(host_string as i32));
+    f.instruction(&Instruction::LocalGet(size));
+    f.instruction(&Instruction::I32Store(mem_arg(HOST_STRING_LENGTH, 2)));
+    f.instruction(&Instruction::End);
+    f.instruction(&Instruction::End);
+    refuse_new(&mut f);
+    f
+}
+
+/// The bundle's functions that place and check a list's blocks.
+pub(crate) const LIST_BLOCK: &str = "rk.host_list_block";
+pub(crate) const LIST_PLACED: &str = "rk.host_list_placed";
+pub(crate) const LIST_END: &str = "rk.host_list_end";
 
 /// Starts the scratch over: what the host passed this call is in it, and
 /// what it passes the next one lands at its start.

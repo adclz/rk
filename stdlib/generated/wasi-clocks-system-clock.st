@@ -12,18 +12,45 @@ NAMESPACE INTERNAL Wasi
 
 		   It is intended for reporting the current date and time for humans. */
 		NAMESPACE SystemClock
+			/* An "instant", or "exact time", is a point in time without regard to any
+			   time zone: just the time since a particular external reference point,
+			   often called an "epoch".
+
+			   Here, the epoch is 1970-01-01T00:00:00Z, also known as
+			   [POSIX's Seconds Since the Epoch], also known as [Unix Time].
+
+			   Note that even if the seconds field is negative, incrementing
+			   nanoseconds always represents moving forwards in time.
+			   For example, `{ -1 seconds, 999999999 nanoseconds }` represents the
+			   instant one nanosecond before the epoch.
+			   For more on various different ways to represent time, see
+			   https://tc39.es/proposal-temporal/docs/timezone.html
+
+			   [POSIX's Seconds Since the Epoch]: https://pubs.opengroup.org/onlinepubs/9699919799/xrat/V4_xbd_chap04.html#tag_21_04_16
+			   [Unix Time]: https://en.wikipedia.org/wiki/Unix_time */
+			TYPE INSTANT : STRUCT
+				seconds : LINT;
+				nanoseconds : UDINT;
+			END_STRUCT END_TYPE
+
+			/* `now` as the host gives it: the values of its result, which `NOW` puts
+			   in its members. */
+			{extern 'wasi:clocks/system-clock@0.3.0' 'now'}
+			FUNCTION PRIVATE NOW_RAW
+			VAR_OUTPUT
+				seconds : LINT;
+				nanoseconds : UDINT;
+			END_VAR
+			END_FUNCTION
+
 			/* Read the current value of the clock.
 
 			   This clock is not monotonic, therefore calling this function repeatedly
 			   will not necessarily produce a sequence of non-decreasing values.
 
 			   The nanoseconds field of the output is always less than 1000000000. */
-			{extern 'wasi:clocks/system-clock@0.3.0' 'now'}
-			FUNCTION NOW
-			VAR_OUTPUT
-				seconds : LINT;
-				nanoseconds : UDINT;
-			END_VAR
+			FUNCTION NOW : INSTANT
+				NOW_RAW(seconds => NOW.seconds, nanoseconds => NOW.nanoseconds);
 			END_FUNCTION
 
 			/* Query the resolution of the clock. Returns the smallest duration of time

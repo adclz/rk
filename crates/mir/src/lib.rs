@@ -109,6 +109,16 @@ pub struct MirModule {
     /// largest frame and 64 KiB more. Lowering leaves it unset: the build
     /// reads the setting, as it does the optimization level.
     pub stack_size: Option<u64>,
+
+    /// For each import, by its place in [`Self::extern_functions`], the most
+    /// elements any call of it passes an `ARRAY[*]` of: the longest list a
+    /// call keeps of what the import gives. 0 for one that gives none.
+    pub longest_lists: Vec<u32>,
+
+    /// The capacity of the largest STRING the module declares, in a
+    /// variable, a parameter, a field or an element: the longest string a
+    /// host can write into a STRING a call passes.
+    pub largest_string: u32,
 }
 
 /// Instance type layout for a FUNCTION_BLOCK or CLASS.

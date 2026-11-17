@@ -600,10 +600,20 @@ pub(crate) fn emit_addr_of(
     }
 }
 
+/// The record an import gives back in memory.
+struct ImportRecord {
+    /// Where the host writes it.
+    at: u32,
+    /// How many bytes it takes.
+    size: u32,
+    /// Each field's place in it and lane, the VAR_OUTPUTs then the return
+    /// value.
+    fields: Vec<(u32, MirElementary)>,
+}
+
 /// Where a call to an import whose result is a record of two fields or
-/// more has it written, and each field's place in it and lane, the
-/// VAR_OUTPUTs then the return value; `None` for any other call.
-fn import_record(call: &MirCall) -> Option<(u32, Vec<(u32, MirElementary)>)> {
+/// more has it written, and how it is laid out; `None` for any other call.
+fn import_record(call: &MirCall) -> Option<ImportRecord> {
     if call.extern_results.is_empty() {
         return None;
     }
@@ -625,7 +635,7 @@ fn import_record(call: &MirCall) -> Option<(u32, Vec<(u32, MirElementary)>)> {
             })
         })
         .collect();
-    let (offsets, _, _) = crate::canonical::record_layout(&fields);
+    let (offsets, size, _) = crate::canonical::record_layout(&fields);
     let lanes = offsets
         .into_iter()
         .zip(&fields)
@@ -636,7 +646,11 @@ fn import_record(call: &MirCall) -> Option<(u32, Vec<(u32, MirElementary)>)> {
             (offset, elementary)
         })
         .collect();
-    Some((IMPORT_RECORD_AT.with(std::cell::Cell::get), lanes))
+    Some(ImportRecord {
+        at: IMPORT_RECORD_AT.with(std::cell::Cell::get),
+        size,
+        fields: lanes,
+    })
 }
 
 fn emit_call(
@@ -727,18 +741,28 @@ fn emit_call(
     // address passed last, and read back: each field onto the stack, the
     // return value last.
     let record = import_record(call);
-    if let Some((at, _)) = &record {
-        func.instruction(&Instruction::I32Const(*at as i32));
+    // A stream's or a future's `new` returns its two ends in one value,
+    // stored at the address pushed below as the record of its two outputs.
+    let ends = record.is_some() && ENDS_IMPORTS.with(|ends| ends.borrow().contains(&call.callee));
+    if let Some(record) = &record {
+        // The record's place, cleared: a host writes an option that is
+        // none, or a result's side that has no value, as its flag alone,
+        // and what the call before left there would read as the value.
+        if !ends {
+            func.instruction(&Instruction::I32Const(record.at as i32));
+            func.instruction(&Instruction::I32Const(0));
+            func.instruction(&Instruction::I32Const(record.size as i32));
+            func.instruction(&Instruction::MemoryFill(0));
+        }
+        func.instruction(&Instruction::I32Const(record.at as i32));
     }
     func.instruction(&Instruction::Call(idx));
-    // A stream's or a future's `new` returns its two ends in one value,
-    // stored at the address pushed above as the record of its two outputs.
-    if record.is_some() && ENDS_IMPORTS.with(|ends| ends.borrow().contains(&call.callee)) {
+    if ends {
         func.instruction(&Instruction::I64Store(mem_arg(0, 3)));
     }
-    if let Some((at, fields)) = &record {
-        for (offset, elementary) in fields {
-            func.instruction(&Instruction::I32Const(*at as i32));
+    if let Some(record) = &record {
+        for (offset, elementary) in &record.fields {
+            func.instruction(&Instruction::I32Const(record.at as i32));
             func.instruction(&crate::canonical::load(*elementary, u64::from(*offset)));
         }
     }

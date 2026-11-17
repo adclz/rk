@@ -39,7 +39,7 @@ pub(crate) const TOO_LONG: &[u8] = b"a STRING passed by the host is longer than 
 
 /// The bytes the STRINGs a host passes one `{export}` FUNCTION take, at
 /// their parameters' capacities, for the FUNCTION that takes the most: what
-/// the scratch holds without the memory growing.
+/// the scratch holds for one call ([`crate::control::ControlArea::scratch`]).
 pub(crate) fn strings_passed(module: &MirModule) -> u32 {
     module
         .functions

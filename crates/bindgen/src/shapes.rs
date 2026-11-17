@@ -2,19 +2,34 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! The ST shape of a WIT value: the variables a parameter becomes, and what
-//! a result comes back as. A scalar is one variable of its type; a record
-//! or a tuple passed in is one variable per field, as the canonical ABI
-//! flattens it; a record, a tuple, an option or a result that comes back is
-//! one output per field, which rk lays out as the canonical ABI lays out
-//! the value. Anything else is not generated yet, and says why.
+//! a result comes back as. A scalar is one variable of its type; a tuple
+//! passed in is one variable per item, as the canonical ABI flattens it; a
+//! tuple, an option or a result that comes back is one output per value,
+//! which rk lays out as the canonical ABI lays out the value. A value ST
+//! has a STRUCT for ([`crate::types`]), and what no record of outputs is
+//! laid out as, a variant or a result with a value and an error, is read
+//! by the generated code itself ([`crate::lift`]), and packed by it when it
+//! is passed in ([`crate::lower`]). Anything else is not generated yet, and
+//! says why.
 
 use wit_parser::{Handle, Resolve, Type, TypeDefKind, TypeId, TypeOwner};
 
-use crate::names;
+use crate::names::{self, Scope};
 
 /// The longest STRING a generated declaration takes, in bytes: a path as
 /// long as Linux allows, and what `Std.Console` writes at once.
 pub const STRING_LIMIT: u32 = 4096;
+
+/// The most bytes a generated stream read takes at once into an ARRAY OF
+/// BYTE: a whole message of most protocols a PLC speaks over TCP. A longer
+/// one comes over several calls. A read or a write through a STRING moves
+/// [`STRING_LIMIT`] at most, as long as any STRING a generated declaration
+/// takes.
+pub const BYTES_AT_ONCE: u32 = 8192;
+
+/// The most handles a generated stream read takes at once: what a
+/// listener's connections need, which come one by one.
+pub const HANDLES_AT_ONCE: u32 = 16;
 
 /// A variable of a generated POU.
 #[derive(Debug, Clone)]
@@ -23,6 +38,9 @@ pub struct Var {
     pub ty: String,
     /// How many values the canonical ABI flattens it into.
     pub flat: usize,
+    /// The value it starts with, for an input a call may leave out: what
+    /// is only passed with its case.
+    pub start: Option<&'static str>,
 }
 
 /// What a function gives back.
@@ -31,7 +49,8 @@ pub enum Shape {
     Nothing,
     /// One scalar, the FUNCTION's own value.
     Return(String),
-    /// Outputs, one per field.
+    /// Outputs, one per value: a tuple's items, or a flag and what it
+    /// decides.
     Outputs(Vec<Var>),
 }
 
@@ -101,6 +120,35 @@ pub fn definition(resolve: &Resolve, ty: Type) -> Option<&TypeDefKind> {
     }
 }
 
+/// The ST name of the type `id` defines, as code in `here` names it: by
+/// its own name in its interface, and from the root anywhere else.
+pub fn type_name(resolve: &Resolve, id: TypeId, here: Option<TypeOwner>) -> String {
+    let def = &resolve.types[id];
+    match here == Some(def.owner) {
+        true => names::upper(def.name.as_deref().unwrap_or("anonymous")),
+        false => qualified(resolve, id),
+    }
+}
+
+/// Whether `variant` has a case that holds a value: one that has none is a
+/// list of names, as an enum is.
+pub fn carries(variant: &wit_parser::Variant) -> bool {
+    variant.cases.iter().any(|case| case.ty.is_some())
+}
+
+/// The bit string flags are named values of, and its size in bytes: a
+/// BYTE up to 8 flags, a WORD up to 16, a DWORD up to 32, as the canonical
+/// ABI holds them. `None` for flags it holds otherwise, none or more.
+pub fn flags_base(flags: &wit_parser::Flags) -> Option<(&'static str, usize)> {
+    match flags.flags.len() {
+        0 => None,
+        1..=8 => Some(("BYTE", 1)),
+        9..=16 => Some(("WORD", 2)),
+        17..=32 => Some(("DWORD", 4)),
+        _ => None,
+    }
+}
+
 /// What `ty` is, in words, when it has no scalar ST type.
 pub fn what(resolve: &Resolve, ty: Type) -> &'static str {
     match resolved(resolve, ty) {
@@ -123,8 +171,10 @@ pub fn what(resolve: &Resolve, ty: Type) -> &'static str {
     }
 }
 
-/// The ST type of a scalar `ty`: a number or a BOOL, an enum, an alias of
-/// one, or a handle, which is a UDINT. `None` for anything else.
+/// The ST type of a scalar `ty`: a number or a BOOL, an enum, flags, a
+/// variant none of whose cases holds a value, an alias of one, a handle,
+/// which its resource's type names, a UDINT, or a stream's or a future's
+/// end, a UDINT. `None` for anything else.
 pub fn scalar(resolve: &Resolve, ty: Type, here: Option<TypeOwner>) -> Option<String> {
     let ty = through_uses(resolve, ty);
     let elementary = match ty {
@@ -142,20 +192,25 @@ pub fn scalar(resolve: &Resolve, ty: Type, here: Option<TypeOwner>) -> Option<St
         Type::Char | Type::String | Type::ErrorContext => return None,
         Type::Id(id) => {
             let def = &resolve.types[id];
-            let named = |resolve: &Resolve| match here == Some(def.owner) {
-                true => names::upper(def.name.as_deref().unwrap_or("anonymous")),
-                false => qualified(resolve, id),
-            };
+            let named = |resolve: &Resolve| type_name(resolve, id, here);
             return match &def.kind {
                 TypeDefKind::Enum(_) => Some(named(resolve)),
+                TypeDefKind::Flags(flags) => flags_base(flags).map(|_| named(resolve)),
+                TypeDefKind::Variant(variant) if !carries(variant) => Some(named(resolve)),
                 TypeDefKind::Type(inner) if def.name.is_some() => {
                     scalar(resolve, *inner, here).map(|_| named(resolve))
                 }
                 TypeDefKind::Type(inner) => scalar(resolve, *inner, here),
-                TypeDefKind::Handle(Handle::Own(_) | Handle::Borrow(_))
-                | TypeDefKind::Resource
-                | TypeDefKind::Future(_)
-                | TypeDefKind::Stream(_) => Some("UDINT".to_string()),
+                // Owned or borrowed, a handle of the resource where it is
+                // declared, which a `use` names from elsewhere.
+                TypeDefKind::Handle(Handle::Own(resource) | Handle::Borrow(resource)) => {
+                    match through_uses(resolve, Type::Id(*resource)) {
+                        Type::Id(resource) => Some(type_name(resolve, resource, here)),
+                        _ => Some("UDINT".to_string()),
+                    }
+                }
+                TypeDefKind::Resource => Some(named(resolve)),
+                TypeDefKind::Future(_) | TypeDefKind::Stream(_) => Some("UDINT".to_string()),
                 _ => None,
             };
         }
@@ -168,52 +223,25 @@ fn string() -> String {
     format!("STRING[{STRING_LIMIT}]")
 }
 
-/// The variables a parameter `name` of type `ty` becomes: one, or one per
-/// field of a record or a tuple, `when_seconds`. `Err` says what it is
-/// that cannot be passed.
-pub fn input(
+/// The variable a parameter `name` of type `ty` is when it is passed as it
+/// is: a scalar, or a string. `None` for what holds other values.
+pub fn single(
     resolve: &Resolve,
     name: &str,
     ty: Type,
     here: Option<TypeOwner>,
-) -> Result<Vec<Var>, &'static str> {
-    let one = |name: String, ty: Type| -> Result<Var, &'static str> {
-        match resolved(resolve, ty) {
-            Type::String => Ok(Var {
-                name,
-                ty: string(),
-                flat: 2,
-            }),
-            _ => scalar(resolve, ty, here)
-                .map(|st| Var {
-                    name,
-                    ty: st,
-                    flat: 1,
-                })
-                .ok_or_else(|| what(resolve, ty)),
-        }
+    scope: &Scope,
+) -> Option<Var> {
+    let (st, flat) = match resolved(resolve, ty) {
+        Type::String => (string(), 2),
+        _ => (scalar(resolve, ty, here)?, 1),
     };
-    if let Ok(var) = one(names::lower(name), ty) {
-        return Ok(vec![var]);
-    }
-    let fields: Vec<(String, Type)> = match definition(resolve, ty) {
-        Some(TypeDefKind::Record(record)) => record
-            .fields
-            .iter()
-            .map(|field| (format!("{name}-{}", field.name), field.ty))
-            .collect(),
-        Some(TypeDefKind::Tuple(tuple)) => tuple
-            .types
-            .iter()
-            .enumerate()
-            .map(|(at, ty)| (format!("{name}-{at}"), *ty))
-            .collect(),
-        _ => return Err(what(resolve, ty)),
-    };
-    fields
-        .into_iter()
-        .map(|(field, ty)| one(names::lower(&field), ty))
-        .collect()
+    Some(Var {
+        name: scope.variable(name),
+        ty: st,
+        flat,
+        start: None,
+    })
 }
 
 /// What a function returns, `ty`, as ST gives it back: a FUNCTION's own
@@ -225,6 +253,7 @@ pub fn result(
     ty: Option<Type>,
     in_block: bool,
     here: Option<TypeOwner>,
+    scope: &Scope,
 ) -> Result<Shape, &'static str> {
     let Some(ty) = ty else {
         return Ok(Shape::Nothing);
@@ -232,40 +261,43 @@ pub fn result(
     let out = |name: &str, ty: Type| -> Result<Var, &'static str> {
         scalar(resolve, ty, here)
             .map(|st| Var {
-                name: names::lower(name),
+                name: scope.variable(name),
                 ty: st,
                 flat: 1,
+                start: None,
             })
             .ok_or_else(|| what(resolve, ty))
     };
     if let Some(st) = scalar(resolve, ty, here) {
         return Ok(match in_block {
             true => Shape::Outputs(vec![Var {
-                name: "value".to_string(),
+                name: scope.variable("value"),
                 ty: st,
                 flat: 1,
+                start: None,
             }]),
             false => Shape::Return(st),
         });
     }
     let flag = |name: &str| Var {
-        name: name.to_string(),
+        name: scope.variable(name),
         ty: "BOOL".to_string(),
         flat: 1,
+        start: None,
     };
+    // A value of a STRUCT comes back whole, read by the generated code
+    // ([`crate::lift`]).
+    if crate::types::structured(resolve, ty).is_some() {
+        return Err(what(resolve, ty));
+    }
     let outputs = match definition(resolve, ty) {
-        Some(TypeDefKind::Record(record)) => record
-            .fields
-            .iter()
-            .map(|field| out(&field.name, field.ty))
-            .collect::<Result<Vec<_>, _>>()?,
         Some(TypeDefKind::Tuple(tuple)) => tuple
             .types
             .iter()
             .enumerate()
             .map(|(at, ty)| out(&format!("item{at}"), *ty))
             .collect::<Result<Vec<_>, _>>()?,
-        Some(TypeDefKind::Option(inner)) => vec![flag("is_some"), out("value", *inner)?],
+        Some(TypeDefKind::Option(inner)) => vec![flag("is-some"), out("value", *inner)?],
         // An ok value and an error share their place in memory, which two
         // outputs cannot.
         Some(TypeDefKind::Result(result)) => match (result.ok, result.err) {
