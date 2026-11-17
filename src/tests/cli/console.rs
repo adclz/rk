@@ -160,8 +160,12 @@ fn component_alone(db: &mut db::RootDatabase, source: &str) -> rk::component::Co
     wrapped(db, &mir, &core)
 }
 
+/// The component of `mir` and `core`, its WASI imports typed by WASI's
+/// packages, as WASI's repository writes them: what a workspace that
+/// declares WASI's functions itself ships in its `wit/`.
 fn wrapped(db: &db::RootDatabase, mir: &mir::MirModule, core: &[u8]) -> rk::component::Component {
-    let interfaces = rk::component::interfaces(db, mir).expect("typed interfaces");
+    let mut interfaces = rk::component::interfaces(db, mir).expect("typed interfaces");
+    interfaces.wit.extend(crate::tests::utils::wasi_packages());
     rk::component::wrap(core, "plant", &interfaces).expect("the module wraps")
 }
 

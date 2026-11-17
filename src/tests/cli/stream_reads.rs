@@ -201,10 +201,13 @@ impl StdinStream for Stdin {
     }
 }
 
-/// `source` built alone, as a component on a host with `stdin`.
+/// `source` built alone, as a component on a host with `stdin`, its WASI
+/// imports typed by WASI's packages, as a workspace that declares them
+/// itself ships them in its `wit/`.
 fn load(db: &mut db::RootDatabase, source: &str, stdin: Stdin) -> Plc {
     let (mir, core) = compile_to_mir_and_wasm_as_built(db, source);
-    let interfaces = rk::component::interfaces(db, &mir).expect("typed interfaces");
+    let mut interfaces = rk::component::interfaces(db, &mir).expect("typed interfaces");
+    interfaces.wit.extend(crate::tests::utils::wasi_packages());
     let component = rk::component::wrap(&core, "plant", &interfaces).expect("the module wraps");
     Plc::load(&component.bytes, WasiCtxBuilder::new().stdin(stdin).build())
 }

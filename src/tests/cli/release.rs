@@ -35,7 +35,8 @@ END_CONFIGURATION
 ";
     let (_ws, root) = temp_workspace(&[("main.st", source)]);
     for level in ["0", "1", "2", "3", "4", "s", "z"] {
-        let output = root.join(format!("out-{level}.wasm"));
+        // Not the workspace's root, whose `wit/` the build reads.
+        let output = root.join("out").join(format!("out-{level}.wasm"));
         let built = rk::run(
             &root,
             false,

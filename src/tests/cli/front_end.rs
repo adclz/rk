@@ -193,7 +193,8 @@ fn rk_s_commands_run_a_workspace_of_the_two_kinds() {
         })
         .is_ok()
     );
-    let module = root.join("out.wasm");
+    // Not the workspace's root, whose `wit/` the build reads.
+    let module = root.join("out").join("out.wasm");
     assert!(
         run(Command::Compile {
             output: Some(module.clone()),

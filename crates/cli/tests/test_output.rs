@@ -73,6 +73,21 @@ const CONSOLE_WASI: &[(&str, &str)] = &[
     ),
 ];
 
+/// The folder `from` and what it holds, copied into `to`.
+fn copy_folder(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let path = entry.unwrap().path();
+        let into = to.join(path.file_name().unwrap());
+        match path.is_dir() {
+            true => copy_folder(&path, &into),
+            false => {
+                std::fs::copy(&path, &into).unwrap();
+            }
+        }
+    }
+}
+
 /// `Std.Console`, for a workspace that has no standard library: the blocks
 /// a test writes with, as the stdlib has them, without its own tests, which
 /// read `Std.Unit`. It reaches WASI through [`CONSOLE_WASI`].
@@ -100,6 +115,9 @@ fn rk_test_shows_what_a_failed_test_wrote() {
     for (name, text) in CONSOLE_WASI {
         std::fs::write(ws.path().join(name), text).unwrap();
     }
+    // The WIT of what they import, as Std ships it: the workspace's own.
+    let std_wit = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../stdlib/wit");
+    copy_folder(&std_wit, &ws.path().join("wit"));
     std::fs::write(
         ws.path().join("main.st"),
         r#"
