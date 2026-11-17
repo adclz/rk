@@ -73,6 +73,24 @@ NAMESPACE INTERNAL Wasi
 			END_VAR
 			END_FUNCTION_BLOCK
 
+			/* Writes the `count` bytes from the one `data` points at, as many as the
+			   reader takes: `written` of them, after `DONE`. The host reads them where
+			   they are while the write runs, so they stay there, unchanged, until
+			   `DONE`. `closed` is TRUE once the reader has let go. */
+			{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+			FUNCTION_BLOCK BYTES_STREAM_WRITE_ARRAY
+			VAR_INPUT
+				stream : UDINT;
+				data : REF_TO BYTE;
+				count : UDINT;
+			END_VAR
+			VAR_OUTPUT
+				DONE : BOOL;
+				written : UDINT;
+				closed : BOOL;
+			END_VAR
+			END_FUNCTION_BLOCK
+
 			/* Lets go of the stream's reading end, `stream`. */
 			{extern 'wasi:cli/stdout@0.3.0' '[stream-drop-readable-0]write-via-stream'}
 			FUNCTION BYTES_STREAM_DROP_READABLE
@@ -133,6 +151,7 @@ END_NAMESPACE
 /* Not generated:
    - `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel
      blocks the scan.
-   - `RESULT_FUTURE_WRITE`: a future's write is not imported yet.
+   - `RESULT_FUTURE_WRITE`: no function of the interface takes a future of
+     `result<_, error-code>` from the program.
    - `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel
      blocks the scan. */
