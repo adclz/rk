@@ -77,6 +77,8 @@ fn compile_once(
         .map_err(CliError::msg)?;
     let default_output = component_path(workspace, profile, &config.project.name);
     let output = opts.output.unwrap_or(&default_output);
+    // Refused before anything is written.
+    crate::component::wit_beside(output, &component).map_err(CliError::msg)?;
     write_output(output, &component.bytes, label)?;
     crate::component::write_wit(output, &component).map_err(CliError::msg)
 }

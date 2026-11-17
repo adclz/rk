@@ -4,8 +4,10 @@
 //! A built module wrapped into a component, and the WIT that types it.
 //!
 //! The world is generated from the module at each build: it imports the
-//! WASI interfaces the module calls, as WASI declares them, the host's own
-//! interfaces, typed from the `{extern}` FUNCTIONs that import them, and
+//! WASI interfaces the module calls, as the WIT folders of the libraries
+//! and of the workspace declare them (the standard library's holds those
+//! its blocks call), the host's own interfaces, typed from the `{extern}`
+//! FUNCTIONs that import them, and
 //! exports the control interface every module has (`rk:plc/control`) and
 //! the workspace's `{export}` FUNCTIONs, in an interface named after the
 //! project.
@@ -31,6 +33,9 @@ pub struct Component {
     pub bytes: Vec<u8>,
     pub wit: Vec<(String, Cow<'static, str>)>,
     pub world: String,
+    /// The WIT folders the build reads ([`Interfaces::wit`]), which the
+    /// component's own is never written into ([`write_wit`]).
+    pub inputs: Vec<std::path::PathBuf>,
 }
 
 /// A function the module imports from a module that is not WASI's, typed
@@ -91,6 +96,11 @@ pub struct Interfaces {
     /// its import as [`Interfaces::declared`] keys it: the record of the
     /// fields it reads back, a call's outputs, or a future read's value.
     pub held: BTreeMap<(String, String), u32>,
+    /// The WIT folders of the workspace and of each library it reads,
+    /// `wit/` at their root, whether there is one or not: the packages they
+    /// hold type the imports of their interfaces, WASI's as the standard
+    /// library's folder holds them.
+    pub wit: Vec<std::path::PathBuf>,
 }
 
 /// What a stream's read or write moves, by the buffer its block declares
@@ -164,7 +174,185 @@ pub fn interfaces(
         declared,
         moved: moved(module),
         held: held(module),
+        wit: wit_folders(db),
     })
+}
+
+/// The `wit/` folders of the libraries the workspace reads, the standard
+/// library's first, then the workspace's own, whether there is one or not.
+fn wit_folders(db: &dyn db::WorkspaceDataBase) -> Vec<std::path::PathBuf> {
+    let Some(workspace) = db::workspace::Workspace::try_get(db) else {
+        return Vec::new();
+    };
+    workspace
+        .libraries(db)
+        .iter()
+        .map(|library| library.dir.clone())
+        .chain(workspace.workspace_folder(db).cloned())
+        .map(|root| root.join("wit"))
+        .collect()
+}
+
+/// A package's files by name, `.wit` files and a license: each one's text,
+/// and the folder it is read from.
+type Files = BTreeMap<String, (String, std::path::PathBuf)>;
+
+/// A WIT package a folder ships: its name and version as its files declare
+/// them, its folder under `deps/` beside a component, and its files.
+struct Shipped {
+    id: String,
+    dir: String,
+    files: Files,
+    group: wit_parser::UnresolvedPackageGroup,
+}
+
+impl Shipped {
+    /// The package `files` write, its `.wit` files parsed as one package in
+    /// the order of their names, each named by its folder where the parser
+    /// reports.
+    fn parsed(files: Files) -> Result<Self, String> {
+        let mut map = wit_parser::SourceMap::new();
+        for (name, (text, from)) in files.iter().filter(|(name, _)| name.ends_with(".wit")) {
+            map.push_str(&from.join(name).display().to_string(), text.clone());
+        }
+        let folders: BTreeSet<String> = files
+            .values()
+            .map(|(_, from)| format!("`{}`", from.display()))
+            .collect();
+        let group = map.parse().map_err(|(_, e)| {
+            let folders: Vec<String> = folders.into_iter().collect();
+            format!("parsing the WIT in {}: {e}", folders.join(" and "))
+        })?;
+        let id = group.main.name.to_string();
+        let dir = match id.split_once('@') {
+            Some((name, _)) => name.replace(':', "-"),
+            None => id.replace(':', "-"),
+        };
+        Ok(Shipped {
+            id,
+            dir,
+            files,
+            group,
+        })
+    }
+
+    /// The package with the files of another part of it, which another
+    /// folder ships: a file both ship is written alike in both.
+    fn add(&mut self, files: Files) -> Result<(), String> {
+        let mut all = self.files.clone();
+        for (name, (text, from)) in files {
+            match all.get(&name) {
+                Some((other, other_from)) if *other != text => {
+                    return Err(format!(
+                        "`{name}` of `{}` is written two ways, in `{}` and in `{}`: a file of a \
+                         package is written alike wherever it is shipped",
+                        self.id,
+                        other_from.display(),
+                        from.display()
+                    ));
+                }
+                Some(_) => {}
+                None => {
+                    all.insert(name, (text, from));
+                }
+            }
+        }
+        *self = Self::parsed(all)?;
+        Ok(())
+    }
+}
+
+/// The packages the WIT `folders` hold: each folder's own, from its files,
+/// and one from each folder in its `deps/`, as WIT's tools lay them out.
+/// The parts of one package that several folders ship are one package, of
+/// all their files: a library ships the files of a package that declare
+/// what it imports, as the standard library ships WASI's.
+fn shipped(folders: &[std::path::PathBuf]) -> Result<Vec<Shipped>, String> {
+    let mut found: Vec<Shipped> = Vec::new();
+    for folder in folders.iter().filter(|folder| folder.is_dir()) {
+        let deps = folder.join("deps");
+        // A folder may ship the packages in its `deps/` alone.
+        let own = std::fs::read_dir(folder)
+            .map_err(|e| format!("reading `{}`: {e}", folder.display()))?
+            .filter_map(|entry| Some(entry.ok()?.path()))
+            .any(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "wit"));
+        let mut packages: Vec<_> = own.then(|| folder.clone()).into_iter().collect();
+        if deps.is_dir() {
+            let mut inside: Vec<_> = std::fs::read_dir(&deps)
+                .map_err(|e| format!("reading `{}`: {e}", deps.display()))?
+                .filter_map(|entry| Some(entry.ok()?.path()))
+                .filter(|path| path.is_dir())
+                .collect();
+            inside.sort();
+            packages.extend(inside);
+        }
+        for package in packages {
+            let read = read_package(&package)?;
+            if wit::packages().any(|own| own.id == read.id) {
+                return Err(format!(
+                    "`{}` holds `{}`, which rk declares itself: the WIT an earlier build \
+                     wrote beside its component? A library's `wit/` holds what it ships",
+                    package.display(),
+                    read.id
+                ));
+            }
+            match found.iter_mut().find(|other| other.id == read.id) {
+                Some(other) => other.add(read.files)?,
+                None => found.push(read),
+            }
+        }
+    }
+    // Two versions of a package are two folders.
+    let names: Vec<String> = found.iter().map(|package| package.dir.clone()).collect();
+    for package in &mut found {
+        if names.iter().filter(|name| **name == package.dir).count() > 1 {
+            package.dir = package.id.replace(':', "-");
+        }
+    }
+    Ok(found)
+}
+
+/// The package, or the part of one, written in the folder `from`: its
+/// `.wit` files, and its license, a `LICENSE` file of any extension. A
+/// checkout's line endings do not count.
+fn read_package(from: &std::path::Path) -> Result<Shipped, String> {
+    let mut files = Files::new();
+    for entry in
+        std::fs::read_dir(from).map_err(|e| format!("reading `{}`: {e}", from.display()))?
+    {
+        let path = entry
+            .map_err(|e| format!("reading `{}`: {e}", from.display()))?
+            .path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if path.is_file() && (name.ends_with(".wit") || name.starts_with("LICENSE")) {
+            let text = std::fs::read_to_string(&path)
+                .map_err(|e| format!("reading `{}`: {e}", path.display()))?;
+            files.insert(
+                name.to_string(),
+                (text.replace("\r\n", "\n"), from.to_path_buf()),
+            );
+        }
+    }
+    Shipped::parsed(files)
+}
+
+/// The name and version of the package `module` is an interface of:
+/// `wasi:clocks/monotonic-clock@0.3.0` is in `wasi:clocks@0.3.0`.
+fn package_id(module: &str) -> Option<String> {
+    match import_module(module).ok()? {
+        ImportModule::Interface {
+            namespace,
+            package,
+            version,
+            ..
+        } => Some(match version {
+            Some(version) => format!("{namespace}:{package}@{version}"),
+            None => format!("{namespace}:{package}"),
+        }),
+        ImportModule::Plain(_) => None,
+    }
 }
 
 /// How many bytes each import of `module` holds of its result
@@ -315,6 +503,12 @@ fn records_named_apart(interface: &str, functions: &[(&str, bool)]) -> Result<()
 pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Component, String> {
     let hosts = &interfaces.imports;
     let imports = imported_functions(core)?;
+    let shipped = shipped(&interfaces.wit)?;
+    // A package rk declares, or one a WIT folder ships, types the module.
+    let typed = |module: &str| {
+        wit::package_of(module).is_some()
+            || package_id(module).is_some_and(|id| shipped.iter().any(|package| package.id == id))
+    };
     let mut carried = BTreeSet::new();
     let mut own: BTreeMap<&str, Vec<&HostFunction>> = BTreeMap::new();
     for (module, names) in &imports {
@@ -322,13 +516,14 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
         if module == mir::async_call::ROOT {
             continue;
         }
-        if wit::package_of(module).is_some() {
+        if typed(module) {
             carried.insert(module.as_str());
             continue;
         }
         if is_wasi_module(module) {
             return Err(format!(
-                "the module imports `{module}`, which no WIT package rk carries describes"
+                "the module imports `{module}`, which no `wit/` folder of the workspace or \
+                 of a library describes"
             ));
         }
         for name in names {
@@ -352,7 +547,7 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
         .collect();
     records_named_apart(&interfaces.export_interface, &exported)?;
 
-    let packages = own_packages(&own)?;
+    let packages = own_packages(&own, &shipped)?;
     if !interfaces.exports.is_empty() && own.contains_key(interfaces.export_interface.as_str()) {
         return Err(format!(
             "the module imports from `{0}`, and exports its FUNCTIONs in the interface `{0}`, \
@@ -369,6 +564,12 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
     let mut deps = wit::packages()
         .map(|package| parse(package.dir, package.files))
         .collect::<Result<Vec<_>, _>>()?;
+    // What a folder ships is written beside the component as it is.
+    let mut written = Vec::new();
+    for package in shipped {
+        deps.push(package.group);
+        written.push((package.id, package.dir, package.files));
+    }
     for package in &packages {
         let files: Vec<(&str, &str)> = package
             .files
@@ -413,11 +614,12 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
         for (file, text) in package.files {
             files.push((format!("deps/{}/{file}", package.dir), Cow::Borrowed(*text)));
         }
-        if let Some(license) = package.license {
-            files.push((
-                format!("deps/{}/LICENSE.md", package.dir),
-                Cow::Borrowed(license),
-            ));
+    }
+    for (id, dir, shipped_files) in written {
+        if named.contains(&id) {
+            for (file, (text, _)) in shipped_files {
+                files.push((format!("deps/{dir}/{file}"), Cow::Owned(text)));
+            }
         }
     }
     for package in packages {
@@ -429,7 +631,36 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
         bytes,
         wit: files,
         world,
+        inputs: interfaces.wit.clone(),
     })
+}
+
+/// The folder the component's WIT goes into, `wit/` beside `output`, which
+/// must be no WIT folder the build reads: the next build would read the
+/// component's WIT back as a library's or the workspace's own.
+pub fn wit_beside(
+    output: &std::path::Path,
+    component: &Component,
+) -> Result<std::path::PathBuf, String> {
+    let beside = output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let dir = beside.join("wit");
+    let root = |folder: &std::path::Path| folder.parent()?.canonicalize().ok();
+    if let Ok(beside) = beside.canonicalize()
+        && component
+            .inputs
+            .iter()
+            .any(|input| root(input).as_ref() == Some(&beside))
+    {
+        return Err(format!(
+            "the component's WIT would be written into `{}`, the WIT folder the build \
+             reads: write the component into another folder",
+            dir.display()
+        ));
+    }
+    Ok(dir)
 }
 
 /// The component's WIT folder, `wit/` beside `output`: `world.wit`, and
@@ -437,10 +668,7 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
 /// whole, so a file an earlier build left in it goes; nothing else in the
 /// folder is touched.
 pub fn write_wit(output: &std::path::Path, component: &Component) -> Result<(), String> {
-    let dir = output
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."))
-        .join("wit");
+    let dir = wit_beside(output, component)?;
     let packages: BTreeSet<_> = component
         .wit
         .iter()
@@ -540,8 +768,12 @@ type Versions<'a> = BTreeMap<Option<&'a str>, Vec<(&'a str, &'a str)>>;
 /// The packages of the interfaces in `own` named by an interface name,
 /// `acme:modbus/rtu@1.0.0`, each in its folder under `deps/`: the package
 /// folder, `acme-modbus`, with `@1.0.0` after it when the module imports
-/// from the package at two versions.
-fn own_packages(own: &BTreeMap<&str, Vec<&HostFunction>>) -> Result<Vec<OwnPackage>, String> {
+/// from the package at two versions. A package rk declares, or a WIT folder
+/// ships at another version, is no package rk writes.
+fn own_packages(
+    own: &BTreeMap<&str, Vec<&HostFunction>>,
+    shipped: &[Shipped],
+) -> Result<Vec<OwnPackage>, String> {
     let mut by_package: BTreeMap<(&str, &str), Versions> = BTreeMap::new();
     for module in own.keys() {
         if let Ok(ImportModule::Interface {
@@ -551,12 +783,23 @@ fn own_packages(own: &BTreeMap<&str, Vec<&HostFunction>>) -> Result<Vec<OwnPacka
             version,
         }) = import_module(module)
         {
-            if let Some(carried) = wit::packages().find(|carried| {
-                carried.id.split('@').next() == Some(&format!("{namespace}:{package}"))
-            }) {
+            let name = format!("{namespace}:{package}");
+            if let Some(carried) =
+                wit::packages().find(|carried| carried.id.split('@').next() == Some(&name))
+            {
                 return Err(format!(
                     "the module imports `{module}`, from the package `{}` rk declares itself",
                     carried.id
+                ));
+            }
+            if let Some(other) = shipped
+                .iter()
+                .find(|shipped| shipped.id.split('@').next() == Some(&name))
+            {
+                return Err(format!(
+                    "the module imports `{module}`, and a WIT folder ships the package as \
+                     `{}`, at another version",
+                    other.id
                 ));
             }
             by_package
