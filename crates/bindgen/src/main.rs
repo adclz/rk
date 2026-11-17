@@ -5,9 +5,10 @@
 //! file per interface, then the built-ins of their streams and futures. A
 //! `.st` file of the folder that is no longer generated is removed.
 //!
-//! `cargo run -p rk-bindgen` writes `stdlib/generated/`, for the world Std
-//! reaches WASI through ([`rk_bindgen::STD_WORLD`]); a folder given as an
-//! argument is written instead. `--wit <dir>` reads the world of a WIT
+//! `cargo run -p rk-bindgen` writes `stdlib/generated/`, for Std's WIT
+//! folder, `stdlib/wit/`, whose world names the WASI interfaces Std's
+//! blocks call; a folder given as an argument is written instead.
+//! `--wit <dir>` reads the world of a WIT
 //! folder, the packages it uses in its `deps/`, as WIT's tools lay them
 //! out, and then takes the folder to write; `--world <name>` picks the
 //! world when the package has several, and `--public` writes declarations
@@ -75,7 +76,7 @@ fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Args, String> {
     }
     let folder = match (folder, &wit) {
         (Some(folder), _) => folder,
-        (None, None) => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../stdlib/generated"),
+        (None, None) => repository_s("stdlib/generated"),
         // Std's folder would lose its files, as stale ones.
         (None, Some(_)) => return Err("`--wit` takes the folder to write as well".to_string()),
     };
@@ -87,11 +88,24 @@ fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Args, String> {
     })
 }
 
+/// A folder of the repository's: `stdlib/wit`, `stdlib/generated`.
+fn repository_s(folder: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(folder)
+}
+
+/// The world `args` asks for: the one of the WIT folder it names, or Std's,
+/// in `stdlib/wit/`.
+fn resolved(args: &Args) -> Result<(wit_parser::Resolve, wit_parser::WorldId), String> {
+    match &args.wit {
+        Some(dir) => rk_bindgen::resolve_folder(dir, args.world.as_deref()),
+        None => rk_bindgen::resolve_folder(&repository_s("stdlib/wit"), None),
+    }
+}
+
 fn write(args: &Args) -> Result<(), String> {
-    let (resolve, world) = match &args.wit {
-        Some(dir) => rk_bindgen::resolve_folder(dir, args.world.as_deref())?,
-        None => rk_bindgen::resolve(rk_bindgen::STD_WORLD)?,
-    };
+    let (resolve, world) = resolved(args)?;
     let files = rk_bindgen::generate_reaching(&resolve, world, args.reach)?;
     let folder = &args.folder;
     std::fs::create_dir_all(folder).map_err(|e| format!("making `{}`: {e}", folder.display()))?;
@@ -142,6 +156,15 @@ mod tests {
         );
         assert!(std.folder.ends_with("stdlib/generated"), "{:?}", std.folder);
         assert_eq!(parsed(&["out"]).unwrap().folder, PathBuf::from("out"));
+    }
+
+    /// Std's world is read from Std's own WIT folder, `stdlib/wit/`.
+    #[test]
+    fn std_s_world_is_read_from_std_s_folder() {
+        let (resolve, world) = resolved(&parsed(&[]).unwrap()).unwrap();
+        let package = resolve.worlds[world].package.expect("a package");
+        assert_eq!(resolve.packages[package].name.to_string(), "rk:std");
+        assert_eq!(resolve.worlds[world].name, "std");
     }
 
     #[test]

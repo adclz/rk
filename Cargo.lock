@@ -2943,7 +2943,6 @@ dependencies = [
 name = "rk-bindgen"
 version = "0.1.0"
 dependencies = [
- "debug_format",
  "wit-parser",
 ]
 

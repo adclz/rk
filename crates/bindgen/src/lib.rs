@@ -51,7 +51,7 @@ pub mod types;
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use wit_parser::abi::AbiVariant;
 use wit_parser::{
@@ -61,18 +61,6 @@ use wit_parser::{
 
 use names::Scope;
 use shapes::{BYTES_AT_ONCE, HANDLES_AT_ONCE, STRING_LIMIT, Shape, Var};
-
-/// The interfaces `Std` reaches WASI through, as a world for [`resolve`].
-pub const STD_WORLD: &str = "package rk:std-wasi;
-
-world std {
-    import wasi:cli/stdout@0.3.0;
-    import wasi:cli/stderr@0.3.0;
-    import wasi:clocks/monotonic-clock@0.3.0;
-    import wasi:clocks/system-clock@0.3.0;
-    import wasi:clocks/timezone@0.3.0;
-}
-";
 
 /// The canonical ABI passes a function's parameters as values up to this
 /// many, and in memory past it, which an import declared in ST does not.
@@ -103,16 +91,24 @@ pub struct Skipped {
 }
 
 /// The world in `world`, a WIT package with one world, resolved against the
-/// WASI packages rk carries, whose interfaces it may import.
-pub fn resolve(world: &str) -> Result<(Resolve, WorldId), String> {
+/// packages written in `packages`, a folder each, whose interfaces the world
+/// may import: the folders of a WIT folder's `deps/`, or those a package's
+/// repository keeps its files in.
+pub fn resolve(world: &str, packages: &[PathBuf]) -> Result<(Resolve, WorldId), String> {
     let mut resolve = Resolve {
         // WASI's time zone is `@unstable(feature = clocks-timezone)`.
         all_features: true,
         ..Default::default()
     };
-    let deps = debug_format::wit::WASI
+    let deps = packages
         .iter()
-        .map(|package| parse(package.dir, package.files))
+        .map(|folder| {
+            let mut map = wit_parser::SourceMap::new();
+            map.push_dir(folder)
+                .map_err(|e| format!("reading the WIT in `{}`: {e:#}", folder.display()))?;
+            map.parse()
+                .map_err(|(_, e)| format!("parsing the WIT in `{}`: {e}", folder.display()))
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let main = parse(".", &[("world.wit", world)])?;
     let package = resolve
