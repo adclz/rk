@@ -291,6 +291,7 @@ A call that has started cannot be cancelled: the component model's cancel needs 
 
 For a function, the build checks the declaration against WASI's WIT: `{extern async}` names an `async func`, and a plain `{extern}` a `func`, whose call a scan cannot wait for.
 The build also checks that WASI's interface has the function, and names the declaration when it does not.
+It checks too that the outputs hold what the host writes in memory, a result past a call's values or a future's value: a declaration with too few would let the host write past them, over the variables that follow.
 For a host's own module, the WIT rk writes declares an `async func`, its result the record of the block's `VAR_OUTPUT` but `DONE`.
 
 In the core module, the block's call is the import lowered async, `[async-lower]wait-for`: the parameters, or past 4 values the address of a tuple of them, then the address the result is written at, and a word back, the call's state and handle.
