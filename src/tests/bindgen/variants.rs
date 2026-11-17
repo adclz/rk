@@ -64,11 +64,13 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     				other : STRING[256];
     			END_STRUCT END_TYPE
 
+    			TYPE SOCKET : UDINT; END_TYPE
+
     			/* Lets go of `handle`, a handle of `socket` the host gave. */
     			{extern 'wasi:example/sockets@0.3.0' '[resource-drop]socket'}
     			FUNCTION SOCKET_DROP
     			VAR_INPUT
-    				handle : UDINT;
+    				handle : SOCKET;
     			END_VAR
     			END_FUNCTION
 
@@ -78,7 +80,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     			{extern 'wasi:example/sockets@0.3.0' '[method]socket.hop-limit'}
     			FUNCTION PRIVATE SOCKET_HOP_LIMIT_RAW
     			VAR_INPUT
-    				self : UDINT;
+    				self : SOCKET;
     			END_VAR
     			VAR_OUTPUT
     				w0 : LWORD;
@@ -90,7 +92,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
 
     			FUNCTION SOCKET_HOP_LIMIT
     			VAR_INPUT
-    				self : UDINT;
+    				self : SOCKET;
     			END_VAR
     			VAR_OUTPUT
     				failed : BOOL;
@@ -124,7 +126,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     			{extern 'wasi:example/sockets@0.3.0' '[method]socket.buffer-size'}
     			FUNCTION PRIVATE SOCKET_BUFFER_SIZE_RAW
     			VAR_INPUT
-    				self : UDINT;
+    				self : SOCKET;
     			END_VAR
     			VAR_OUTPUT
     				w0 : LWORD;
@@ -136,7 +138,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
 
     			FUNCTION SOCKET_BUFFER_SIZE
     			VAR_INPUT
-    				self : UDINT;
+    				self : SOCKET;
     			END_VAR
     			VAR_OUTPUT
     				failed : BOOL;
@@ -171,7 +173,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     			{extern 'wasi:example/sockets@0.3.0' '[method]socket.set-hop-limit'}
     			FUNCTION PRIVATE SOCKET_SET_HOP_LIMIT_RAW
     			VAR_INPUT
-    				self : UDINT;
+    				self : SOCKET;
     				value : USINT;
     			END_VAR
     			VAR_OUTPUT
@@ -184,7 +186,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
 
     			FUNCTION SOCKET_SET_HOP_LIMIT
     			VAR_INPUT
-    				self : UDINT;
+    				self : SOCKET;
     				value : USINT;
     			END_VAR
     			VAR_OUTPUT
@@ -225,7 +227,7 @@ fn a_result_with_a_value_and_an_error_is_read_out_of_words(mut with_db: RootData
     			FUNCTION OPEN
     			VAR_OUTPUT
     				failed : BOOL;
-    				value : UDINT;
+    				value : SOCKET;
     				error : ERROR_CODE;
     			END_VAR
     			VAR

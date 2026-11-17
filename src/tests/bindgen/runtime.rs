@@ -559,7 +559,9 @@ fn a_listener_hands_over_the_sockets_it_accepts(mut with_db: RootDatabase) {
         VAR
             step : INT;
             failed : BOOL;
-            listener, connections, client, accepted : UDINT;
+            // Each socket of its resource's type, a stream's end a UDINT.
+            listener, client, accepted : Wasi.Sockets.Types.TCP_SOCKET;
+            connections : UDINT;
             outgoing, sending, sent, incoming, ending : UDINT;
             loopback, address : Wasi.Sockets.Types.IP_SOCKET_ADDRESS;
             listening, peer : UINT;

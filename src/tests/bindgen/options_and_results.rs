@@ -50,11 +50,13 @@ fn an_option_is_a_flag_and_a_value(mut with_db: RootDatabase) {
 
     			TYPE SIZE : ULINT; END_TYPE
 
+    			TYPE ENTRY : UDINT; END_TYPE
+
     			/* Lets go of `handle`, a handle of `entry` the host gave. */
     			{extern 'wasi:example/finder@0.3.0' '[resource-drop]entry'}
     			FUNCTION ENTRY_DROP
     			VAR_INPUT
-    				handle : UDINT;
+    				handle : ENTRY;
     			END_VAR
     			END_FUNCTION
 
@@ -86,7 +88,7 @@ fn an_option_is_a_flag_and_a_value(mut with_db: RootDatabase) {
     			FUNCTION FIRST
     			VAR_OUTPUT
     				is_some : BOOL;
-    				value : UDINT;
+    				value : ENTRY;
     			END_VAR
     			END_FUNCTION
 
@@ -133,11 +135,13 @@ fn a_result_is_a_flag_and_one_side(mut with_db: RootDatabase) {
     				GONE := 1
     			); END_TYPE
 
+    			TYPE HANDLE : UDINT; END_TYPE
+
     			/* Lets go of `handle`, a handle of `handle` the host gave. */
     			{extern 'wasi:example/outcomes@0.3.0' '[resource-drop]handle'}
     			FUNCTION HANDLE_DROP
     			VAR_INPUT
-    				handle : UDINT;
+    				handle : HANDLE;
     			END_VAR
     			END_FUNCTION
 
@@ -160,7 +164,7 @@ fn a_result_is_a_flag_and_one_side(mut with_db: RootDatabase) {
     			FUNCTION OPEN
     			VAR_OUTPUT
     				failed : BOOL;
-    				value : UDINT;
+    				value : HANDLE;
     			END_VAR
     			END_FUNCTION
 

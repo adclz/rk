@@ -103,11 +103,13 @@ fn a_keyword_takes_an_underscore_wherever_it_stands(mut with_db: RootDatabase) {
 
     			TYPE TIME_ : ULINT; END_TYPE
 
+    			TYPE TASK_ : UDINT; END_TYPE
+
     			/* Lets go of `handle`, a handle of `task` the host gave. */
     			{extern 'wasi:example/exit@0.3.0' '[resource-drop]task'}
     			FUNCTION TASK_DROP
     			VAR_INPUT
-    				handle : UDINT;
+    				handle : TASK_;
     			END_VAR
     			END_FUNCTION
 
@@ -119,7 +121,7 @@ fn a_keyword_takes_an_underscore_wherever_it_stands(mut with_db: RootDatabase) {
     			{extern 'wasi:example/exit@0.3.0' '[method]task.step'}
     			FUNCTION TASK_STEP : TIME_
     			VAR_INPUT
-    				self : UDINT;
+    				self : TASK_;
     			END_VAR
     			END_FUNCTION
 
@@ -175,7 +177,7 @@ fn two_names_written_alike_leave_the_later_out(mut with_db: RootDatabase) {
             import clash;
         }
     "#), @r"
-    wasi-example-clash.st: X_DROP, Y_DROP, X_NEW, Y_TURN, KEPT
+    wasi-example-clash.st: X, X_DROP, Y, Y_DROP, X_NEW, Y_TURN, KEPT
         left out `x-new`: it would be `X_NEW`, which `[constructor]x` is already
         left out `[method]y.turn`: it would be `Y_TURN`, which `y-turn` is already
     ");
@@ -202,12 +204,13 @@ fn a_name_the_generator_makes_gives_way(mut with_db: RootDatabase) {
         world example {
             import clash;
         }
-    "#), @"wasi-example-clash.st: B_DROP_, SHAPE_KIND, SHAPE, B_DROP, OPEN_RAW_, OPEN, OPEN_RAW");
+    "#), @"wasi-example-clash.st: B, B_DROP_, SHAPE_KIND, SHAPE, B_DROP, OPEN_RAW_, OPEN, OPEN_RAW");
 }
 
 /// A function named as a type takes a `_` after its name, which a program
 /// gives the type: the method `stat` of `file` beside the record
-/// `file-stat`, and `shape-kind` beside the enum of the cases of `shape`.
+/// `file-stat`, `shape-kind` beside the enum of the cases of `shape`, and
+/// the method `y` of `x` beside the resource `x-y`.
 #[rstest]
 fn a_function_named_as_a_type_takes_an_underscore(mut with_db: RootDatabase) {
     assert_snapshot!(declared(&mut with_db, r#"
@@ -220,12 +223,16 @@ fn a_function_named_as_a_type_takes_an_underscore(mut with_db: RootDatabase) {
             }
             variant shape { none, circle(f32) }
             shape-kind: func() -> u32;
+            resource x {
+                y: func();
+            }
+            resource x-y;
         }
 
         world example {
             import clash;
         }
-    "#), @"wasi-example-clash.st: FILE_STAT, FILE_DROP, SHAPE_KIND, SHAPE, FILE_STAT__RAW, FILE_STAT_, SHAPE_KIND_");
+    "#), @"wasi-example-clash.st: FILE_STAT, FILE, FILE_DROP, SHAPE_KIND, SHAPE, X, X_DROP, X_Y, X_Y_DROP, FILE_STAT__RAW, FILE_STAT_, SHAPE_KIND_, X_Y_");
 }
 
 /// A variable that would be the name of its FUNCTION's value, or a name

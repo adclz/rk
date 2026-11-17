@@ -53,11 +53,13 @@ fn a_record_passed_in_is_its_fields(mut with_db: RootDatabase) {
     				RIGHT := 1
     			); END_TYPE
 
+    			TYPE DOOR : UDINT; END_TYPE
+
     			/* Lets go of `handle`, a handle of `door` the host gave. */
     			{extern 'wasi:example/places@0.3.0' '[resource-drop]door'}
     			FUNCTION DOOR_DROP
     			VAR_INPUT
-    				handle : UDINT;
+    				handle : DOOR;
     			END_VAR
     			END_FUNCTION
 
@@ -73,7 +75,7 @@ fn a_record_passed_in_is_its_fields(mut with_db: RootDatabase) {
 
     			TYPE MIXED : STRUCT
     				way : SIDE;
-    				entry : UDINT;
+    				entry : DOOR;
     				ratio : REAL;
     			END_STRUCT END_TYPE
 
@@ -128,7 +130,7 @@ fn a_record_passed_in_is_its_fields(mut with_db: RootDatabase) {
     			FUNCTION PRIVATE GO_RAW
     			VAR_INPUT
     				how_way : SIDE;
-    				how_entry : UDINT;
+    				how_entry : DOOR;
     				how_ratio : REAL;
     			END_VAR
     			END_FUNCTION

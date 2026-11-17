@@ -350,18 +350,20 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     NAMESPACE INTERNAL Wasi
     	NAMESPACE Example
     		NAMESPACE Copy
+    			TYPE CHANNEL : UDINT; END_TYPE
+
     			/* Lets go of `handle`, a handle of `channel` the host gave. */
     			{extern 'wasi:example/copy@0.3.0' '[resource-drop]channel'}
     			FUNCTION CHANNEL_DROP
     			VAR_INPUT
-    				handle : UDINT;
+    				handle : CHANNEL;
     			END_VAR
     			END_FUNCTION
 
     			{extern 'wasi:example/copy@0.3.0' '[method]channel.transfer'}
     			FUNCTION CHANNEL_TRANSFER : BOOL
     			VAR_INPUT
-    				self : UDINT;
+    				self : CHANNEL;
     				from_here : UDINT;
     				data : UDINT;
     			END_VAR
@@ -503,22 +505,24 @@ const FEEDS: &str = r#"
     }
 "#;
 
-/// A stream of a resource's handles is read into an ARRAY OF UDINT, a
-/// handle an element, each the program's own to drop: what a listener's
-/// connections come in. Nothing takes such a stream from the program, which
-/// a write would feed.
+/// A stream of a resource's handles is read into an array of the
+/// resource's type, a UDINT, a handle an element, each the program's own to
+/// drop: what a listener's connections come in. Nothing takes such a stream
+/// from the program, which a write would feed.
 #[rstest]
-fn a_stream_of_handles_is_read_into_udints(mut with_db: RootDatabase) {
+fn a_stream_of_handles_is_read_into_an_array(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, FEEDS), @r"
     // wasi-example-feeds.st
     NAMESPACE INTERNAL Wasi
     	NAMESPACE Example
     		NAMESPACE Feeds
+    			TYPE CONNECTION : UDINT; END_TYPE
+
     			/* Lets go of `handle`, a handle of `connection` the host gave. */
     			{extern 'wasi:example/feeds@0.3.0' '[resource-drop]connection'}
     			FUNCTION CONNECTION_DROP
     			VAR_INPUT
-    				handle : UDINT;
+    				handle : CONNECTION;
     			END_VAR
     			END_FUNCTION
 
@@ -546,7 +550,7 @@ fn a_stream_of_handles_is_read_into_udints(mut with_db: RootDatabase) {
     			END_VAR
     			VAR_OUTPUT
     				DONE : BOOL;
-    				data : ARRAY[0..15] OF UDINT;
+    				data : ARRAY[0..15] OF CONNECTION;
     				read : UDINT;
     				closed : BOOL;
     			END_VAR
