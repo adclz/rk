@@ -87,6 +87,10 @@ pub struct Interfaces {
     /// What each stream's read or write moves, by its import as
     /// [`Interfaces::declared`] keys it: what its block's buffer holds.
     pub moved: BTreeMap<(String, String), Moved>,
+    /// How many bytes each import's declaration holds of its result, by
+    /// its import as [`Interfaces::declared`] keys it: the record of the
+    /// fields it reads back, a call's outputs, or a future read's value.
+    pub held: BTreeMap<(String, String), u32>,
 }
 
 /// What a stream's read or write moves, by the buffer its block declares
@@ -159,7 +163,36 @@ pub fn interfaces(
         exports,
         declared,
         moved: moved(module),
+        held: held(module),
     })
+}
+
+/// How many bytes each import of `module` holds of its result
+/// ([`Interfaces::held`]): the record of the fields its declaration reads
+/// back, as rk lays them out. A sync call reads its outputs and its return
+/// value; an async call its outputs; a future's read its value's fields.
+fn held(module: &mir::MirModule) -> BTreeMap<(String, String), u32> {
+    let record = |types: &mut dyn Iterator<Item = &MirType>| {
+        let fields: Vec<_> = types
+            .filter_map(wasm_codegen::canonical::canonical)
+            .collect();
+        wasm_codegen::canonical::record_layout(&fields).1
+    };
+    module
+        .extern_functions
+        .iter()
+        .map(|ext| {
+            let size = match module
+                .async_calls
+                .values()
+                .find(|call| call.import == ext.name)
+            {
+                Some(call) => record(&mut call.results.iter().map(|(_, ty)| ty)),
+                None => record(&mut ext.results()),
+            };
+            ((ext.module.to_string(), ext.import_name.to_string()), size)
+        })
+        .collect()
 }
 
 /// What each stream's read or write in `module` moves: a read, what its
@@ -351,8 +384,12 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
     let world_id = resolve
         .select_world(&[package], Some(WORLD))
         .map_err(|e| format!("selecting the component's world: {e:#}"))?;
+    let mut sizes = wit_parser::SizeAlign::default();
+    sizes
+        .fill(&resolve)
+        .map_err(|e| format!("laying out the component's WIT types: {e:#}"))?;
     for module in &carried {
-        as_wasi_declares(&resolve, module, &imports[*module], interfaces)?;
+        as_wasi_declares(&resolve, &sizes, module, &imports[*module], interfaces)?;
     }
 
     let mut module = core.to_vec();
@@ -568,19 +605,24 @@ fn own_packages(own: &BTreeMap<&str, Vec<&HostFunction>>) -> Result<Vec<OwnPacka
 /// and futures, as wit-component numbers them, or one of the other kind; a
 /// stream's read or write that moves what the stream does not carry
 /// ([`Interfaces::moved`]), whose host would write elements of another width
-/// than the buffer's; and `{extern async}`, which a FUNCTION_BLOCK takes, on
-/// a function that is not an `async func`, or a plain `{extern}` on one. A
-/// scan never waits: a FUNCTION's call of an `async func` traps when the
-/// host does not answer at once, and an async call of any other gains
-/// nothing. Each error names the POU that declares the import
-/// ([`Interfaces::declared`]).
+/// than the buffer's; a result or a future read's value, laid out as
+/// `sizes` says, in more bytes than the declaration's outputs take
+/// ([`Interfaces::held`]): the host writes one that is not passed as values
+/// where the call points, past outputs that are too few;
+/// and `{extern async}`, which a FUNCTION_BLOCK takes, on a function that is
+/// not an `async func`, or a plain `{extern}` on one. A scan never waits: a
+/// FUNCTION's call of an `async func` traps when the host does not answer
+/// at once, and an async call of any other gains nothing. Each error names
+/// the POU that declares the import ([`Interfaces::declared`]).
 fn as_wasi_declares(
     resolve: &wit_parser::Resolve,
+    sizes: &wit_parser::SizeAlign,
     module: &str,
     names: &BTreeSet<String>,
     interfaces: &Interfaces,
 ) -> Result<(), String> {
     let declared = &interfaces.declared;
+    let size = |ty: &wit_parser::Type| sizes.size(ty).size_wasm32() as u32;
     let Some(interface) = resolve
         .interfaces
         .iter()
@@ -663,7 +705,24 @@ fn as_wasi_declares(
                          streams and futures of `{function}`'s type carries {carries}"
                     ));
                 }
-                (false, wit_parser::TypeDefKind::Future(_)) => continue,
+                (false, wit_parser::TypeDefKind::Future(payload)) => {
+                    // A read's value lands where its block points, over
+                    // what its outputs take.
+                    if builtin == "future-read"
+                        && let Some(&held) =
+                            interfaces.held.get(&(module.to_string(), name.clone()))
+                    {
+                        let written = payload.as_ref().map_or(0, size);
+                        if written > held {
+                            return Err(format!(
+                                "`{by}` imports `{imported}` of `{module}`, whose value takes \
+                                 {written} bytes, where its outputs take {held}: declare \
+                                 outputs for the whole value"
+                            ));
+                        }
+                    }
+                    continue;
+                }
                 (true, _) => "a future",
                 (false, _) => "a stream",
             };
@@ -687,6 +746,21 @@ fn as_wasi_declares(
                 ));
             }
             _ => {}
+        }
+        // The outputs hold the whole result: one past a call's values, and
+        // an async call's, the host writes where the call points, over what
+        // they take.
+        if let (Some(result), Some(&held)) = (
+            wit.result.as_ref(),
+            interfaces.held.get(&(module.to_string(), name.clone())),
+        ) {
+            let written = size(result);
+            if written > held {
+                return Err(format!(
+                    "`{by}` imports `{imported}` of `{module}`, whose result takes {written} \
+                     bytes, where its outputs take {held}: declare outputs for the whole result"
+                ));
+            }
         }
     }
     Ok(())
