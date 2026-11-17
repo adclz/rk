@@ -825,7 +825,9 @@ END_CONFIGURATION"#;
 /// A WASI import may be a stream's or a future's built-in, under the name
 /// of the function it serves: those that return at once on a FUNCTION, and
 /// a stream's write, which waits for the reader, on an `{extern async}`
-/// FUNCTION_BLOCK. Accepted, and the module they build is valid.
+/// FUNCTION_BLOCK, of a STRING's bytes or of the bytes a REF_TO BYTE points
+/// at, as many as a count says. Accepted, and the module they build is
+/// valid.
 #[rstest]
 fn valid_stream_built_ins(mut with_db: RootDatabase) {
     let source = r#"
@@ -850,10 +852,20 @@ VAR_INPUT stream : UDINT; data : STRING[64]; END_VAR
 VAR_OUTPUT DONE : BOOL; written : UDINT; closed : BOOL; END_VAR
 END_FUNCTION_BLOCK
 
+{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+FUNCTION_BLOCK STREAM_WRITE_BYTES
+VAR_INPUT stream : UDINT; data : REF_TO BYTE; count : UDINT; END_VAR
+VAR_OUTPUT DONE : BOOL; written : UDINT; closed : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
 PROGRAM Main
-VAR reading : UDINT; writing : UDINT; write : STREAM_WRITE; END_VAR
+VAR
+    reading : UDINT; writing : UDINT; write : STREAM_WRITE;
+    frame : ARRAY[0..7] OF BYTE; write_bytes : STREAM_WRITE_BYTES;
+END_VAR
     NEW_STREAM(readable => reading, writable => writing);
     write(stream := writing, data := 'hello');
+    write_bytes(stream := writing, data := REF(frame[0]), count := 4);
     DROP_FUTURE(future := 3);
     DROP_WRITER(stream := 2);
 END_PROGRAM"#;
@@ -864,7 +876,8 @@ END_PROGRAM"#;
 /// A built-in fits one kind of POU (E1516): a read or a write waits for the
 /// other end, so only an `{extern async}` block imports it, and the others
 /// return at once, so a FUNCTION does. An async block imports a call or a
-/// stream's write, which declares the built-in's variables, and a `new`
+/// stream's write, which declares the built-in's variables: the bytes a
+/// reference points at are BYTEs, and a count says how many. A `new`
 /// declares the two ends it makes, a UDINT VAR_OUTPUT each. Outside WASI, a
 /// built-in's name is no WIT name (E1512).
 #[rstest]
@@ -888,6 +901,30 @@ END_FUNCTION_BLOCK
 {extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
 FUNCTION_BLOCK WRITE_TEXT
 VAR_INPUT text : STRING[64]; END_VAR
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+FUNCTION_BLOCK WRITE_WORDS
+VAR_INPUT stream : UDINT; data : REF_TO WORD; count : UDINT; END_VAR
+VAR_OUTPUT DONE : BOOL; written : UDINT; closed : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+FUNCTION_BLOCK WRITE_NO_COUNT
+VAR_INPUT stream : UDINT; data : REF_TO BYTE; END_VAR
+VAR_OUTPUT DONE : BOOL; written : UDINT; closed : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+FUNCTION_BLOCK WRITE_INT_COUNT
+VAR_INPUT stream : UDINT; data : REF_TO BYTE; count : INT; END_VAR
+VAR_OUTPUT DONE : BOOL; written : UDINT; closed : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+FUNCTION_BLOCK WRITE_NO_OUTPUTS
+VAR_INPUT stream : UDINT; data : STRING[64]; END_VAR
 VAR_OUTPUT DONE : BOOL; END_VAR
 END_FUNCTION_BLOCK
 
@@ -945,23 +982,67 @@ END_FUNCTION"#;
         |                ^^^^^|^^^^
         |                     `------ 'WRITE_TEXT' does not declare a stream write's variables
         |
-        | Help: declare the VAR_INPUTs stream : UDINT and data : STRING, and the VAR_OUTPUTs written : UDINT and closed : BOOL after DONE
+        | Help: declare the VAR_INPUTs stream : UDINT and data : STRING, or data : REF_TO BYTE and count : UDINT, and the VAR_OUTPUTs written : UDINT and closed : BOOL after DONE
         |
-        | Note: a stream write takes the stream's writing end, a UDINT, then the bytes, a STRING, and gives after DONE how many went, a UDINT, then whether the reader left, a BOOL
+        | Note: a stream write takes the stream's writing end, a UDINT, then the bytes, a STRING, or where they are, a REF_TO BYTE, and how many, a UDINT, and gives after DONE how many went, a UDINT, then whether the reader left, a BOOL
+    ----'
+    [E1516] Error: built-in that does not fit its declaration
+        ,-[ file:///test0.st:24:16 ]
+        |
+     24 | FUNCTION_BLOCK WRITE_WORDS
+        |                ^^^^^|^^^^^
+        |                     `------- 'WRITE_WORDS' does not declare a stream write's variables
+        |
+        | Help: declare the VAR_INPUTs stream : UDINT and data : STRING, or data : REF_TO BYTE and count : UDINT, and the VAR_OUTPUTs written : UDINT and closed : BOOL after DONE
+        |
+        | Note: a stream write takes the stream's writing end, a UDINT, then the bytes, a STRING, or where they are, a REF_TO BYTE, and how many, a UDINT, and gives after DONE how many went, a UDINT, then whether the reader left, a BOOL
+    ----'
+    [E1516] Error: built-in that does not fit its declaration
+        ,-[ file:///test0.st:30:16 ]
+        |
+     30 | FUNCTION_BLOCK WRITE_NO_COUNT
+        |                ^^^^^^^|^^^^^^
+        |                       `-------- 'WRITE_NO_COUNT' does not declare a stream write's variables
+        |
+        | Help: declare the VAR_INPUTs stream : UDINT and data : STRING, or data : REF_TO BYTE and count : UDINT, and the VAR_OUTPUTs written : UDINT and closed : BOOL after DONE
+        |
+        | Note: a stream write takes the stream's writing end, a UDINT, then the bytes, a STRING, or where they are, a REF_TO BYTE, and how many, a UDINT, and gives after DONE how many went, a UDINT, then whether the reader left, a BOOL
+    ----'
+    [E1516] Error: built-in that does not fit its declaration
+        ,-[ file:///test0.st:36:16 ]
+        |
+     36 | FUNCTION_BLOCK WRITE_INT_COUNT
+        |                ^^^^^^^|^^^^^^^
+        |                       `--------- 'WRITE_INT_COUNT' does not declare a stream write's variables
+        |
+        | Help: declare the VAR_INPUTs stream : UDINT and data : STRING, or data : REF_TO BYTE and count : UDINT, and the VAR_OUTPUTs written : UDINT and closed : BOOL after DONE
+        |
+        | Note: a stream write takes the stream's writing end, a UDINT, then the bytes, a STRING, or where they are, a REF_TO BYTE, and how many, a UDINT, and gives after DONE how many went, a UDINT, then whether the reader left, a BOOL
+    ----'
+    [E1516] Error: built-in that does not fit its declaration
+        ,-[ file:///test0.st:42:16 ]
+        |
+     42 | FUNCTION_BLOCK WRITE_NO_OUTPUTS
+        |                ^^^^^^^^|^^^^^^^
+        |                        `--------- 'WRITE_NO_OUTPUTS' does not declare a stream write's variables
+        |
+        | Help: declare the VAR_INPUTs stream : UDINT and data : STRING, or data : REF_TO BYTE and count : UDINT, and the VAR_OUTPUTs written : UDINT and closed : BOOL after DONE
+        |
+        | Note: a stream write takes the stream's writing end, a UDINT, then the bytes, a STRING, or where they are, a REF_TO BYTE, and how many, a UDINT, and gives after DONE how many went, a UDINT, then whether the reader left, a BOOL
     ----'
     [E1512] Error: import name not a WIT name
-        ,-[ file:///test0.st:23:16 ]
+        ,-[ file:///test0.st:47:16 ]
         |
-     23 | {extern 'host' '[stream-new-0]send'}
+     47 | {extern 'host' '[stream-new-0]send'}
         |                ^^^^^^^^^^|^^^^^^^^^
         |                          `----------- '[stream-new-0]send' is not a WIT name
         |
         | Note: an import's name is written as WIT writes one, words of lowercase letters and digits joined by '-'
     ----'
     [E1516] Error: built-in that does not fit its declaration
-        ,-[ file:///test0.st:28:10 ]
+        ,-[ file:///test0.st:52:10 ]
         |
-     28 | FUNCTION NEW_AS_ONE : LWORD
+     52 | FUNCTION NEW_AS_ONE : LWORD
         |          ^^^^^|^^^^
         |               `------ 'NEW_AS_ONE' does not declare the two ends it makes
         |
@@ -970,9 +1051,9 @@ END_FUNCTION"#;
         | Note: a stream's or a future's new gives its reading end, then its writing end, each a UDINT
     ----'
     [E1516] Error: built-in that does not fit its declaration
-        ,-[ file:///test0.st:32:10 ]
+        ,-[ file:///test0.st:56:10 ]
         |
-     32 | FUNCTION NEW_FUTURE
+     56 | FUNCTION NEW_FUTURE
         |          ^^^^^|^^^^
         |               `------ 'NEW_FUTURE' does not declare the two ends it makes
         |
