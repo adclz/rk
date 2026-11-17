@@ -22,13 +22,16 @@
 //! holds one is passed the same way: `<NAME>` packs its values into the
 //! words `<NAME>_RAW` takes ([`lower`]).
 //!
-//! Each interface is a namespace inside its package's, inside `Wasi`, the
-//! one INTERNAL namespace: `wasi:clocks/monotonic-clock` is
-//! `Wasi.Clocks.MonotonicClock`, which only the library that holds the
-//! code reaches. Every declaration is in the namespace of the interface it
-//! is imported from, the built-ins too, named after their type and what
-//! carries it: `Wasi.Cli.Stdout.BYTES_STREAM_NEW`. A function or a type ST
-//! cannot express yet is left out, and the file says why at its end.
+//! Each interface is a namespace inside its package's, inside the one its
+//! package's namespace names: `wasi:clocks/monotonic-clock` is
+//! `Wasi.Clocks.MonotonicClock`, and `acme:drive/axis` is
+//! `Acme.Drive.Axis`. That root is INTERNAL, so that only the library that
+//! holds the code reaches it, unless the declarations are written for
+//! every program ([`Reach`]). Every declaration is in the namespace of the
+//! interface it is imported from, the built-ins too, named after their
+//! type and what carries it: `Wasi.Cli.Stdout.BYTES_STREAM_NEW`. A function
+//! or a type ST cannot express yet is left out, and the file says why at
+//! its end.
 //!
 //! ST compares names without case, and two WIT names may be written alike.
 //! The names WIT gives come first: of two that ST takes for one, the later
@@ -48,6 +51,7 @@ pub mod types;
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::path::Path;
 
 use wit_parser::abi::AbiVariant;
 use wit_parser::{
@@ -81,7 +85,8 @@ pub(crate) const MAX_FLAT_ASYNC_PARAMS: usize = 4;
 /// A file of generated code.
 #[derive(Debug)]
 pub struct File {
-    /// Its name, under `stdlib/generated/`: `wasi-clocks-monotonic-clock.st`.
+    /// Its name, its package's then its interface's:
+    /// `wasi-clocks-monotonic-clock.st`.
     pub name: String,
     pub text: String,
     /// What was left out of it.
@@ -119,6 +124,36 @@ pub fn resolve(world: &str) -> Result<(Resolve, WorldId), String> {
     Ok((resolve, world))
 }
 
+/// The world `world` of the package in the WIT folder `dir`, laid out as
+/// WIT's tools lay one out: the package's files, and in `deps/` the
+/// packages it uses. `None` takes the package's one world.
+pub fn resolve_folder(dir: &Path, world: Option<&str>) -> Result<(Resolve, WorldId), String> {
+    let mut resolve = Resolve {
+        // A feature a package has not released yet is generated too, as
+        // WASI's time zone is.
+        all_features: true,
+        ..Default::default()
+    };
+    let (package, _) = resolve
+        .push_dir(dir)
+        .map_err(|e| format!("reading the WIT in `{}`: {e:#}", dir.display()))?;
+    let world = resolve
+        .select_world(&[package], world)
+        .map_err(|e| format!("selecting the world: {e:#}"))?;
+    Ok((resolve, world))
+}
+
+/// Which programs reach the declarations rk-bindgen writes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Reach {
+    /// Only the library that holds them: their root namespace is INTERNAL,
+    /// and the library's own blocks wrap them, as Std's wrap WASI's.
+    #[default]
+    Library,
+    /// Every program that reads the library.
+    Everyone,
+}
+
 /// A package written in `files`, parsed.
 fn parse(dir: &str, files: &[(&str, &str)]) -> Result<wit_parser::UnresolvedPackageGroup, String> {
     let mut map = wit_parser::SourceMap::new();
@@ -131,8 +166,17 @@ fn parse(dir: &str, files: &[(&str, &str)]) -> Result<wit_parser::UnresolvedPack
 
 /// The ST declarations of every interface `world` imports, in the order it
 /// imports them, then the built-ins of the streams and the futures their
-/// functions take or give.
+/// functions take or give, which only the library that holds them reaches.
 pub fn generate(resolve: &Resolve, world: WorldId) -> Result<Vec<File>, String> {
+    generate_reaching(resolve, world, Reach::Library)
+}
+
+/// [`generate`], the declarations reaching what `reach` says.
+pub fn generate_reaching(
+    resolve: &Resolve,
+    world: WorldId,
+    reach: Reach,
+) -> Result<Vec<File>, String> {
     let mut sizes = SizeAlign::default();
     sizes
         .fill(resolve)
@@ -140,6 +184,7 @@ pub fn generate(resolve: &Resolve, world: WorldId) -> Result<Vec<File>, String> 
     let mut generator = Generator {
         resolve,
         sizes,
+        reach,
         files: Vec::new(),
         namespaces: HashMap::new(),
         named: HashMap::new(),
@@ -256,6 +301,7 @@ struct Generator<'a> {
     resolve: &'a Resolve,
     /// Where the canonical ABI puts each type's values.
     sizes: SizeAlign,
+    reach: Reach,
     files: Vec<File>,
     /// The interface each namespace written so far is, by the namespace
     /// in capitals, and the one each file is, by its name in lowercase.
@@ -388,8 +434,11 @@ impl Generator<'_> {
             .ok_or("an interface outside a package cannot be imported")?;
         let interface_name = interface.name.as_deref().unwrap_or_default();
         let here = Some(TypeOwner::Interface(id));
+        // The root is the package's namespace, which a type another
+        // interface declares is named from too ([`shapes::qualified`]).
+        let root = names::namespace(&package.namespace);
         let namespace = format!(
-            "Wasi.{}.{}",
+            "{root}.{}.{}",
             names::namespace(&package.name),
             names::namespace(interface_name)
         );
@@ -703,7 +752,10 @@ impl Generator<'_> {
         let mut text = header(&[package.to_string()]);
         if !out.text.is_empty() {
             let mut wrapper = Out::default();
-            wrapper.line("NAMESPACE INTERNAL Wasi");
+            wrapper.line(&match self.reach {
+                Reach::Library => format!("NAMESPACE INTERNAL {root}"),
+                Reach::Everyone => format!("NAMESPACE {root}"),
+            });
             wrapper.depth += 1;
             wrapper.line(&format!("NAMESPACE {}", names::namespace(&package.name)));
             wrapper.depth += 1;
