@@ -328,6 +328,7 @@ fn declared(
         TypeDefKind::Flags(flags) => shapes::flags_base(flags).map(|_| "flags"),
         TypeDefKind::Record(_) => Some("record"),
         TypeDefKind::Tuple(_) => Some("tuple"),
+        TypeDefKind::Resource => Some("resource"),
         _ => None,
     }
 }
@@ -608,7 +609,13 @@ impl Generator<'_> {
                     // its first value.
                     named_values(&mut out, &st_name, base, &values, Some("0"));
                 }
+                // A handle of the resource: its own name for a UDINT, which
+                // says what a declaration takes and passes as any UDINT does.
                 TypeDefKind::Resource => {
+                    let st_name = names::upper(name);
+                    out.docs(&def.docs);
+                    out.line(&format!("TYPE {st_name} : UDINT; END_TYPE"));
+                    out.line("");
                     let drop = own(
                         &mut taken,
                         names::upper(&format!("{name}-drop")),
@@ -623,7 +630,7 @@ impl Generator<'_> {
                         "VAR_INPUT",
                         &[Var {
                             name: "handle".to_string(),
-                            ty: "UDINT".to_string(),
+                            ty: st_name,
                             flat: 1,
                             start: None,
                         }],
@@ -1671,10 +1678,15 @@ fn built_in_set(
             out.line("END_FUNCTION_BLOCK");
             out.line("");
         }
-        // A resource's handles, read into an ARRAY OF UDINT: what a stream
-        // of them is for, a listener's connections. Nothing a component
-        // imports takes such a stream from it, which a write would feed.
+        // A resource's handles, read into an array of its type, a UDINT:
+        // what a stream of them is for, a listener's connections. Nothing a
+        // component imports takes such a stream from it, which a write would
+        // feed.
         Carrier::Stream if handles => {
+            // Each a handle of the resource, as its type names it.
+            let element = payload
+                .and_then(|ty| shapes::scalar(resolve, ty, owner))
+                .unwrap_or_else(|| "UDINT".to_string());
             out.prose(
                 "Reads the handles that come next into `data`, as many as it holds at most: `read` of them, after `DONE`, each the program's own to drop. `closed` is TRUE once the writer has let go.",
             );
@@ -1689,7 +1701,7 @@ fn built_in_set(
                     done(),
                     Var {
                         name: "data".to_string(),
-                        ty: format!("ARRAY[0..{}] OF UDINT", HANDLES_AT_ONCE - 1),
+                        ty: format!("ARRAY[0..{}] OF {element}", HANDLES_AT_ONCE - 1),
                         flat: 1,
                         start: None,
                     },

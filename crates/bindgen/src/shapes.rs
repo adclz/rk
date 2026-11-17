@@ -172,8 +172,9 @@ pub fn what(resolve: &Resolve, ty: Type) -> &'static str {
 }
 
 /// The ST type of a scalar `ty`: a number or a BOOL, an enum, flags, a
-/// variant none of whose cases holds a value, an alias of one, or a handle,
-/// which is a UDINT. `None` for anything else.
+/// variant none of whose cases holds a value, an alias of one, a handle,
+/// which its resource's type names, a UDINT, or a stream's or a future's
+/// end, a UDINT. `None` for anything else.
 pub fn scalar(resolve: &Resolve, ty: Type, here: Option<TypeOwner>) -> Option<String> {
     let ty = through_uses(resolve, ty);
     let elementary = match ty {
@@ -200,10 +201,16 @@ pub fn scalar(resolve: &Resolve, ty: Type, here: Option<TypeOwner>) -> Option<St
                     scalar(resolve, *inner, here).map(|_| named(resolve))
                 }
                 TypeDefKind::Type(inner) => scalar(resolve, *inner, here),
-                TypeDefKind::Handle(Handle::Own(_) | Handle::Borrow(_))
-                | TypeDefKind::Resource
-                | TypeDefKind::Future(_)
-                | TypeDefKind::Stream(_) => Some("UDINT".to_string()),
+                // Owned or borrowed, a handle of the resource where it is
+                // declared, which a `use` names from elsewhere.
+                TypeDefKind::Handle(Handle::Own(resource) | Handle::Borrow(resource)) => {
+                    match through_uses(resolve, Type::Id(*resource)) {
+                        Type::Id(resource) => Some(type_name(resolve, resource, here)),
+                        _ => Some("UDINT".to_string()),
+                    }
+                }
+                TypeDefKind::Resource => Some(named(resolve)),
+                TypeDefKind::Future(_) | TypeDefKind::Stream(_) => Some("UDINT".to_string()),
                 _ => None,
             };
         }
