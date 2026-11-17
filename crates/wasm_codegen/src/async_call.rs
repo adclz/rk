@@ -301,7 +301,9 @@ fn start_copy(f: &mut Function, call: &MirAsyncCall) {
                     }
                     address(f, area);
                 }
-                // A value with no field: the host writes nothing.
+                // A value with no field: the build checks that the future
+                // holds none for its block to give, so the host writes
+                // nothing here.
                 None => address(f, call.state),
             }
         }
