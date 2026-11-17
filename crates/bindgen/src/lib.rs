@@ -1179,6 +1179,7 @@ impl Generator<'_> {
             if here.sets.contains(&key) {
                 continue;
             }
+            let fed = taken_from_the_program(resolve, here.owner, carrier, &key.1);
             here.sets.push(key);
             // A set says what it is: `BYTES_STREAM`, `RESULT_FUTURE`.
             let name = format!(
@@ -1203,6 +1204,7 @@ impl Generator<'_> {
                 payload,
                 &anchor,
                 here.owner,
+                fed,
             );
             let what = format!("a built-in of `{}`", wit_text(resolve, payload));
             for pou in written {
@@ -1502,6 +1504,39 @@ fn wit_name(ty: Type) -> &'static str {
     }
 }
 
+/// Whether a function of the interface `owner` takes a stream or a future,
+/// as `carrier` says, of the payload `key` names from the program: one of
+/// its parameters holds one, which a write of the program's would feed.
+fn taken_from_the_program(
+    resolve: &Resolve,
+    owner: Option<TypeOwner>,
+    carrier: Carrier,
+    key: &str,
+) -> bool {
+    let Some(TypeOwner::Interface(interface)) = owner else {
+        return false;
+    };
+    resolve.interfaces[interface]
+        .functions
+        .values()
+        .any(|function| {
+            let mut params = function.clone();
+            params.result = None;
+            params
+                .find_futures_and_streams(resolve)
+                .into_iter()
+                .any(|ty| match &resolve.types[ty].kind {
+                    TypeDefKind::Stream(payload) => {
+                        carrier == Carrier::Stream && type_key(resolve, *payload) == key
+                    }
+                    TypeDefKind::Future(payload) => {
+                        carrier == Carrier::Future && type_key(resolve, *payload) == key
+                    }
+                    _ => false,
+                })
+        })
+}
+
 /// The name of the built-ins of a stream or a future of `payload`: a
 /// stream of bytes is `BYTES`, a named type is its own name, a result is
 /// `RESULT`, and its ok type after it, `RESULT_U64`.
@@ -1564,6 +1599,8 @@ fn capitals(name: &str) -> String {
 /// `import` says with the built-in's name in place of its `{}`, written to
 /// `out`, what is left out of them to `skipped`; the types they name, from
 /// `owner`. `converts` is set when a future's value is read out of words.
+/// `fed` says whether a function of the interface takes one from the
+/// program, without which a write would have no reader.
 /// The names of the POUs written: `name` and the built-in's own, with a
 /// `_` after it where `taken` holds that already.
 #[allow(clippy::too_many_arguments)]
@@ -1579,6 +1616,7 @@ fn built_in_set(
     payload: Option<Type>,
     import: &str,
     owner: Option<TypeOwner>,
+    fed: bool,
 ) -> Vec<String> {
     let mut written = Vec::new();
     let pou = |built_in: &str| spare(taken, format!("{name}_{built_in}"));
@@ -1677,6 +1715,31 @@ fn built_in_set(
             out.vars("VAR_OUTPUT", &[done(), handle("written"), closed()]);
             out.line("END_FUNCTION_BLOCK");
             out.line("");
+            // Bytes that are no text, from where they are: the address of
+            // the first, as the canonical ABI passes a buffer, and how many.
+            out.prose(
+                "Writes the `count` bytes from the one `data` points at, as many as the reader takes: `written` of them, after `DONE`. The host reads them where they are while the write runs, so they stay there, unchanged, until `DONE`. `closed` is TRUE once the reader has let go.",
+            );
+            out.line(&format!("{{extern async {}}}", pragma("write")));
+            let write = pou("WRITE_ARRAY");
+            out.line(&format!("FUNCTION_BLOCK {write}"));
+            written.push(write);
+            out.vars(
+                "VAR_INPUT",
+                &[
+                    handle(end),
+                    Var {
+                        name: "data".to_string(),
+                        ty: "REF_TO BYTE".to_string(),
+                        flat: 1,
+                        start: None,
+                    },
+                    handle("count"),
+                ],
+            );
+            out.vars("VAR_OUTPUT", &[done(), handle("written"), closed()]);
+            out.line("END_FUNCTION_BLOCK");
+            out.line("");
         }
         // A resource's handles, read into an array of its type, a UDINT:
         // what a stream of them is for, a listener's connections. Nothing a
@@ -1713,7 +1776,12 @@ fn built_in_set(
             out.line("");
             skipped.push(Skipped {
                 item: format!("`{name}_WRITE`"),
-                reason: "a stream's write moves bytes only".to_string(),
+                reason: match fed {
+                    true => "a stream's write moves bytes only".to_string(),
+                    false => format!(
+                        "no function of the interface takes a stream of {of} from the program"
+                    ),
+                },
             });
         }
         Carrier::Stream => skipped.push(Skipped {
@@ -1811,7 +1879,15 @@ fn built_in_set(
             }
             skipped.push(Skipped {
                 item: format!("`{name}_WRITE`"),
-                reason: "a future's write is not imported yet".to_string(),
+                reason: match (fed, payload) {
+                    (true, _) => "a future's write is not imported yet".to_string(),
+                    (false, Some(_)) => format!(
+                        "no function of the interface takes a future of {of} from the program"
+                    ),
+                    (false, None) => {
+                        "no function of the interface takes a future from the program".to_string()
+                    }
+                },
             });
         }
     }
