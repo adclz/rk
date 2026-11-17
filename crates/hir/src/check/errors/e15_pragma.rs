@@ -768,13 +768,15 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                     .call();
                 diag.with_note(
                     "a stream write takes the stream's writing end, a UDINT, then the bytes, \
-                     a STRING, and gives after DONE how many went, a UDINT, then whether the \
-                     reader left, a BOOL"
+                     a STRING, or where they are, a REF_TO BYTE, and how many, a UDINT, and \
+                     gives after DONE how many went, a UDINT, then whether the reader left, a \
+                     BOOL"
                         .to_string(),
                 );
                 diag.with_help(
-                    "declare the VAR_INPUTs stream : UDINT and data : STRING, and the \
-                     VAR_OUTPUTs written : UDINT and closed : BOOL after DONE"
+                    "declare the VAR_INPUTs stream : UDINT and data : STRING, or data : \
+                     REF_TO BYTE and count : UDINT, and the VAR_OUTPUTs written : UDINT and \
+                     closed : BOOL after DONE"
                         .to_string(),
                 );
                 diag
