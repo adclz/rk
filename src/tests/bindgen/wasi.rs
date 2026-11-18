@@ -168,7 +168,7 @@ fn every_wasi_interface_builds_into_a_component(mut with_db: RootDatabase) {
     for (id, _) in wasi() {
         let (name, _) = id.split_once('@').expect("a version");
         assert!(
-            component.world.contains(&format!("    import {name}/")),
+            component.world.contains(&format!("  import {name}/")),
             "{name} in {}",
             component.world
         );
@@ -269,7 +269,7 @@ fn std_s_interfaces_build_into_a_component(mut with_db: RootDatabase) {
         assert!(
             component
                 .world
-                .contains(&format!("    import {interface};\n")),
+                .contains(&format!("  import {interface};\n")),
             "{interface} in {}",
             component.world
         );
