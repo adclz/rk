@@ -166,9 +166,14 @@ pub fn resolve(world: &str, packages: &[PathBuf]) -> Result<(Resolve, WorldId), 
     Ok((resolve, world))
 }
 
-/// The world `world` of the package in the WIT folder `dir`, laid out as
-/// WIT's tools lay one out: the package's files, and in `deps/` the
-/// packages it uses. `None` takes the package's one world.
+/// The world rk-bindgen generates for the WIT folder `dir`, laid out as
+/// WIT's tools lay one out: the folder's own package, its files at the top,
+/// and in `deps/` a package for each it uses. `world` names a world of the
+/// folder's own package, and without it the package's one world is taken.
+/// A package that declares no world needs none written for it: the world
+/// imports every interface the package declares, or, when it declares none
+/// or the folder has no package of its own, every interface of each package
+/// in `deps/`. A host's package dropped into `wit/` is generated as it is.
 pub fn resolve_folder(dir: &Path, world: Option<&str>) -> Result<(Resolve, WorldId), String> {
     let mut resolve = Resolve {
         // A feature a package has not released yet is generated too, as
@@ -176,13 +181,111 @@ pub fn resolve_folder(dir: &Path, world: Option<&str>) -> Result<(Resolve, World
         all_features: true,
         ..Default::default()
     };
-    let (package, _) = resolve
-        .push_dir(dir)
+    let own = own_package(dir)?;
+    if world.is_some() || own.as_ref().is_some_and(|own| own.main.worlds.len() > 0) {
+        let (package, _) = resolve
+            .push_dir(dir)
+            .map_err(|e| format!("reading the WIT in `{}`: {e:#}", dir.display()))?;
+        let world = resolve
+            .select_world(&[package], world)
+            .map_err(|e| format!("selecting the world: {e:#}"))?;
+        return Ok((resolve, world));
+    }
+    let deps = deps_packages(dir)?;
+    let mut imports = own.iter().flat_map(interfaces_of).collect::<Vec<_>>();
+    if imports.is_empty() {
+        imports = deps.iter().flat_map(interfaces_of).collect();
+    }
+    if imports.is_empty() {
+        return Err(format!(
+            "`{}` holds no interface to generate: no package with one, at its top or in its deps/",
+            dir.display()
+        ));
+    }
+    let world: String = imports
+        .iter()
+        .map(|interface| format!("  import {interface};\n"))
+        .collect();
+    let main = parse(
+        ".",
+        &[(
+            "world.wit",
+            &format!("package local:bindgen;\n\nworld bindgen {{\n{world}}}\n"),
+        )],
+    )?;
+    let package = resolve
+        .push_groups(main, own.into_iter().chain(deps).collect())
         .map_err(|e| format!("reading the WIT in `{}`: {e:#}", dir.display()))?;
     let world = resolve
-        .select_world(&[package], world)
+        .select_world(&[package], Some("bindgen"))
         .map_err(|e| format!("selecting the world: {e:#}"))?;
     Ok((resolve, world))
+}
+
+/// The package written in the `.wit` files at the top of `dir`, or `None`
+/// when there are none: the folder ships only what its `deps/` holds.
+fn own_package(dir: &Path) -> Result<Option<wit_parser::UnresolvedPackageGroup>, String> {
+    let has_wit = std::fs::read_dir(dir)
+        .map_err(|e| format!("reading the WIT in `{}`: {e}", dir.display()))?
+        .filter_map(|entry| Some(entry.ok()?.path()))
+        .any(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "wit"));
+    if !has_wit {
+        return Ok(None);
+    }
+    let mut map = wit_parser::SourceMap::new();
+    map.push_dir(dir)
+        .map_err(|e| format!("reading the WIT in `{}`: {e:#}", dir.display()))?;
+    map.parse()
+        .map(Some)
+        .map_err(|(_, e)| format!("parsing the WIT in `{}`: {e}", dir.display()))
+}
+
+/// The packages in the `deps/` of `dir`, as WIT's tools read them: a folder
+/// or a `.wit` file each, in the order of their names.
+fn deps_packages(dir: &Path) -> Result<Vec<wit_parser::UnresolvedPackageGroup>, String> {
+    let deps = dir.join("deps");
+    if !deps.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(&deps)
+        .map_err(|e| format!("reading `{}`: {e}", deps.display()))?
+        .filter_map(|entry| Some(entry.ok()?.path()))
+        .collect();
+    entries.sort();
+    let mut packages = Vec::new();
+    for path in entries {
+        let mut map = wit_parser::SourceMap::new();
+        let read = match path.is_dir() {
+            true => map.push_dir(&path),
+            false if path.extension().is_some_and(|ext| ext == "wit") => map.push_file(&path),
+            false => continue,
+        };
+        read.map_err(|e| format!("reading the WIT in `{}`: {e:#}", path.display()))?;
+        packages.push(
+            map.parse()
+                .map_err(|(_, e)| format!("parsing the WIT in `{}`: {e}", path.display()))?,
+        );
+    }
+    Ok(packages)
+}
+
+/// Each interface the package `group` declares, as a world imports it:
+/// every name after a `%`, which WIT takes before any name, so that one
+/// spelled like a keyword needs no list of them.
+fn interfaces_of(group: &wit_parser::UnresolvedPackageGroup) -> Vec<String> {
+    let name = &group.main.name;
+    let version = name
+        .version
+        .as_ref()
+        .map_or(String::new(), |version| format!("@{version}"));
+    group
+        .main
+        .interfaces
+        .iter()
+        // An interface the package only uses from another has no name.
+        .filter_map(|(_, interface)| interface.name.as_ref())
+        .map(|interface| format!("%{}:%{}/%{interface}{version}", name.namespace, name.name))
+        .collect()
 }
 
 /// Which programs reach the declarations rk-bindgen writes.

@@ -10,11 +10,12 @@
 //! `cargo run -p rk-bindgen` writes `stdlib/generated/`, for Std's WIT
 //! folder, `stdlib/wit/`, whose world names the WASI interfaces Std's
 //! blocks call; a folder given as an argument is written instead.
-//! `--wit <dir>` reads the world of a WIT
-//! folder, the packages it uses in its `deps/`, as WIT's tools lay them
-//! out, and then takes the folder to write; `--world <name>` picks the
-//! world when the package has several, and `--public` writes declarations
-//! every program reaches, where Std's are INTERNAL.
+//! `--wit <dir>` reads another WIT folder, the packages it uses in its
+//! `deps/`, as WIT's tools lay them out (`rk_bindgen::resolve_folder`: a
+//! package with no world is written whole), and then takes the folder to
+//! write; `--world <name>` picks the world when the package has several,
+//! and `--public` writes declarations every program reaches, where Std's
+//! are INTERNAL.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
