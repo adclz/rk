@@ -496,6 +496,41 @@ fn a_read_larger_than_the_scratch_area_is_too_large(mut with_db: db::RootDatabas
     assert_eq!(plc.read_memory(&[count]), Ok(2i32.to_le_bytes().to_vec()));
 }
 
+/// A list a host passes lands in the scratch area first, which holds the
+/// input area, the retain area, and a page more at least. Inputs a page
+/// longer than their sixteen bytes are copied as far as the area holds, and
+/// the scan runs. Inputs, or a retain image, longer than the scratch trap:
+/// the memory never grows, and the component takes no call after a trap.
+#[rstest]
+fn a_list_past_the_scratch_area_traps(mut with_db: db::RootDatabase) {
+    const PAGE: usize = 65536;
+    let component = wrap(&compile_to_wasm_as_built(&mut with_db, COUNTER));
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+    plc.run_task(0, &vec![0u8; 16 + PAGE])
+        .expect("a page past the input area");
+
+    let run = plc.func::<(u32, &[u8]), (Result<Vec<u8>, ScanError>,)>("run-task");
+    let too_long = vec![0u8; 64 * PAGE];
+    assert!(
+        run.call(&mut plc.store, (0, &too_long)).is_err(),
+        "inputs past the scratch trap"
+    );
+    let init = plc.func::<(), (Result<(), String>,)>("init");
+    assert!(
+        init.call(&mut plc.store, ()).is_err(),
+        "the component takes no call after a trap"
+    );
+
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+    let restore = plc.func::<(&[u8],), ()>("restore-retain");
+    assert!(
+        restore.call(&mut plc.store, (&too_long,)).is_err(),
+        "a retain image past the scratch traps"
+    );
+}
+
 /// A release build reads and writes its memory too: a production host
 /// watches its variables. Its addresses are the debug build's.
 #[rstest]
