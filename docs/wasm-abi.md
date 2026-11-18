@@ -25,9 +25,10 @@ interface control {
 }
 ```
 
-- `init` writes the starting value of every variable. A host calls it once, before anything else. Its error is the message of an exception a starting value raised.
+- `init` writes the starting value of every variable. A host calls it once, before anything else. It never returns its error in this version: every starting value is a constant or a `REF()`.
 - `save-retain` gives the retain area, to keep across a power cycle, and `restore-retain` gives it back after `init` on a warm start.
-- `run-task` runs the task at that place in the `rk.schedule` section: `inputs` is copied into the input area, each program instance of the task runs, and the output area comes back. A host calls it for each task the section says is due, in the order the section lists them. The `located-map` section says where each address is in the two lists.
+- `run-task` runs the task at that place in the `rk.schedule` section: `inputs` is copied into the input area, each program instance of the task runs, and the output area comes back.
+  Every list a host passes, the inputs and the retain image included, lands in the module's scratch area first, below: one longer than that area traps, and a component that trapped takes no other call. A host calls it for each task the section says is due, in the order the section lists them. The `located-map` section says where each address is in the two lists.
 - `read-memory` reads ranges of the memory between two scans, and `write-memory` forces bytes into the variables, at the addresses the `debug-symbols` section gives. Writing anywhere but the variables is refused. A read larger than the module's scratch area, below, is `too-large`: a host reads the ranges in parts.
 - `run-test` runs the test at that place in the `test-manifest` section: a test FUNCTION whole, `passed` when it returns, or one cycle of a test FUNCTION_BLOCK, `running` until a cycle leaves its `DONE` TRUE. The block keeps its instance from one call to the next, and a host calls it again for its next cycle. A release build has no test.
 
