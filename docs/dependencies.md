@@ -149,6 +149,52 @@ A complete address in a library is `E1432`, in a `path` as in a `url`.
 
 See [VAR_CONFIG](var-config.md).
 
+## The host's interfaces
+
+A library calls the functions a host provides, WASI's or a runtime's own, through the interfaces of their packages.
+It ships the WIT of those packages in a `wit/` folder at its root, laid out as WIT's tools lay one out: a world of its own that imports the interfaces it calls, and in `deps/` a folder for each package, as its authors wrote it.
+
+```schema
+drives/
+├─ config.toml
+├─ Axis.st                          the library's own blocks
+├─ generated/                       what rk bindgen writes from wit/
+└─ wit/
+   ├─ world.wit                     the interfaces the library calls
+   └─ deps/
+      └─ acme-drive/                the host's package, as its authors wrote it
+```
+
+```wit
+package drives:host;
+
+world host {
+  import acme:drive/axis@1.0.0;
+}
+```
+
+[`rk bindgen`](../skills/cli-bindgen/SKILL.md), run in the library's folder, writes the ST declarations of those interfaces into `generated/`, one file per interface:
+
+```sh
+rk bindgen
+```
+
+The declarations are `INTERNAL`: only the library's own blocks call them, as the standard library's blocks call WASI's.
+With `--public` they are written for every program.
+Running it again after the WIT changes rewrites them, and leaves the library's own files alone.
+
+The build reads the `wit/` of every library and of the workspace, and types each import of a package's interface with it, see [WASM ABI](wasm-abi.md).
+An interface that no `wit/` ships stops the build, and so does one shipped at another version.
+
+Several libraries can ship parts of one package, the files that declare what each one calls, and the build reads them as one package:
+
+- a file that two of them ship must be written the same way in both;
+- an interface is declared in one file only;
+- a package's doc comment is in one of its files.
+
+The standard library ships the WASI files its blocks call this way, in `stdlib/wit/`.
+A library that calls more of WASI ships the files it needs, as WASI's repository writes them.
+
 ## The same library twice
 
 All the libraries share the same namespaces, so a library is only read once.

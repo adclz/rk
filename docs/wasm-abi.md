@@ -1,9 +1,10 @@
 # WASM ABI
 
 A workspace compiles to one component, named after the project: `rk compile` writes `rk_build/debug/plant.wasm` for the project `plant`, and `rk_build/release/plant.wasm` with `--release`.
-The WIT that types it is written in `wit/` beside it: `world.wit`, and each package the world names under `deps/`.
+The WIT that types it is written in `wit/` beside it: `world.wit`, which rk writes from the program, and under `deps/` each package the world names, as the libraries ship it.
+rk never writes it into a `wit/` folder the build reads: `rk compile -o plant.wasm` at the workspace's root is refused, since that `wit/` is the workspace's own.
 
-The component imports the WASI interfaces the program uses, and the host's own, from its `{extern}` FUNCTIONs.
+The component imports what its `{extern}` FUNCTIONs name: interfaces of packages, WASI's among them, and the host's own plain modules.
 It exports the workspace's `{export}` FUNCTIONs, in an interface named after the project, and the control interface every component has, `rk:plc/control@0.1.0`, through which a host runs the PLC:
 
 ```wit
@@ -183,12 +184,15 @@ So an export has no `VAR_IN_OUT`, `REF_TO`, STRUCT, ARRAY or instance, and takes
 A host function declared with `{extern 'module' 'name'}` is an import.
 Its module and its name are written as WIT writes them, and rk converts neither (`E1512`):
 
-- the module is a WIT name, like `modbus`, or an interface, like `acme:modbus/rtu@1.0.0`;
+- the module is a WIT name, like `modbus`, or an interface of a package, like `acme:modbus/rtu@1.0.0`;
 - the name is a WIT name, lowercase words and digits joined by `-`, like `read-coils`.
 
-An import from a module other than WASI's is typed in WIT from its declaration, in the `wit/` folder `rk compile` writes beside the component.
-A module named by a WIT name is an interface the world declares itself, and one named by an interface's name is a package under `wit/deps/`.
-Each `VAR_INPUT` is a parameter, and the return type is the result, or the record of the `VAR_OUTPUT` and the return type, named and typed as an export's are, except that an import returns no `STRING`.
+The module says where the import's types come from:
+
+- **A plain module**, a WIT name like `modbus`, is the host's own. rk types it in WIT from the declaration, as an interface the world declares itself.
+- **An interface of a package**, like `wasi:clocks/monotonic-clock@0.3.0` or `acme:modbus/rtu@1.0.0`, keeps the types the package's WIT gives it. rk writes no WIT for it: a library ships the package's WIT, see [Dependencies](dependencies.md). The build refuses an interface that no library ships.
+
+A plain module's import takes each `VAR_INPUT` as a parameter, and the return type is the result, or the record of the `VAR_OUTPUT` and the return type, named and typed as an export's are, except that an import returns no `STRING`.
 
 So this declaration:
 
@@ -225,17 +229,17 @@ In the core module, a `STRING` input is `(ptr, len)` and a scalar is its lane, a
 A record of one field is that field.
 A record of two fields or more is written by the host at an address the call passes last: each field at the next multiple of its size, a `BOOL` and an 8-bit integer in one byte, a 16-bit one in two.
 
-A WASI import keeps the types WASI's WIT gives it, in their core form: `VAR_INPUT` are the parameters, and the `VAR_OUTPUT` and the return type the result, as above.
+An import from a package's interface keeps the types its WIT gives it, in their core form: `VAR_INPUT` are the parameters, and the `VAR_OUTPUT` and the return type the result, as above.
 A record of scalars comes back in `VAR_OUTPUT`, one for each of its fields in their order.
 The system clock's `now` is imported this way, with `seconds: LINT` and `nanoseconds: UDINT`, and the zone's `utc-offset` with `is_some: BOOL` and `value: LINT`: its `option<s64>` is laid out as a record of a byte that says whether the value is there, then the value.
 A host that has no value writes the byte alone, and the call clears the record's place before the host is called, so `value` is then zero.
-The standard library's WASI declarations are written by rk-bindgen from WASI's WIT, in `stdlib/generated/`, and only the standard library reaches them.
+The standard library's WASI declarations are written by `rk bindgen` from the WIT the standard library ships, in `stdlib/generated/`, and only the standard library reaches them. A library calls any package's interfaces the same way, see [Dependencies](dependencies.md).
 They give each record a `STRUCT` of its fields, and each variant whose cases hold values a `STRUCT` of its case, `kind`, and of what each case holds.
 WASI's `instant` is `Wasi.Clocks.SystemClock.INSTANT`: `NOW()` returns one, filled from the outputs of its import, `NOW_RAW`, and `UTC_OFFSET(when := instant, is_some => known, value => offset)` passes its fields one by one.
 A variant, and a result with a value and an error, are not laid out as a record: the values of all the cases share one place.
-Such a result is declared as `LWORD` outputs, which hold its bytes as the host wrote them, 8 to a word, and code rk-bindgen writes reads each value out of them: `failed := w0.%X0`, then `error := BYTE_TO_USINT(w0.%B4)`.
+Such a result is declared as `LWORD` outputs, which hold its bytes as the host wrote them, 8 to a word, and code `rk bindgen` writes reads each value out of them: `failed := w0.%X0`, then `error := BYTE_TO_USINT(w0.%B4)`.
 A call that is not async declares two of them at least, since the canonical ABI returns one value as it is.
-A variant passed in goes the other way: the code rk-bindgen writes packs its case and what the case holds into words the import takes, the values the canonical ABI flattens it into, or, past 4 values in an async call, the bytes of the tuple the parameters are laid out in.
+A variant passed in goes the other way: the code `rk bindgen` writes packs its case and what the case holds into words the import takes, the values the canonical ABI flattens it into, or, past 4 values in an async call, the bytes of the tuple the parameters are laid out in.
 A string that comes back is written by the host straight into a `STRING` of the caller's, which the import declares as its one `STRING` `VAR_IN_OUT`, of any length: the time zone's `iana-id` is `IANA_ID(value := zone, is_some => known)`.
 That `VAR_IN_OUT` is no parameter of the import: the call tells the host to write its string there, and empties it first, so it is empty when no string came.
 A string longer than the `STRING` raises `a string the host gave is longer than its STRING`, and leaves it empty.
@@ -244,7 +248,7 @@ A list that comes back is written into arrays of the caller's, which the import 
 The host writes a list of scalars into its array itself, and each string of a list into its element of a `STRING` array; the scalar fields of a list of records are copied into their arrays once the call returns.
 A list longer than one of its arrays raises `a list the host gave is longer than its array`.
 A list of bytes passed in is an array of the caller's too, `ARRAY[*] OF BYTE`, and a `count` of its first elements that go: UDP's send is `send(self := socket, data := frame, count := 6, ...)`, whatever the frame's length.
-The import takes what the canonical ABI passes for a list, the elements' address, a `REF_TO BYTE`, and their number; the code rk-bindgen writes checks the count against the array first, and raises `a list passed to the host is longer than its array` past it.
+The import takes what the canonical ABI passes for a list, the elements' address, a `REF_TO BYTE`, and their number; the code `rk bindgen` writes checks the count against the array first, and raises `a list passed to the host is longer than its array` past it.
 The host reads the bytes when the call starts, an async call's too, so the array is free again once the call that started it returns.
 
 A module's memory is as large as it is built, and never grows.
@@ -252,7 +256,7 @@ What a host passes, and what an import gives past the buffers of the call, lands
 A string or a list too long by up to that much raises as above; one longer still traps.
 
 A `REF_TO` input is an address, where a record can come back too, or where a list passed in starts.
-A STRUCT, an ARRAY or an instance input is refused (`E1502`): it would go as an address into rk's own layout, which no WASI function reads.
+A STRUCT, an ARRAY or an instance input is refused (`E1502`): it would go as an address into rk's own layout, which no function of a WIT reads.
 
 A host function WIT declares an `async func` is imported by a FUNCTION_BLOCK, with `{extern async 'module' 'name'}`, and so are a stream's read or write and a future's read (below).
 `async` says how the import is lowered, as the component model's `[async-lower]` prefix does for calls and copies alike: its call returns at once, and its end comes later, as an event the block checks for.
@@ -292,22 +296,22 @@ A FUNCTION can still call one it does not hold: the caller's, handed over as VAR
 REQ, BUSY or any other control a block's users need is written in ST, by a block that calls it.
 A call that has started cannot be cancelled: the component model's cancel needs a flag wasmtime has off by default.
 
-For a function, the build checks the declaration against WASI's WIT: `{extern async}` names an `async func`, and a plain `{extern}` a `func`, whose call a scan cannot wait for.
-The build also checks that WASI's interface has the function, and names the declaration when it does not.
+For a function of a package's interface, the build checks the declaration against the package's WIT: `{extern async}` names an `async func`, and a plain `{extern}` a `func`, whose call a scan cannot wait for.
+The build also checks that the interface has the function, and names the declaration when it does not.
 It checks too that the outputs hold what the host writes in memory, a result past a call's values or a future's value: a declaration with too few would let the host write past them, over the variables that follow.
-For a host's own module, the WIT rk writes declares an `async func`, its result the record of the block's `VAR_OUTPUT` but `DONE`.
+For a plain module, the WIT rk writes declares an `async func`, its result the record of the block's `VAR_OUTPUT` but `DONE`.
 
 In the core module, the block's call is the import lowered async, `[async-lower]wait-for`: the parameters, or past 4 values the address of a tuple of them, then the address the result is written at, and a word back, the call's state and handle.
 The block checks the call with the component model's built-ins, imported from `$root`: `[waitable-set-new]`, `[waitable-join]`, `[waitable-set-poll]`, which never waits, and `[subtask-drop]`.
 A host that implements an async function asynchronously runs the component through wasmtime's async API, `instantiate_async` and `call_async`; the control interface's functions stay synchronous.
 
-A WASI import may be a resource's function, under the name WIT gives it: the constructor `[constructor]R`, a method `[method]R.f`, whose first parameter is the handle it is called on, and a static function `[static]R.f`.
+An import from a package's interface may be a resource's function, under the name WIT gives it: the constructor `[constructor]R`, a method `[method]R.f`, whose first parameter is the handle it is called on, and a static function `[static]R.f`.
 A handle is a `UDINT`, and `[resource-drop]R`, an `{extern}` FUNCTION taking one, lets go of a handle the host gave (`E1516` otherwise).
-rk-bindgen names one type per resource, an alias of `UDINT`, `TYPE TCP_SOCKET : UDINT; END_TYPE`, and declares each handle with it: a declaration says which resource it takes or gives, and a handle passes as the `UDINT` it is.
-Only WASI's interfaces have resources: a host module's WIT is written from its declarations, which make none (`E1512`).
-The build checks that WASI's WIT declares the function, or the resource a drop names.
+`rk bindgen` names one type per resource, an alias of `UDINT`, `TYPE TCP_SOCKET : UDINT; END_TYPE`, and declares each handle with it: a declaration says which resource it takes or gives, and a handle passes as the `UDINT` it is.
+Only a package's interfaces have resources: a plain module's WIT is written from its declarations, which make none (`E1512`).
+The build checks that the package's WIT declares the function, or the resource a drop names.
 
-A WASI import may also be a stream's or a future's built-in, under the name of the function whose type has the stream: `[stream-new-0]write-via-stream` makes the stream of `write-via-stream`'s type, and `[stream-drop-readable-0][method]descriptor.read-via-stream` drops the reading end a method made.
+Such an import may also be a stream's or a future's built-in, under the name of the function whose type has the stream: `[stream-new-0]write-via-stream` makes the stream of `write-via-stream`'s type, and `[stream-drop-readable-0][method]descriptor.read-via-stream` drops the reading end a method made.
 The number counts the streams and futures of the function's type from 0, its parameters first, as wit-component counts them, and the build checks that it names one of the built-in's kind.
 A built-in that returns at once, a stream's or a future's `new` or one of their drops, is an `{extern}` FUNCTION.
 A `new` declares the two ends it makes, a `UDINT` `VAR_OUTPUT` each, the reading end first, and no return type (`E1516`).
@@ -335,7 +339,7 @@ The clocks a module imports are WASI 0.3's, in their core forms, and the host pr
 The time zone is still unstable in WASI 0.3, `@unstable(feature = clocks-timezone)`: a host has it only with that feature on, and its signature can change in a 0.3 release.
 A release build imports the ones the program reads; a debug build imports every function the standard library declares from these interfaces, `get-resolution`, `wait-until` and `wait-for` included, so a host provides the clocks whole, as wasmtime-wasi does, and a host that has no zone still defines `utc-offset`, answering that it has none, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.
 
-[`Std.Console`](console.md) writes to WASI 0.3's standard output and error, `wasi:cli/stdout@0.3.0` and `wasi:cli/stderr@0.3.0`, through the declarations rk-bindgen writes for them.
+[`Std.Console`](console.md) writes to WASI 0.3's standard output and error, `wasi:cli/stdout@0.3.0` and `wasi:cli/stderr@0.3.0`, through the declarations `rk bindgen` writes for them.
 Each is one function, `write-via-stream`, which takes a stream of bytes.
 A block makes its stream at its first request, hands the reading end to the host, keeps the other end, and writes to it with the component model's stream built-ins:
 

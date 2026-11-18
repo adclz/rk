@@ -112,12 +112,18 @@ cd site && npm run pages
 # Write the ST declarations of Std's WIT folder, stdlib/wit/ (its world names
 # the WASI interfaces Std's blocks call; its deps/ holds the files of WASI's
 # packages that declare them), into stdlib/generated/ (or into another
-# folder, given as an argument); a file no longer generated is removed.
+# folder, given as an argument). A .st file rk-bindgen wrote before and no
+# longer generates is removed (`rk_bindgen::write`: it starts with the
+# generated header, `is_generated`); any other file is left alone.
 cargo run -p rk-bindgen
 # The same for the world of any WIT folder, its packages in deps/; the
 # output folder is required. --world picks one of several, --public drops
 # the root's INTERNAL.
 cargo run -p rk-bindgen -- --wit <dir> [--world <name>] [--public] <folder>
+# What a library author runs: the same generator as an rk subcommand,
+# reading <workspace>/wit/ into <workspace>/generated/ by default
+# (crates/cli/src/commands/bindgen.rs; the skill is skills/cli-bindgen).
+rk bindgen [--wit <dir>] [-o <dir>] [--world <name>] [--public]
 
 # Regenerate THIRD-PARTY-NOTICES, the licenses of the crates compiled into
 # every generated module (run from crates/wasm_builtins/; needs
@@ -182,8 +188,8 @@ vscode/server (binary) — thin wrapper, logging setup
             │       └── formatter (Topiary-based code formatter)
             └── ide_diagnostic (rich diagnostic data model)
 
-cli (binary `rk`) — check, compile, test, fmt, fetch, explain, env
-    ├── hir, ast, db, ide_diagnostic, linter, formatter, mir, wasm_codegen, debug_format
+cli (binary `rk`) — check, compile, test, fmt, fetch, explain, env, bindgen
+    ├── hir, ast, db, ide_diagnostic, linter, formatter, mir, wasm_codegen, debug_format, rk-bindgen
     └── fetch (downloads a library into the cache; the language server does not link it)
 ```
 
@@ -200,7 +206,7 @@ cli (binary `rk`) — check, compile, test, fmt, fetch, explain, env
 | `server`                  | `crates/server`         | LSP server wiring: connects `auto-lsp` framework to IEC-specific handlers.                                              |
 | `formatter`               | `crates/formatter`      | Code formatter using Topiary (tree-sitter-based, declarative query rules).                                              |
 | `memory_usage`            | `crates/memory_usage`   | Utility for heap memory measurement.                                                                                    |
-| `cli`                     | `crates/cli`            | The `rk` binary: check, compile, test (on an in-process wasmtime host), fmt, fetch, explain, env.                       |
+| `cli`                     | `crates/cli`            | The `rk` binary: check, compile, test (on an in-process wasmtime host), fmt, fetch, explain, env, bindgen (rk-bindgen's declarations of a library's `wit/` world). |
 | `fetch`                   | `crates/fetch`          | Fetches a library: an archive or a commit of a git repository (its own client, no git needed), unpacked, hashed and kept in the cache; writes its entry in `config.toml`. Its tests are in `src/tests/dependencies/`. |
 | `mir`                     | `crates/mir`            | Mid-level IR between HIR and WASM codegen: layouts, lowering, the task schedule and retain map.                          |
 | `wasm_codegen`            | `crates/wasm_codegen`   | Emits the core WASM module from MIR, with the builtin bundle and the debug/test custom sections.                        |
@@ -475,6 +481,7 @@ address that does not exist.
 ## Important Notes
 
 - The `salsa` version MUST stay in sync with `auto-lsp`'s salsa version (currently 0.26)
+- rk writes each component's world itself (`component::world_text`, indented by two spaces as WASI's files are), the one WIT it generates; a name spelled like a WIT keyword is written after a `%` (`component::KEYWORDS`). `component::tests::the_keywords_are_all_of_wit_parser_s` reads the keyword table of the wit-parser rk builds with, from the source cargo has (`cargo metadata --offline --filter-platform <host>`), so a wit-parser that adds a keyword fails until the list has it. wasm-tools' `wit-encoder` was weighed for this and left out: its keyword list lacks `map`, and it writes neither a world's docs nor a package path's parts escaped
 - The Rust toolchain is pinned by `rust-toolchain.toml` (stable; rustup applies it automatically). Only the fuzzers need nightly (`cargo +nightly`)
 - `crates/ast/src/generated.rs` is auto-generated — never edit it manually
 - Tree-sitter grammar changes require running `tree-sitter generate` before rebuilding
