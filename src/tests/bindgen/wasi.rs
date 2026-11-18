@@ -77,7 +77,7 @@ fn every_interface() -> String {
 
 /// Std ships the files of WASI's packages that declare the interfaces its
 /// world imports, and no other, as WASI's repository, the git submodule at
-/// `crates/debug_format/wit/wasi`, writes them at the release Std imports,
+/// `wasi/`, writes them at the release Std imports,
 /// each package with WASI's license; and `package.wit`, which names the
 /// command line's package, as WASI does only in the files that take the
 /// rest of WASI in. After the submodule moves to another release, the

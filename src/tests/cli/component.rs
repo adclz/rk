@@ -889,7 +889,7 @@ fn a_wasi_file_a_library_writes_otherwise_is_refused(mut with_db: db::RootDataba
             .replace("\r\n", "\n")
     };
     let (stdio, exit) = (wasi_s("stdio.wit"), wasi_s("exit.wit"));
-    let copy = library.path().join("wit/deps/cli");
+    let copy = library.path().join("wit").join("deps").join("cli");
     let header = "package wasi:cli@0.3.0;\n";
     ship(
         &copy,
@@ -913,7 +913,7 @@ fn a_wasi_file_a_library_writes_otherwise_is_refused(mut with_db: db::RootDataba
         format!(
             "`stdio.wit` of `wasi:cli@0.3.0` is written two ways, in `{}` and in `{}`: a file \
              of a package is written alike wherever it is shipped",
-            stdlib_wit().join("deps/wasi-cli").display(),
+            stdlib_wit().join("deps").join("wasi-cli").display(),
             copy.display()
         )
     );
@@ -941,7 +941,7 @@ fn an_import_of_a_shipped_package_at_another_version_is_refused(mut with_db: db:
 #[rstest]
 fn a_wit_folder_holding_rk_s_own_package_is_refused(mut with_db: db::RootDatabase) {
     let library = tempfile::tempdir().expect("a library");
-    let control = library.path().join("wit/deps/rk-plc");
+    let control = library.path().join("wit").join("deps").join("rk-plc");
     ship(
         &control,
         &[("control.wit", debug_format::wit::RK_PLC.files[0].1)],
@@ -1001,6 +1001,190 @@ fn a_component_s_wit_never_lands_in_a_folder_the_build_reads() {
     compile(root.join("out").join("plc.wasm")).expect("built beside");
     assert!(root.join("out/plc.wasm").is_file());
     assert!(root.join("out/wit/world.wit").is_file());
+}
+
+/// `rk compile` into `output`, in the workspace `root`.
+fn compiled(root: &std::path::Path, output: std::path::PathBuf) -> rk::error::CliResult<()> {
+    rk::run(
+        root,
+        false,
+        rk::cli::OutputFormat::Concise,
+        rk::cli::Command::Compile {
+            output: Some(output),
+            release: false,
+            opt_level: None,
+            debug: false,
+            watch: false,
+        },
+    )
+}
+
+/// The host's display, as the workspace ships it in its own `wit/`.
+const DISPLAY: &str = "package acme:display@1.0.0;
+
+interface text {
+  show: func(line: string) -> bool;
+}
+";
+
+/// A program that writes to the console, through the standard library's
+/// WASI, and calls the host's display and a plain module of its own.
+const CALLS_EVERY_KIND: &str = r#"
+    USING Std.Console;
+
+    {extern 'acme:display/text@1.0.0' 'show'}
+    FUNCTION Show : BOOL
+    VAR_INPUT line : STRING; END_VAR
+    END_FUNCTION
+
+    {extern 'modbus' 'read-coils'}
+    FUNCTION ReadCoils : UDINT
+    VAR_INPUT start_address : UINT; END_VAR
+    END_FUNCTION
+
+    {export}
+    FUNCTION Ping : BOOL
+        Ping := Show(line := 'ping') AND ReadCoils(start_address := 1) > 0;
+    END_FUNCTION
+
+    PROGRAM P
+    VAR out : STDOUT; END_VAR
+        out(REQ := TRUE, IN := 'hello$N');
+    END_PROGRAM
+
+    CONFIGURATION Cfg
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM Main WITH T : P;
+        END_RESOURCE
+    END_CONFIGURATION
+"#;
+
+/// The `wit/` folder `rk compile` writes beside a component resolves on its
+/// own, as a host's bindings generator reads it, and its world is the
+/// component's: the standard library's WASI, the workspace's package, a
+/// plain module, and what it exports.
+#[test]
+fn the_wit_beside_a_component_resolves_on_its_own() {
+    super::unset_stdlib();
+    let (_ws, root) = super::temp_workspace(&[("main.st", CALLS_EVERY_KIND)]);
+    std::fs::create_dir_all(root.join("wit")).unwrap();
+    std::fs::write(root.join("wit/display.wit"), DISPLAY).unwrap();
+    compiled(&root, root.join("out/plc.wasm")).expect("it builds");
+
+    let mut resolve = wit_parser::Resolve {
+        // WASI's time zone is `@unstable(feature = clocks-timezone)`.
+        all_features: true,
+        ..Default::default()
+    };
+    let (package, _) = resolve
+        .push_dir(root.join("out/wit"))
+        .unwrap_or_else(|e| panic!("the WIT beside the component resolves: {e:#}"));
+    let world = resolve
+        .select_world(&[package], Some(rk::component::WORLD))
+        .expect("the component's world");
+    let names = |items: Vec<(&wit_parser::WorldKey, &wit_parser::WorldItem)>| {
+        let mut names: Vec<String> = items
+            .into_iter()
+            .filter(|(_, item)| matches!(item, wit_parser::WorldItem::Interface { .. }))
+            .map(|(key, _)| resolve.name_world_key(key))
+            .collect();
+        names.sort();
+        names
+    };
+    let world = &resolve.worlds[world];
+    let (imports, exports) = (
+        names(world.imports.iter().collect()),
+        names(world.exports.iter().collect()),
+    );
+
+    let engine = engine();
+    let bytes = std::fs::read(root.join("out/plc.wasm")).expect("the component");
+    let loaded = Component::new(&engine, &bytes).expect("a valid component");
+    let ty = loaded.component_type();
+    let mut component_imports: Vec<String> = ty
+        .imports(&engine)
+        .map(|(name, _)| name.to_string())
+        .collect();
+    component_imports.sort();
+    let mut component_exports: Vec<String> = ty
+        .exports(&engine)
+        .map(|(name, _)| name.to_string())
+        .collect();
+    component_exports.sort();
+    assert_eq!(imports, component_imports);
+    assert_eq!(exports, component_exports);
+    for import in ["acme:display/text@1.0.0", "modbus", "wasi:cli/stdout@0.3.0"] {
+        assert!(
+            imports.iter().any(|name| name == import),
+            "{import} in {imports:?}"
+        );
+    }
+    assert!(exports.iter().any(|name| name == CONTROL), "{exports:?}");
+}
+
+/// Each build writes the `wit/` folder whole: a package an earlier build
+/// named, and this one does not, is gone.
+#[test]
+fn a_build_writes_its_wit_folder_whole() {
+    super::disable_stdlib();
+    let shows = r#"
+        {extern 'acme:display/text@1.0.0' 'show'}
+        FUNCTION Show : BOOL
+        VAR_INPUT line : STRING; END_VAR
+        END_FUNCTION
+
+        {export}
+        FUNCTION Ping : BOOL
+            Ping := Show(line := 'ping');
+        END_FUNCTION
+    "#;
+    let (_ws, root) = super::temp_workspace(&[("main.st", shows)]);
+    std::fs::create_dir_all(root.join("wit")).unwrap();
+    std::fs::write(root.join("wit/display.wit"), DISPLAY).unwrap();
+    let output = root.join("out/plc.wasm");
+    compiled(&root, output.clone()).expect("the first build");
+    assert!(root.join("out/wit/deps/acme-display/display.wit").is_file());
+
+    std::fs::write(root.join("main.st"), COUNTER).unwrap();
+    compiled(&root, output).expect("the second build");
+    assert!(root.join("out/wit/deps/rk-plc/control.wit").is_file());
+    assert!(
+        !root.join("out/wit/deps/acme-display").exists(),
+        "the display the first build named is gone"
+    );
+}
+
+/// A component is never written beside a `wit/` folder rk did not write:
+/// it is someone's own WIT, which the build would overwrite. Nothing is
+/// written. An empty folder is no one's.
+#[test]
+fn a_component_is_never_written_beside_wit_rk_did_not_write() {
+    super::disable_stdlib();
+    let (_ws, root) = super::temp_workspace(&[("main.st", COUNTER)]);
+    std::fs::create_dir_all(root.join("empty/wit")).unwrap();
+    compiled(&root, root.join("empty/plc.wasm")).expect("written beside an empty wit/");
+    assert!(root.join("empty/wit/world.wit").is_file());
+    let own = "package mine:own;\n\nworld mine {}\n";
+    std::fs::create_dir_all(root.join("out/wit")).unwrap();
+    std::fs::write(root.join("out/wit/world.wit"), own).unwrap();
+    let refused = match compiled(&root, root.join("out/plc.wasm")) {
+        Err(rk::error::CliError::Message(message)) => message,
+        other => panic!("refused, not {other:?}"),
+    };
+    assert_eq!(
+        refused,
+        format!(
+            "the component's WIT would be written into `{}`, which holds WIT rk did not \
+             write: write the component into another folder",
+            root.join("out").join("wit").display()
+        )
+    );
+    assert!(!root.join("out/plc.wasm").exists(), "nothing is written");
+    assert_eq!(
+        std::fs::read_to_string(root.join("out/wit/world.wit")).unwrap(),
+        own
+    );
 }
 
 /// A task that calls the host's own interfaces: one named by a plain name,

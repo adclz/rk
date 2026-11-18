@@ -82,10 +82,11 @@ fn a_build_is_one_component_and_its_wit() {
     assert!(control.contains("interface control {"), "{control}");
 }
 
-/// A rebuild writes each package folder whole: a file an earlier build left
-/// in one goes, and a folder rk does not write stays.
+/// A rebuild writes the WIT folder's `deps/` whole: it is the build's own,
+/// so a file an earlier build left in a package folder goes, and so does
+/// any other folder found there.
 #[test]
-fn a_rebuild_replaces_the_package_folders_it_writes() {
+fn a_rebuild_writes_the_wit_folder_s_deps_whole() {
     let ws = workspace();
     assert!(rk(&["compile"], ws.path()).status.success());
     let deps = ws
@@ -108,7 +109,7 @@ fn a_rebuild_replaces_the_package_folders_it_writes() {
     );
     assert!(!stale.exists(), "the stale file went with its folder");
     assert!(deps.join("rk-plc").join("control.wit").exists());
-    assert!(own.exists(), "a folder rk does not write stays");
+    assert!(!own.exists(), "the build's deps/ is written whole");
 }
 
 /// `--output` places the component, and its WIT beside it.

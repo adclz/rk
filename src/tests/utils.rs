@@ -39,14 +39,15 @@ pub fn with_db() -> RootDatabase {
 /// standard library calls, and in `deps/` the files of WASI's packages that
 /// declare them.
 pub fn stdlib_wit() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("stdlib/wit")
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("stdlib")
+        .join("wit")
 }
 
-/// WASI's repository, the git submodule at `crates/debug_format/wit/wasi`,
-/// checked out at the release Std imports.
+/// WASI's repository, the git submodule at `wasi/`, checked out at the
+/// release Std imports.
 pub fn wasi_repository() -> std::path::PathBuf {
-    let wasi =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/debug_format/wit/wasi");
+    let wasi = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("wasi");
     assert!(
         wasi.join("LICENSE.md").is_file(),
         "{} is empty: `git submodule update --init` checks WASI's repository out",
