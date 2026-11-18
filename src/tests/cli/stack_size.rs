@@ -13,8 +13,11 @@ use rk::workspace::init_db;
 
 use super::{disable_stdlib, temp_workspace};
 
-/// A recursive function with a frame of 80000 bytes.
-const DEEP: &str = "FUNCTION deep : DINT
+/// A recursive function with a frame of 80000 bytes, exported: a build
+/// keeps what its exports reach, and a stack is laid out for the frames
+/// of what it keeps.
+const DEEP: &str = "{export}
+FUNCTION deep : DINT
 VAR_INPUT n : DINT; END_VAR
 VAR cells : ARRAY[0..19999] OF DINT; END_VAR
     cells[0] := n;
@@ -29,10 +32,28 @@ fn config(size: u64) -> String {
 
 /// Build a workspace holding [`DEEP`], with `stack_size` set to `size`.
 fn build(size: u64) -> Result<(Vec<u8>, mir::MirModule), String> {
-    let (_ws, root) = temp_workspace(&[("config.toml", &config(size)), ("main.st", DEEP)]);
+    build_source(size, DEEP)
+}
+
+/// Build a workspace holding `source`, with `stack_size` set to `size`.
+fn build_source(size: u64, source: &str) -> Result<(Vec<u8>, mir::MirModule), String> {
+    let (_ws, root) = temp_workspace(&[("config.toml", &config(size)), ("main.st", source)]);
     disable_stdlib();
     let db = init_db(&root, false, true).expect("init db");
     rk::compiler::build_core_quiet(&db, &root, false)
+}
+
+/// A recursive function nothing calls is not kept, so no frame is pushed
+/// and no stack laid out: a stack of 4 GiB, which would not fit after the
+/// rest of the memory, stops nothing.
+#[test]
+fn a_recursive_function_nothing_calls_needs_no_stack() {
+    let uncalled = DEEP.trim_start_matches("{export}\n");
+    let (_, module) = build_source(4 << 30, uncalled).expect("no stack to lay out");
+    assert!(
+        module.functions.iter().all(|func| func.frame.is_none()),
+        "no frame is kept"
+    );
 }
 
 /// What `rk check` reports, one line each, for a workspace holding `source`

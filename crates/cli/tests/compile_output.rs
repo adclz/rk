@@ -119,6 +119,11 @@ fn the_workspace_s_package_types_its_import() {
 FUNCTION Show : BOOL
 VAR_INPUT line : STRING; END_VAR
 END_FUNCTION
+
+{export}
+FUNCTION Ping : BOOL
+    Ping := Show(line := 'ping');
+END_FUNCTION
 "#,
     )
     .unwrap();
