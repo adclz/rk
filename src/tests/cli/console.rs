@@ -160,8 +160,12 @@ fn component_alone(db: &mut db::RootDatabase, source: &str) -> rk::component::Co
     wrapped(db, &mir, &core)
 }
 
+/// The component of `mir` and `core`, its WASI imports typed by WASI's
+/// packages, as WASI's repository writes them: what a workspace that
+/// declares WASI's functions itself ships in its `wit/`.
 fn wrapped(db: &db::RootDatabase, mir: &mir::MirModule, core: &[u8]) -> rk::component::Component {
-    let interfaces = rk::component::interfaces(db, mir).expect("typed interfaces");
+    let mut interfaces = rk::component::interfaces(db, mir).expect("typed interfaces");
+    interfaces.wit.extend(crate::tests::utils::wasi_packages());
     rk::component::wrap(core, "plant", &interfaces).expect("the module wraps")
 }
 
@@ -313,27 +317,20 @@ fn a_text_is_cut_at_4096_bytes(mut with_db: db::RootDatabase) {
 }
 
 /// The world imports the interface of each output, as WASI declares it,
-/// when `Std.Console` is built with the program, and the WIT folder holds
-/// WASI's command line package with the ones its files name. A module
-/// built alone imports neither.
+/// when `Std.Console` is built with the program. A module built alone
+/// imports neither.
 #[rstest]
 fn the_world_imports_the_outputs_std_console_writes_to(mut with_db: db::RootDatabase) {
     let component = component(&mut with_db, WRITER);
     assert!(
         component
             .world
-            .contains("    import wasi:cli/stdout@0.3.0;\n")
+            .contains("  import wasi:cli/stdout@0.3.0;\n")
             && component
                 .world
-                .contains("    import wasi:cli/stderr@0.3.0;\n"),
+                .contains("  import wasi:cli/stderr@0.3.0;\n"),
         "{}",
         component.world
-    );
-    assert!(
-        component
-            .wit
-            .iter()
-            .any(|(path, _)| path == "deps/wasi-cli/stdio.wit")
     );
 }
 
@@ -348,13 +345,6 @@ fn a_module_that_writes_nothing_imports_no_output(mut with_db: db::RootDatabase)
     "#;
     let component = component_alone(&mut with_db, quiet);
     assert!(!component.world.contains("wasi:cli"), "{}", component.world);
-    assert!(
-        !component
-            .wit
-            .iter()
-            .any(|(path, _)| path.contains("wasi-cli")),
-        "no command line package beside it"
-    );
 }
 
 /// A task with a stream of its own: its first scan makes the stream and

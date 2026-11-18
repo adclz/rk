@@ -16,5 +16,4 @@ name = "rk-bindgen"
 path = "src/main.rs"
 
 [dependencies]
-debug_format = { workspace = true }
 wit-parser = { workspace = true }

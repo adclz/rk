@@ -16,7 +16,8 @@ Compiles the workspace to one WebAssembly component: a core module, wrapped with
 A workspace with errors does not compile, and `rk check` reports the same diagnostics without writing anything.
 The linter does not run here, so a lint can never block a build.
 
-The component is written to `rk_build/debug/<project>.wasm`, or to `rk_build/release/<project>.wasm` with `--release`, its WIT in `wit/` beside it.
+The component is written to `rk_build/debug/<project>.wasm`, or to `rk_build/release/<project>.wasm` with `--release`.
+It carries the types of what it imports and exports, so no WIT is written beside it: `wasm-tools component wit <project>.wasm` prints them.
 
 ## Usage
 
@@ -25,7 +26,7 @@ The component is written to `rk_build/debug/<project>.wasm`, or to `rk_build/rel
 `-O, --opt-level <OPT_LEVEL>` The optimization level of a release build: `0` to `4`, `s` (size) or `z` (aggressive size).
 Defaults to `2`, or to `opt_level` in `config.toml`; the flag wins.
 
-`-o, --output <OUTPUT>` Where to write the component; its WIT goes in `wit/` beside it.
+`-o, --output <OUTPUT>` Where to write the component.
 
 `-w, --watch` Re-compile on every file change.
 

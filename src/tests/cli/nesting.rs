@@ -48,7 +48,8 @@ fn a_deep_chain_of_blocks_is_checked_and_compiled() {
         .collect();
     let (_ws, root) = temp_workspace(&files);
 
-    let output = root.join("out.wasm");
+    // Not the workspace's root, whose `wit/` the build reads.
+    let output = root.join("out").join("out.wasm");
     let ran = std::thread::Builder::new()
         .stack_size(db::STACK_SIZE)
         .spawn({

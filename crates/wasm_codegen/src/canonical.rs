@@ -25,10 +25,10 @@ pub struct Canonical {
 
 /// `ty` as the canonical ABI holds it: a scalar, an enum as its storage and
 /// a subrange as its base, a reference as its address, or a STRING. `None`
-/// for anything else. A reference is what a WASI import takes where a list
-/// passed in is (its elements' address, its length beside it), and WIT
-/// names no type for it: an `{export}` or a host module's import refuses
-/// one before it is typed.
+/// for anything else. A reference is what an import from a package's
+/// interface takes where a list passed in is (its elements' address, its
+/// length beside it), and WIT names no type for it: an `{export}` or a
+/// plain module's import refuses one before it is typed.
 pub fn canonical(ty: &MirType) -> Option<Canonical> {
     use MirElementary::*;
     let elementary = match ty {

@@ -3,8 +3,8 @@
 
 //! An `{extern async 'module' 'name'}` FUNCTION_BLOCK: an async import, a
 //! call its instance holds from one scan to the next, never waiting for it.
-//! The declaration says it is async: rk reads WIT it does not know yet only
-//! at the build, which checks it against WASI's.
+//! The declaration says it is async: rk reads the WIT of the package it is
+//! imported from only at the build, which checks it against that WIT.
 //!
 //! Each call of the block takes its call one step: it starts the call when
 //! none is running, and otherwise checks it. Its VAR_OUTPUT `DONE : BOOL` is
@@ -144,19 +144,32 @@ pub fn async_import<'db>(
 }
 
 /// Whether `import`, a stream write, declares the built-in's variables:
-/// the stream's writing end, a UDINT, then the bytes, a STRING, and after
-/// DONE how many went, a UDINT, then whether the reader left, a BOOL.
+/// the stream's writing end, a UDINT, then the bytes, a STRING, or where
+/// they are, a REF_TO BYTE, and how many, a UDINT, and after DONE how many
+/// went, a UDINT, then whether the reader left, a BOOL. The host reads the
+/// bytes a reference points at while the write runs.
 pub fn stream_write_shaped(db: &dyn WorkspaceDataBase, import: &AsyncImport<'_>) -> bool {
     let is = |var: &VariableDecl<'_>, spec: ElementarySpec| {
         var.spec(db).infer(db).normalize(db) == Type::Elementary(spec)
     };
-    matches!(
-        import.params.as_slice(),
-        [end, data] if is(end, ElementarySpec::UDInt) && is(data, ElementarySpec::String)
-    ) && matches!(
-        import.results.as_slice(),
-        [written, closed] if is(written, ElementarySpec::UDInt) && is(closed, ElementarySpec::Bool)
-    )
+    let bytes_at = |var: &VariableDecl<'_>| match var.spec(db).infer(db).normalize(db) {
+        Type::RefTo(target) => {
+            target.infer(db).normalize(db) == Type::Elementary(ElementarySpec::Byte)
+        }
+        _ => false,
+    };
+    let params = match import.params.as_slice() {
+        [end, data] => is(end, ElementarySpec::UDInt) && is(data, ElementarySpec::String),
+        [end, data, count] => {
+            is(end, ElementarySpec::UDInt) && bytes_at(data) && is(count, ElementarySpec::UDInt)
+        }
+        _ => false,
+    };
+    params
+        && matches!(
+            import.results.as_slice(),
+            [written, closed] if is(written, ElementarySpec::UDInt) && is(closed, ElementarySpec::Bool)
+        )
 }
 
 /// Whether `import`, a stream read, declares the built-in's variables: the

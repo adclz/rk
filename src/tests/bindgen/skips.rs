@@ -18,7 +18,7 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn what_st_cannot_pass_yet(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface leftovers {
             type bytes = list<u8>;
@@ -31,11 +31,11 @@ fn what_st_cannot_pass_yet(mut with_db: RootDatabase) {
             import leftovers;
         }
     "#), @r"
-    // wasi-example-leftovers.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-leftovers.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Leftovers
-    			{extern 'wasi:example/leftovers@0.3.0' 'kept'}
+    			{extern 'acme:example/leftovers@0.3.0' 'kept'}
     			FUNCTION KEPT : UDINT
     			VAR_INPUT
     				x : UDINT;
@@ -58,7 +58,7 @@ fn what_st_cannot_pass_yet(mut with_db: RootDatabase) {
 #[rstest]
 fn past_16_values(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface wide {
             sixteen: func(a: u32, b: u32, c: u32, e: u32, f: u32, g: u32, h: u32, j: u32, k: u32, o: u32, t: u32, u: u32, v: u32, w: u32, x: u32, y: u32);
@@ -70,11 +70,11 @@ fn past_16_values(mut with_db: RootDatabase) {
             import wide;
         }
     "#), @r"
-    // wasi-example-wide.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-wide.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Wide
-    			{extern 'wasi:example/wide@0.3.0' 'sixteen'}
+    			{extern 'acme:example/wide@0.3.0' 'sixteen'}
     			FUNCTION SIXTEEN
     			VAR_INPUT
     				a : UDINT;
@@ -110,7 +110,7 @@ fn past_16_values(mut with_db: RootDatabase) {
 #[rstest]
 fn an_interface_with_nothing_to_declare(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface empty-handed {
             names: func() -> list<list<string>>;
@@ -120,7 +120,7 @@ fn an_interface_with_nothing_to_declare(mut with_db: RootDatabase) {
             import empty-handed;
         }
     "#), @r"
-    // wasi-example-empty-handed.st
+    // acme-example-empty-handed.st
     /* Not generated:
        - `names`: its result holds a list, which an import cannot give back
          yet. */
@@ -131,9 +131,9 @@ fn an_interface_with_nothing_to_declare(mut with_db: RootDatabase) {
 /// the generator stops.
 #[test]
 fn a_function_of_the_world_stops_the_generator() {
-    let (resolve, world) = rk_bindgen::resolve(
+    let (resolve, world) = super::resolved(
         r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         world example {
             import tick: func();

@@ -48,8 +48,21 @@ END_FUNCTION
     let component = std::fs::read(built.join("Plant_A.wasm")).expect("the component");
     assert!(wasmparser::Parser::is_component(&component));
     assert!(!built.join("core.wasm").exists(), "and no core module");
-    let world = std::fs::read_to_string(built.join("wit").join("world.wit")).unwrap();
-    assert!(world.contains("import rk:test/raise@0.1.0;"), "{world}");
+    assert!(!built.join("wit").exists(), "and no WIT beside it");
+    let wit_parser::decoding::DecodedWasm::Component(resolve, world) =
+        wit_parser::decoding::decode(&component).expect("the binary's types")
+    else {
+        panic!("a component, not a WIT package");
+    };
+    let imports: Vec<String> = resolve.worlds[world]
+        .imports
+        .keys()
+        .map(|key| resolve.name_world_key(key))
+        .collect();
+    assert!(
+        imports.iter().any(|name| name == "rk:test/raise@0.1.0"),
+        "{imports:?}"
+    );
     assert!(
         !ws.path().join("rk_build").join("debug").exists(),
         "what `rk compile` writes is left alone"
@@ -72,6 +85,21 @@ const CONSOLE_WASI: &[(&str, &str)] = &[
         include_str!("../../../stdlib/generated/wasi-cli-stderr.st"),
     ),
 ];
+
+/// The folder `from` and what it holds, copied into `to`.
+fn copy_folder(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let path = entry.unwrap().path();
+        let into = to.join(path.file_name().unwrap());
+        match path.is_dir() {
+            true => copy_folder(&path, &into),
+            false => {
+                std::fs::copy(&path, &into).unwrap();
+            }
+        }
+    }
+}
 
 /// `Std.Console`, for a workspace that has no standard library: the blocks
 /// a test writes with, as the stdlib has them, without its own tests, which
@@ -100,6 +128,9 @@ fn rk_test_shows_what_a_failed_test_wrote() {
     for (name, text) in CONSOLE_WASI {
         std::fs::write(ws.path().join(name), text).unwrap();
     }
+    // The WIT of what they import, as Std ships it: the workspace's own.
+    let std_wit = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../stdlib/wit");
+    copy_folder(&std_wit, &ws.path().join("wit"));
     std::fs::write(
         ws.path().join("main.st"),
         r#"

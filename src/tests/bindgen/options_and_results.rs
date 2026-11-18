@@ -22,7 +22,7 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn an_option_is_a_flag_and_a_value(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface finder {
             enum kind { file, folder }
@@ -39,8 +39,8 @@ fn an_option_is_a_flag_and_a_value(mut with_db: RootDatabase) {
             import finder;
         }
     "#), @r"
-    // wasi-example-finder.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-finder.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Finder
     			TYPE KIND : USINT (
@@ -53,14 +53,14 @@ fn an_option_is_a_flag_and_a_value(mut with_db: RootDatabase) {
     			TYPE ENTRY : UDINT; END_TYPE
 
     			/* Lets go of `handle`, a handle of `entry` the host gave. */
-    			{extern 'wasi:example/finder@0.3.0' '[resource-drop]entry'}
+    			{extern 'acme:example/finder@0.3.0' '[resource-drop]entry'}
     			FUNCTION ENTRY_DROP
     			VAR_INPUT
     				handle : ENTRY;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/finder@0.3.0' 'offset'}
+    			{extern 'acme:example/finder@0.3.0' 'offset'}
     			FUNCTION OFFSET
     			VAR_OUTPUT
     				is_some : BOOL;
@@ -68,7 +68,7 @@ fn an_option_is_a_flag_and_a_value(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/finder@0.3.0' 'kind-of'}
+    			{extern 'acme:example/finder@0.3.0' 'kind-of'}
     			FUNCTION KIND_OF
     			VAR_OUTPUT
     				is_some : BOOL;
@@ -76,7 +76,7 @@ fn an_option_is_a_flag_and_a_value(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/finder@0.3.0' 'size-of'}
+    			{extern 'acme:example/finder@0.3.0' 'size-of'}
     			FUNCTION SIZE_OF
     			VAR_OUTPUT
     				is_some : BOOL;
@@ -84,7 +84,7 @@ fn an_option_is_a_flag_and_a_value(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/finder@0.3.0' 'first'}
+    			{extern 'acme:example/finder@0.3.0' 'first'}
     			FUNCTION FIRST
     			VAR_OUTPUT
     				is_some : BOOL;
@@ -92,7 +92,7 @@ fn an_option_is_a_flag_and_a_value(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/finder@0.3.0' 'flag'}
+    			{extern 'acme:example/finder@0.3.0' 'flag'}
     			FUNCTION FLAG
     			VAR_OUTPUT
     				is_some : BOOL;
@@ -110,7 +110,7 @@ fn an_option_is_a_flag_and_a_value(mut with_db: RootDatabase) {
 #[rstest]
 fn a_result_is_a_flag_and_one_side(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface outcomes {
             enum error-code { busy, gone }
@@ -126,8 +126,8 @@ fn a_result_is_a_flag_and_one_side(mut with_db: RootDatabase) {
             import outcomes;
         }
     "#), @r"
-    // wasi-example-outcomes.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-outcomes.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Outcomes
     			TYPE ERROR_CODE : USINT (
@@ -138,21 +138,21 @@ fn a_result_is_a_flag_and_one_side(mut with_db: RootDatabase) {
     			TYPE HANDLE : UDINT; END_TYPE
 
     			/* Lets go of `handle`, a handle of `handle` the host gave. */
-    			{extern 'wasi:example/outcomes@0.3.0' '[resource-drop]handle'}
+    			{extern 'acme:example/outcomes@0.3.0' '[resource-drop]handle'}
     			FUNCTION HANDLE_DROP
     			VAR_INPUT
     				handle : HANDLE;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/outcomes@0.3.0' 'done'}
+    			{extern 'acme:example/outcomes@0.3.0' 'done'}
     			FUNCTION DONE
     			VAR_OUTPUT
     				failed : BOOL;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/outcomes@0.3.0' 'count'}
+    			{extern 'acme:example/outcomes@0.3.0' 'count'}
     			FUNCTION COUNT
     			VAR_OUTPUT
     				failed : BOOL;
@@ -160,7 +160,7 @@ fn a_result_is_a_flag_and_one_side(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/outcomes@0.3.0' 'open'}
+    			{extern 'acme:example/outcomes@0.3.0' 'open'}
     			FUNCTION OPEN
     			VAR_OUTPUT
     				failed : BOOL;
@@ -168,7 +168,7 @@ fn a_result_is_a_flag_and_one_side(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/outcomes@0.3.0' 'check'}
+    			{extern 'acme:example/outcomes@0.3.0' 'check'}
     			FUNCTION CHECK
     			VAR_OUTPUT
     				failed : BOOL;
@@ -176,7 +176,7 @@ fn a_result_is_a_flag_and_one_side(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/outcomes@0.3.0' 'code'}
+    			{extern 'acme:example/outcomes@0.3.0' 'code'}
     			FUNCTION CODE
     			VAR_OUTPUT
     				failed : BOOL;
@@ -195,7 +195,7 @@ fn a_result_is_a_flag_and_one_side(mut with_db: RootDatabase) {
 #[rstest]
 fn what_two_outputs_cannot_hold_comes_back_in_words(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface both-sides {
             enum error-code { busy, gone }
@@ -209,8 +209,8 @@ fn what_two_outputs_cannot_hold_comes_back_in_words(mut with_db: RootDatabase) {
             import both-sides;
         }
     "#), @r"
-    // wasi-example-both-sides.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-both-sides.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE BothSides
     			USING Std.Convert;
@@ -227,7 +227,7 @@ fn what_two_outputs_cannot_hold_comes_back_in_words(mut with_db: RootDatabase) {
 
     			/* `both` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `BOTH` reads. */
-    			{extern 'wasi:example/both-sides@0.3.0' 'both'}
+    			{extern 'acme:example/both-sides@0.3.0' 'both'}
     			FUNCTION PRIVATE BOTH_RAW
     			VAR_OUTPUT
     				w0 : LWORD;
@@ -258,7 +258,7 @@ fn what_two_outputs_cannot_hold_comes_back_in_words(mut with_db: RootDatabase) {
 
     			/* `where-is` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `WHERE_IS` reads. */
-    			{extern 'wasi:example/both-sides@0.3.0' 'where-is'}
+    			{extern 'acme:example/both-sides@0.3.0' 'where-is'}
     			FUNCTION PRIVATE WHERE_IS_RAW
     			VAR_OUTPUT
     				w0 : LWORD;
@@ -289,7 +289,7 @@ fn what_two_outputs_cannot_hold_comes_back_in_words(mut with_db: RootDatabase) {
 
     			/* `deep` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `DEEP` reads. */
-    			{extern 'wasi:example/both-sides@0.3.0' 'deep'}
+    			{extern 'acme:example/both-sides@0.3.0' 'deep'}
     			FUNCTION PRIVATE DEEP_RAW
     			VAR_OUTPUT
     				w0 : LWORD;
@@ -341,7 +341,7 @@ fn what_two_outputs_cannot_hold_comes_back_in_words(mut with_db: RootDatabase) {
 #[rstest]
 fn an_option_or_a_result_passed_in_is_its_flag_and_what_it_holds(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface leftovers {
             enum error-code { busy }
@@ -357,8 +357,8 @@ fn an_option_or_a_result_passed_in_is_its_flag_and_what_it_holds(mut with_db: Ro
             import leftovers;
         }
     "#), @r"
-    // wasi-example-leftovers.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-leftovers.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Leftovers
     			USING Std.Convert;
@@ -370,7 +370,7 @@ fn an_option_or_a_result_passed_in_is_its_flag_and_what_it_holds(mut with_db: Ro
     			/* `name` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `NAME` reads, and its string in
     			   `value`, where the host writes it. */
-    			{extern 'wasi:example/leftovers@0.3.0' 'name'}
+    			{extern 'acme:example/leftovers@0.3.0' 'name'}
     			FUNCTION PRIVATE NAME_RAW
     			VAR_IN_OUT
     				value : STRING;
@@ -398,7 +398,7 @@ fn an_option_or_a_result_passed_in_is_its_flag_and_what_it_holds(mut with_db: Ro
 
     			/* `maybe-in` as the host takes it: its parameters as the canonical ABI
     			   passes them, which `MAYBE_IN` packs. */
-    			{extern 'wasi:example/leftovers@0.3.0' 'maybe-in'}
+    			{extern 'acme:example/leftovers@0.3.0' 'maybe-in'}
     			FUNCTION PRIVATE MAYBE_IN_RAW
     			VAR_INPUT
     				a0 : DWORD;
@@ -426,7 +426,7 @@ fn an_option_or_a_result_passed_in_is_its_flag_and_what_it_holds(mut with_db: Ro
 
     			/* `result-in` as the host takes it: its parameters as the canonical ABI
     			   passes them, which `RESULT_IN` packs. */
-    			{extern 'wasi:example/leftovers@0.3.0' 'result-in'}
+    			{extern 'acme:example/leftovers@0.3.0' 'result-in'}
     			FUNCTION PRIVATE RESULT_IN_RAW
     			VAR_INPUT
     				a0 : DWORD;
@@ -454,7 +454,7 @@ fn an_option_or_a_result_passed_in_is_its_flag_and_what_it_holds(mut with_db: Ro
 
     			/* `warm-in` as the host takes it: its parameters as the canonical ABI
     			   passes them, which `WARM_IN` packs. */
-    			{extern 'wasi:example/leftovers@0.3.0' 'warm-in'}
+    			{extern 'acme:example/leftovers@0.3.0' 'warm-in'}
     			FUNCTION PRIVATE WARM_IN_RAW
     			VAR_INPUT
     				a0 : DWORD;
@@ -482,7 +482,7 @@ fn an_option_or_a_result_passed_in_is_its_flag_and_what_it_holds(mut with_db: Ro
 
     			/* `far-in` as the host takes it: its parameters as the canonical ABI
     			   passes them, which `FAR_IN` packs. */
-    			{extern 'wasi:example/leftovers@0.3.0' 'far-in'}
+    			{extern 'acme:example/leftovers@0.3.0' 'far-in'}
     			FUNCTION PRIVATE FAR_IN_RAW
     			VAR_INPUT
     				a0 : DWORD;
@@ -511,7 +511,7 @@ fn an_option_or_a_result_passed_in_is_its_flag_and_what_it_holds(mut with_db: Ro
     				FAR_IN_RAW(a0 := a0, a1 := a1);
     			END_FUNCTION
 
-    			{extern 'wasi:example/leftovers@0.3.0' 'kept'}
+    			{extern 'acme:example/leftovers@0.3.0' 'kept'}
     			FUNCTION KEPT : USINT
     			END_FUNCTION
     		END_NAMESPACE
@@ -524,7 +524,7 @@ fn an_option_or_a_result_passed_in_is_its_flag_and_what_it_holds(mut with_db: Ro
 /// a result of each side, twice over, one after the other and in a block;
 /// an option an option holds; one value in tuples of one.
 const ABSENT: &str = r#"
-    package wasi:example@0.3.0;
+    package acme:example@0.3.0;
 
     interface absent {
         maybe: func(some: bool) -> option<u32>;
@@ -550,7 +550,7 @@ fn absent_host(linker: &mut Linker<Host>) {
     };
     let maybe = |some: bool| Val::Option(some.then(|| Box::new(Val::U32(41))));
     let mut absent = linker
-        .instance("wasi:example/absent@0.3.0")
+        .instance("acme:example/absent@0.3.0")
         .expect("the interface");
     absent
         .func_new("maybe", move |_, _, params, results| {
@@ -611,33 +611,33 @@ const LEFT_OUT: &str = r#"
         big : ULINT;
         error, item : USINT;
     END_VAR
-        Wasi.Example.Absent.MAYBE(some := TRUE, is_some => is_some, value => value);
+        Acme.Example.Absent.MAYBE(some := TRUE, is_some => is_some, value => value);
         IF NOT is_some OR value <> 41 THEN check := -1; RETURN; END_IF;
         // The host writes that no value came, and nothing where one would be.
-        Wasi.Example.Absent.MAYBE(some := FALSE, is_some => is_some, value => value);
+        Acme.Example.Absent.MAYBE(some := FALSE, is_some => is_some, value => value);
         IF is_some OR value <> 0 THEN check := -2; RETURN; END_IF;
 
-        Wasi.Example.Absent.SETTLE(fail := FALSE, failed => failed, value => big);
+        Acme.Example.Absent.SETTLE(fail := FALSE, failed => failed, value => big);
         IF failed OR big <> ULINT#18446744073709551615 THEN check := -3; RETURN; END_IF;
-        Wasi.Example.Absent.SETTLE(fail := TRUE, failed => failed, value => big);
+        Acme.Example.Absent.SETTLE(fail := TRUE, failed => failed, value => big);
         IF NOT failed OR big <> 0 THEN check := -4; RETURN; END_IF;
 
-        Wasi.Example.Absent.REFUSE(fail := TRUE, failed => failed, error => error);
+        Acme.Example.Absent.REFUSE(fail := TRUE, failed => failed, error => error);
         IF NOT failed OR error <> 9 THEN check := -5; RETURN; END_IF;
-        Wasi.Example.Absent.REFUSE(fail := FALSE, failed => failed, error => error);
+        Acme.Example.Absent.REFUSE(fail := FALSE, failed => failed, error => error);
         IF failed OR error <> 0 THEN check := -6; RETURN; END_IF;
 
-        Wasi.Example.Absent.TWICE(x_is_some := TRUE, x_value_is_some := TRUE,
+        Acme.Example.Absent.TWICE(x_is_some := TRUE, x_value_is_some := TRUE,
             x_value := 4000000000, is_some => is_some, value_is_some => inner, value => value);
         IF NOT is_some OR NOT inner OR value <> 4000000000 THEN check := -7; RETURN; END_IF;
-        Wasi.Example.Absent.TWICE(x_is_some := TRUE, x_value := 5,
+        Acme.Example.Absent.TWICE(x_is_some := TRUE, x_value := 5,
             is_some => is_some, value_is_some => inner, value => value);
         IF NOT is_some OR inner OR value <> 0 THEN check := -8; RETURN; END_IF;
-        Wasi.Example.Absent.TWICE(x_is_some := FALSE, x_value_is_some := TRUE, x_value := 5,
+        Acme.Example.Absent.TWICE(x_is_some := FALSE, x_value_is_some := TRUE, x_value := 5,
             is_some => is_some, value_is_some => inner, value => value);
         IF is_some OR inner OR value <> 0 THEN check := -9; RETURN; END_IF;
 
-        Wasi.Example.Absent.NESTED(item0_0_0 => item);
+        Acme.Example.Absent.NESTED(item0_0_0 => item);
         IF item <> 7 THEN check := -10; RETURN; END_IF;
     END_FUNCTION
 
@@ -646,7 +646,7 @@ const LEFT_OUT: &str = r#"
     VAR
         checked : BOOL;
         step : INT;
-        later : Wasi.Example.Absent.MAYBE_LATER;
+        later : Acme.Example.Absent.MAYBE_LATER;
     END_VAR
         IF NOT checked THEN
             checked := TRUE;
@@ -701,13 +701,13 @@ fn what_a_host_leaves_out_is_zero(mut with_db: RootDatabase) {
 #[rstest]
 fn an_option_in_an_option_and_one_value_in_tuples(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, ABSENT), @r"
-    // wasi-example-absent.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-absent.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Absent
     			USING Std.Convert;
 
-    			{extern 'wasi:example/absent@0.3.0' 'maybe'}
+    			{extern 'acme:example/absent@0.3.0' 'maybe'}
     			FUNCTION MAYBE
     			VAR_INPUT
     				some : BOOL;
@@ -718,7 +718,7 @@ fn an_option_in_an_option_and_one_value_in_tuples(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/absent@0.3.0' 'settle'}
+    			{extern 'acme:example/absent@0.3.0' 'settle'}
     			FUNCTION SETTLE
     			VAR_INPUT
     				fail : BOOL;
@@ -729,7 +729,7 @@ fn an_option_in_an_option_and_one_value_in_tuples(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/absent@0.3.0' 'refuse'}
+    			{extern 'acme:example/absent@0.3.0' 'refuse'}
     			FUNCTION REFUSE
     			VAR_INPUT
     				fail : BOOL;
@@ -740,7 +740,7 @@ fn an_option_in_an_option_and_one_value_in_tuples(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			{extern async 'wasi:example/absent@0.3.0' 'maybe-later'}
+    			{extern async 'acme:example/absent@0.3.0' 'maybe-later'}
     			FUNCTION_BLOCK MAYBE_LATER
     			VAR_INPUT
     				some : BOOL;
@@ -755,7 +755,7 @@ fn an_option_in_an_option_and_one_value_in_tuples(mut with_db: RootDatabase) {
     			/* `twice` as the host has it: its parameters as the canonical ABI passes
     			   them, which `TWICE` packs, and its result in words of 8 bytes, which it
     			   reads. */
-    			{extern 'wasi:example/absent@0.3.0' 'twice'}
+    			{extern 'acme:example/absent@0.3.0' 'twice'}
     			FUNCTION PRIVATE TWICE_RAW
     			VAR_INPUT
     				a0 : DWORD;
@@ -808,7 +808,7 @@ fn an_option_in_an_option_and_one_value_in_tuples(mut with_db: RootDatabase) {
     				END_IF;
     			END_FUNCTION
 
-    			{extern 'wasi:example/absent@0.3.0' 'nested'}
+    			{extern 'acme:example/absent@0.3.0' 'nested'}
     			FUNCTION NESTED
     			VAR_OUTPUT
     				item0_0_0 : USINT;
@@ -826,7 +826,7 @@ fn an_option_in_an_option_and_one_value_in_tuples(mut with_db: RootDatabase) {
 #[rstest]
 fn what_is_packed_as_it_is_converts_nothing(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface plain {
             warm-in: func(t: option<f32>);
@@ -836,13 +836,13 @@ fn what_is_packed_as_it_is_converts_nothing(mut with_db: RootDatabase) {
             import plain;
         }
     "#), @r"
-    // wasi-example-plain.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-plain.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Plain
     			/* `warm-in` as the host takes it: its parameters as the canonical ABI
     			   passes them, which `WARM_IN` packs. */
-    			{extern 'wasi:example/plain@0.3.0' 'warm-in'}
+    			{extern 'acme:example/plain@0.3.0' 'warm-in'}
     			FUNCTION PRIVATE WARM_IN_RAW
     			VAR_INPUT
     				a0 : DWORD;

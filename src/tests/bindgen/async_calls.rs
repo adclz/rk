@@ -18,7 +18,7 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn what_an_async_call_gives_back(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface timers {
             enum error-code { late }
@@ -35,8 +35,8 @@ fn what_an_async_call_gives_back(mut with_db: RootDatabase) {
             import timers;
         }
     "#), @r"
-    // wasi-example-timers.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-timers.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Timers
     			TYPE ERROR_CODE : USINT (
@@ -48,7 +48,7 @@ fn what_an_async_call_gives_back(mut with_db: RootDatabase) {
     				nanoseconds : UDINT;
     			END_STRUCT END_TYPE
 
-    			{extern async 'wasi:example/timers@0.3.0' 'wait-for'}
+    			{extern async 'acme:example/timers@0.3.0' 'wait-for'}
     			FUNCTION_BLOCK WAIT_FOR
     			VAR_INPUT
     				how_long : ULINT;
@@ -58,7 +58,7 @@ fn what_an_async_call_gives_back(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION_BLOCK
 
-    			{extern async 'wasi:example/timers@0.3.0' 'measure'}
+    			{extern async 'acme:example/timers@0.3.0' 'measure'}
     			FUNCTION_BLOCK MEASURE
     			VAR_INPUT
     				samples : UDINT;
@@ -71,7 +71,7 @@ fn what_an_async_call_gives_back(mut with_db: RootDatabase) {
 
     			/* `when` as the host gives it: the values of its result, which `WHEN` puts
     			   in the members of `value`. */
-    			{extern async 'wasi:example/timers@0.3.0' 'when'}
+    			{extern async 'acme:example/timers@0.3.0' 'when'}
     			FUNCTION_BLOCK WHEN_RAW
     			VAR_OUTPUT
     				DONE : BOOL;
@@ -96,7 +96,7 @@ fn what_an_async_call_gives_back(mut with_db: RootDatabase) {
     				END_IF;
     			END_FUNCTION_BLOCK
 
-    			{extern async 'wasi:example/timers@0.3.0' 'pair'}
+    			{extern async 'acme:example/timers@0.3.0' 'pair'}
     			FUNCTION_BLOCK PAIR
     			VAR_OUTPUT
     				DONE : BOOL;
@@ -105,7 +105,7 @@ fn what_an_async_call_gives_back(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION_BLOCK
 
-    			{extern async 'wasi:example/timers@0.3.0' 'maybe'}
+    			{extern async 'acme:example/timers@0.3.0' 'maybe'}
     			FUNCTION_BLOCK MAYBE
     			VAR_OUTPUT
     				DONE : BOOL;
@@ -114,7 +114,7 @@ fn what_an_async_call_gives_back(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION_BLOCK
 
-    			{extern async 'wasi:example/timers@0.3.0' 'try-it'}
+    			{extern async 'acme:example/timers@0.3.0' 'try-it'}
     			FUNCTION_BLOCK TRY_IT
     			VAR_OUTPUT
     				DONE : BOOL;
@@ -135,7 +135,7 @@ fn what_an_async_call_gives_back(mut with_db: RootDatabase) {
 #[rstest]
 fn an_async_call_s_parameters(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface motion {
             record point { x: f64, y: f64 }
@@ -152,8 +152,8 @@ fn an_async_call_s_parameters(mut with_db: RootDatabase) {
             import motion;
         }
     "#), @r"
-    // wasi-example-motion.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-motion.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Motion
     			USING Std.Convert;
@@ -170,7 +170,7 @@ fn an_async_call_s_parameters(mut with_db: RootDatabase) {
     				d_ : ULINT;
     			END_STRUCT END_TYPE
 
-    			{extern async 'wasi:example/motion@0.3.0' 'four'}
+    			{extern async 'acme:example/motion@0.3.0' 'four'}
     			FUNCTION_BLOCK FOUR
     			VAR_INPUT
     				a : UDINT;
@@ -183,7 +183,7 @@ fn an_async_call_s_parameters(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION_BLOCK
 
-    			{extern async 'wasi:example/motion@0.3.0' 'five'}
+    			{extern async 'acme:example/motion@0.3.0' 'five'}
     			FUNCTION_BLOCK FIVE
     			VAR_INPUT
     				a : UDINT;
@@ -198,7 +198,7 @@ fn an_async_call_s_parameters(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION_BLOCK
 
-    			{extern async 'wasi:example/motion@0.3.0' 'texts'}
+    			{extern async 'acme:example/motion@0.3.0' 'texts'}
     			FUNCTION_BLOCK TEXTS
     			VAR_INPUT
     				a : STRING[4096];
@@ -212,7 +212,7 @@ fn an_async_call_s_parameters(mut with_db: RootDatabase) {
 
     			/* `move-to` as the host takes it: its parameters as the canonical ABI
     			   passes them, which `MOVE_TO` passes field by field. */
-    			{extern async 'wasi:example/motion@0.3.0' 'move-to'}
+    			{extern async 'acme:example/motion@0.3.0' 'move-to'}
     			FUNCTION_BLOCK MOVE_TO_RAW
     			VAR_INPUT
     				target_x : LREAL;
@@ -239,7 +239,7 @@ fn an_async_call_s_parameters(mut with_db: RootDatabase) {
 
     			/* `fit` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `FIT` passes field by field. */
-    			{extern async 'wasi:example/motion@0.3.0' 'fit'}
+    			{extern async 'acme:example/motion@0.3.0' 'fit'}
     			FUNCTION_BLOCK FIT_RAW
     			VAR_INPUT
     				b_a : USINT;
@@ -268,7 +268,7 @@ fn an_async_call_s_parameters(mut with_db: RootDatabase) {
 
     			/* `aim` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `AIM` packs. */
-    			{extern async 'wasi:example/motion@0.3.0' 'aim'}
+    			{extern async 'acme:example/motion@0.3.0' 'aim'}
     			FUNCTION_BLOCK AIM_RAW
     			VAR_INPUT
     				a0 : LWORD;

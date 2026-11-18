@@ -364,7 +364,8 @@ impl<'db> InitInference<'db> {
                         .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
-                f.extern_pragma(db).map(|(_, pragma)| (f, pragma.is_wasi()))
+                f.extern_pragma(db)
+                    .map(|(_, pragma)| (f, pragma.names_a_package()))
             }
             ScopeKind::Pou(Pou::FunctionBlock(fb)) => {
                 self.check_test_block(db, fb);
@@ -398,7 +399,7 @@ impl<'db> InitInference<'db> {
         // rules govern (`async_import`).
         let extern_block = match scope_kind {
             ScopeKind::Pou(Pou::FunctionBlock(fb)) => match fb.extern_pragma(db) {
-                Some((_, pragma)) if pragma.asynchronous => Some((fb, pragma.is_wasi())),
+                Some((_, pragma)) if pragma.asynchronous => Some((fb, pragma.names_a_package())),
                 Some((anchor, _)) => {
                     self.errors.push(
                         PragmaError::ExternAsync {
@@ -413,13 +414,14 @@ impl<'db> InitInference<'db> {
             },
             _ => None,
         };
-        // Whether the POU is an import, and whether of WASI's.
-        let extern_wasi = extern_fn
-            .map(|(_, wasi)| wasi)
-            .or(extern_block.map(|(_, wasi)| wasi));
-        // A WASI FUNCTION gives a string by writing it into the STRING a
-        // call passes for it, its first STRING VAR_IN_OUT: no parameter of
-        // the import, whose types are WASI's.
+        // Whether the POU is an import, and whether from a package's
+        // interface.
+        let extern_package = extern_fn
+            .map(|(_, package)| package)
+            .or(extern_block.map(|(_, package)| package));
+        // A package's FUNCTION gives a string by writing it into the STRING
+        // a call passes for it, its first STRING VAR_IN_OUT: no parameter of
+        // the import, whose types are the package's.
         let string_in_out = |var: &crate::hir_def::pous::variable::VariableDecl<'db>| {
             var.kind(db) == crate::hir_def::pous::variable::VariableKind::InOut
                 && matches!(
@@ -427,9 +429,11 @@ impl<'db> InitInference<'db> {
                     Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String)
                 )
         };
-        let wasi_function = extern_fn.filter(|(_, wasi)| *wasi).map(|(func, _)| func);
-        let host_string =
-            wasi_function.and_then(|func| func.variables(db).iter().copied().find(string_in_out));
+        let package_function = extern_fn
+            .filter(|(_, package)| *package)
+            .map(|(func, _)| func);
+        let host_string = package_function
+            .and_then(|func| func.variables(db).iter().copied().find(string_in_out));
         // It gives a list into the arrays a call passes for it, its
         // ARRAY[*] VAR_IN_OUTs of scalars or STRINGs, one per field of an
         // element: no parameters of the import either.
@@ -450,7 +454,7 @@ impl<'db> InitInference<'db> {
                 })
         };
         let gives_list =
-            wasi_function.is_some_and(|func| func.variables(db).iter().any(list_array));
+            package_function.is_some_and(|func| func.variables(db).iter().any(list_array));
         // It gives the text of an error, or of a case, into its first STRING
         // VAR_OUTPUT, cut to fit: no field of the import's result either.
         let string_output = |var: &crate::hir_def::pous::variable::VariableDecl<'db>| {
@@ -460,8 +464,8 @@ impl<'db> InitInference<'db> {
                     Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String)
                 )
         };
-        let host_text =
-            wasi_function.and_then(|func| func.variables(db).iter().copied().find(string_output));
+        let host_text = package_function
+            .and_then(|func| func.variables(db).iter().copied().find(string_output));
         // A stream read's bytes or handles land in its buffer, a STRING or
         // an array, which the block holds rather than the host returns: its
         // outputs are its built-in's, which E1516 checks.
@@ -864,19 +868,19 @@ impl<'db> InitInference<'db> {
                         .to_diagnostic(db, self.scope.file(db)),
                 );
             }
-            if let Some(wasi) = extern_wasi {
+            if let Some(package) = extern_package {
                 use crate::hir_def::pous::variable::VariableKind;
-                // A WASI function keeps WASI's types, which the module's
-                // core ABI matches: a REF_TO is the address where a record
-                // comes back, and a STRUCT or an ARRAY, which would go as an
-                // address into rk's own layout, matches none. Any other
-                // module's import is typed in WIT, which has no address.
-                // Either returns a record of its VAR_OUTPUTs and its return
-                // value.
+                // A package's function keeps the types its WIT gives it,
+                // which the module's core ABI matches: a REF_TO is the
+                // address where a record comes back, and a STRUCT or an
+                // ARRAY, which would go as an address into rk's own layout,
+                // matches none. A plain module's import is typed in WIT from
+                // its declaration, which has no address. Either returns a
+                // record of its VAR_OUTPUTs and its return value.
                 let forbidden = match var.kind(db) {
-                    VariableKind::InOut if wasi_function.is_some() && list_array(var) => None,
+                    VariableKind::InOut if package_function.is_some() && list_array(var) => None,
                     VariableKind::InOut
-                        if wasi_function.is_some() && var.conformand(db).is_some() =>
+                        if package_function.is_some() && var.conformand(db).is_some() =>
                     {
                         Some(ExternForbiddenKind::ListElement)
                     }
@@ -895,9 +899,9 @@ impl<'db> InitInference<'db> {
                     VariableKind::Input => match var.spec(db).infer(db).normalize(db) {
                         Type::Elementary(_) | Type::Enum(_) | Type::SubRange(_) => None,
                         Type::Never => None,
-                        Type::RefTo(_) if wasi => None,
+                        Type::RefTo(_) if package => None,
                         Type::RefTo(_) => Some(ExternForbiddenKind::Reference),
-                        _ if wasi => Some(ExternForbiddenKind::WasiAggregateInput),
+                        _ if package => Some(ExternForbiddenKind::PackageAggregateInput),
                         _ => Some(ExternForbiddenKind::AggregateInput),
                     },
                     // E1516 checks every output of a stream read.

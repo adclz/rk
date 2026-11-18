@@ -125,17 +125,17 @@ FUNCTION ReadCoils: UDINT
 END_FUNCTION
 ```
 
-An import from a module other than WASI's is typed in WIT from its declaration, in the `wit/` folder `rk compile` writes beside the component.
-What may cross: a scalar `VAR_INPUT` (BOOL, the integers and bit strings, REAL, LREAL, CHAR, the durations and dates, an enum or a subrange), a `STRING` input as WIT's `string`, and scalar outputs and return type, 16 inputs at most with a STRING counting two.
+The module says where the import's types come from. A plain module (`'modbus'`) is the host's own: rk types it in WIT from the declaration, in the component's world. An interface of a package (`'wasi:clocks/monotonic-clock@0.3.0'`, `'acme:modbus/rtu@1.0.0'`) keeps the types the package's WIT gives it; rk writes none for it, and the build refuses an interface no library ships in its `wit/` folder.
+What may cross a plain module's import: a scalar `VAR_INPUT` (BOOL, the integers and bit strings, REAL, LREAL, CHAR, the durations and dates, an enum or a subrange), a `STRING` input as WIT's `string`, and scalar outputs and return type, 16 inputs at most with a STRING counting two.
 Each `VAR_INPUT` and `VAR_OUTPUT` is named in WIT by its name in lowercase, each `_` written `-`: a name with an empty word (`x_`, `a__b`), or a letter outside ASCII, is E1512, and so are two names that differ only by a `_` (`ab`, `a_b`) and an output named as the import is.
 
 Each call checks what it passes before the host is called: a `STRING` that is not UTF-8 raises "a STRING passed to the host is not UTF-8", and a `CHAR` that is a surrogate or past U+10FFFF raises "a CHAR passed to the host is not a character". The component model would trap on either, stopping the PLC; the exception is caught by `__TRY` like any other.
 
-What is refused with E1502 on every import: `VAR_IN_OUT` ("an extern takes copies, not references"), a STRUCT, ARRAY or instance `VAR_INPUT` (on a WASI import, "no WASI function reads rk's own layout"), an `ARRAY[*]` or variadic `VAR_INPUT`, an aggregate or `STRING` `VAR_OUTPUT`, a `STRING` or aggregate return type ("the return type of 'f' can only be a scalar"), and any statement in the body ("an extern FUNCTION has no statements").
-On an import from a module other than WASI's, also: a `REF_TO` input ("an address in the module means nothing to the host") and a 17th value.
+What is refused with E1502 on every import: `VAR_IN_OUT` ("an extern takes copies, not references"), a STRUCT, ARRAY or instance `VAR_INPUT` (on a package's import, "no function of a WIT reads rk's own layout"), an `ARRAY[*]` or variadic `VAR_INPUT`, an aggregate or `STRING` `VAR_OUTPUT`, a `STRING` or aggregate return type ("the return type of 'f' can only be a scalar"), and any statement in the body ("an extern FUNCTION has no statements").
+On a plain module's import, also: a `REF_TO` input ("an address in the module means nothing to the host") and a 17th value.
 Putting `{extern}` on anything other than a `FUNCTION` is E1501.
 
-A WASI import keeps the types WASI's WIT gives it, in their core form: a record of scalars comes back in `VAR_OUTPUT`, one for each field in order, as `Std.Timers` reads the system clock, and a `REF_TO` input is an address where a record can come back too.
+A package's import keeps the types its WIT gives it, in their core form: a record of scalars comes back in `VAR_OUTPUT`, one for each field in order, as `Std.Timers` reads the system clock, and a `REF_TO` input is an address where a record can come back too.
 
 A function WIT declares an `async func` is imported by a FUNCTION_BLOCK, with `{extern async 'module' 'name'}`; `{extern async}` on a FUNCTION, and `{extern}` without `async` on a FUNCTION_BLOCK, are E1501.
 Each call of the block takes the call one step: it starts the call when none is running and checks it otherwise, never waiting.
@@ -144,11 +144,11 @@ While the call runs, a call of the block leaves its VAR_INPUTs as they are: it e
 Its instance lives in a PROGRAM, a FUNCTION_BLOCK or a VAR_GLOBAL, never in a FUNCTION's or METHOD's variables or a VAR_TEMP (E1515): the host writes the result into it at a later scan. A FUNCTION can still call one it is handed as VAR_IN_OUT, or a global one through VAR_EXTERNAL.
 The block is its call: statements, a METHOD, an EXTENDS or an IMPLEMENTS on it are E1502.
 REQ and BUSY, where a block's users need them, are written in ST by a block that calls it.
-The build checks a WASI import against WASI's WIT, and names the declaration when it does not fit: the interface has the function, `{extern async}` names an `async func`, and `{extern}` a `func`.
+The build checks a package's import against the package's WIT, and names the declaration when it does not fit: the interface has the function, `{extern async}` names an `async func`, and `{extern}` a `func`.
 
-A WASI import may be a resource's function, named as WIT names it: `[constructor]R`, `[method]R.f` (its first parameter the handle) or `[static]R.f`; a handle is a `UDINT`, and `[resource-drop]R` is an `{extern}` FUNCTION taking the one handle it drops (E1516 otherwise). A host module's import cannot name one (E1512): only WASI's interfaces have resources.
+A package's import may be a resource's function, named as WIT names it: `[constructor]R`, `[method]R.f` (its first parameter the handle) or `[static]R.f`; a handle is a `UDINT`, and `[resource-drop]R` is an `{extern}` FUNCTION taking the one handle it drops (E1516 otherwise). A plain module's import cannot name one (E1512): only a package's interfaces have resources.
 
-A WASI import may also be a stream's or a future's built-in, named after the function whose type has the stream (`[stream-new-0]write-via-stream`, or `[stream-drop-readable-0][method]descriptor.read-via-stream` for a method); elsewhere that name is E1512.
+A package's import may also be a stream's or a future's built-in, named after the function whose type has the stream (`[stream-new-0]write-via-stream`, or `[stream-drop-readable-0][method]descriptor.read-via-stream` for a method); elsewhere that name is E1512.
 The number counts the function's streams and futures from 0, its parameters first, and the build checks that it names one of the built-in's kind.
 `new` and the drops return at once and are `{extern}` FUNCTIONs; `new` declares the two ends it makes as two `UDINT` VAR_OUTPUTs, the reading end first, and no return type.
 A stream's write, `[stream-write-N]f`, waits for the reader and is an `{extern async}` FUNCTION_BLOCK taking the writing end (`UDINT`) and the bytes (`STRING`, unchecked) and giving, after DONE, how many went (`UDINT`) and whether the reader left (`BOOL`).

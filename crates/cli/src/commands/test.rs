@@ -32,15 +32,14 @@ pub fn run_test(
     let component =
         crate::component::wrap(&core_bytes, &project, &interfaces).map_err(CliError::msg)?;
 
-    // The artifact on disk is what ran, with its WIT beside it, in a folder
-    // of its own: no other command builds it.
+    // The artifact on disk is what ran, in a folder of its own: no other
+    // command builds it.
     let wasm_path = crate::compiler::test_component_path(workspace, opt_level, &project);
     if let Some(dir) = wasm_path.parent() {
         std::fs::create_dir_all(dir).ok();
     }
     std::fs::write(&wasm_path, &component.bytes)
         .map_err(|e| CliError::msg(format!("writing the tested component: {e}")))?;
-    crate::component::write_wit(&wasm_path, &component).map_err(CliError::msg)?;
 
     // The roots the manifest named each test's file against.
     let layout = db::workspace::Workspace::try_get(&db);

@@ -1,14 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! A built module wrapped into a component, and the WIT that types it.
+//! A built module wrapped into a component, typed by a world generated at
+//! each build.
 //!
-//! The world is generated from the module at each build: it imports the
-//! WASI interfaces the module calls, as WASI declares them, the host's own
-//! interfaces, typed from the `{extern}` FUNCTIONs that import them, and
-//! exports the control interface every module has (`rk:plc/control`) and
-//! the workspace's `{export}` FUNCTIONs, in an interface named after the
-//! project.
+//! The world imports the interfaces of packages the module calls, as the
+//! WIT folders of the libraries and of the workspace declare them (the
+//! standard library's holds the WASI interfaces its blocks call), the
+//! interfaces of plain modules, typed from the `{extern}` FUNCTIONs that
+//! import them, and exports the control interface every module has
+//! (`rk:plc/control`) and the workspace's `{export}` FUNCTIONs, in an
+//! interface named after the project.
+//! The component carries the types of what it imports and exports, so rk
+//! writes no WIT beside it: a host's tools read them from the binary
+//! (`wasm-tools component wit`).
 //! Binaryen reads core modules only, so the wrapping is the build's last
 //! step, after `wasm-opt`.
 
@@ -17,7 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use debug_format::wit;
 pub use hir::hir_def::pous::pragma::wit_name;
-use hir::hir_def::pous::pragma::{ImportModule, import_module, is_wasi_module};
+use hir::hir_def::pous::pragma::{ImportModule, import_module, names_a_package};
 use hir::hir_ty::exports::wit_key;
 use mir::function::{MirExternFunction, MirParamKind};
 use mir::types::MirType;
@@ -25,21 +30,19 @@ use mir::types::MirType;
 /// The world every component exports its control interface from.
 pub const WORLD: &str = "plc";
 
-/// A component, and the WIT folder that types it: `world.wit`, and under
-/// `deps/` each package the world names, by path in the folder.
+/// A component, and the text of the world that types it.
 pub struct Component {
     pub bytes: Vec<u8>,
-    pub wit: Vec<(String, Cow<'static, str>)>,
     pub world: String,
 }
 
-/// A function the module imports from a module that is not WASI's, typed
-/// in WIT from the `{extern}` FUNCTION that declares it.
+/// A function the module imports from a plain module, typed in WIT from
+/// the `{extern}` FUNCTION that declares it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostFunction {
     /// The FUNCTION, as the module names it.
     pub declared_by: String,
-    /// `modbus`, or `acme:modbus/rtu@1.0.0`.
+    /// `modbus`.
     pub module: String,
     /// `read-coils`.
     pub name: String,
@@ -70,11 +73,11 @@ pub struct ExportedFunction {
     pub result: Option<&'static str>,
 }
 
-/// What a module exchanges with its host besides WASI and the control
-/// interface, typed in WIT from its declarations.
+/// What a module exchanges with its host besides the interfaces of
+/// packages and the control interface, typed in WIT from its declarations.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Interfaces {
-    /// The functions it imports from modules other than WASI's.
+    /// The functions it imports from plain modules.
     pub imports: Vec<HostFunction>,
     /// The interface its `{export}` FUNCTIONs are exported in: the
     /// project's name, as the module's own exports spell it.
@@ -91,6 +94,11 @@ pub struct Interfaces {
     /// its import as [`Interfaces::declared`] keys it: the record of the
     /// fields it reads back, a call's outputs, or a future read's value.
     pub held: BTreeMap<(String, String), u32>,
+    /// The WIT folders of the workspace and of each library it reads,
+    /// `wit/` at their root, whether there is one or not: the packages they
+    /// hold type the imports of their interfaces, WASI's as the standard
+    /// library's folder holds them, and no other import names a package.
+    pub wit: Vec<std::path::PathBuf>,
 }
 
 /// What a stream's read or write moves, by the buffer its block declares
@@ -104,8 +112,8 @@ pub enum Moved {
 }
 
 /// The interfaces of `module`, typed in WIT: what HIR accepts on an
-/// `{extern}` from a module other than WASI's, and on an `{export}`, has a
-/// WIT type and name.
+/// `{extern}` from a plain module, and on an `{export}`, has a WIT type and
+/// name.
 pub fn interfaces(
     db: &dyn db::WorkspaceDataBase,
     module: &mir::MirModule,
@@ -164,7 +172,219 @@ pub fn interfaces(
         declared,
         moved: moved(module),
         held: held(module),
+        wit: wit_folders(db),
     })
+}
+
+/// The `wit/` folders of the libraries the workspace reads, the standard
+/// library's first, then the workspace's own, whether there is one or not.
+fn wit_folders(db: &dyn db::WorkspaceDataBase) -> Vec<std::path::PathBuf> {
+    let Some(workspace) = db::workspace::Workspace::try_get(db) else {
+        return Vec::new();
+    };
+    workspace
+        .libraries(db)
+        .iter()
+        .map(|library| library.dir.clone())
+        .chain(workspace.workspace_folder(db).cloned())
+        .map(|root| root.join("wit"))
+        .collect()
+}
+
+/// A package's `.wit` files by name: each one's text, and the folder it is
+/// read from.
+type Files = BTreeMap<String, (String, std::path::PathBuf)>;
+
+/// A WIT package a folder ships: its name and version as its files declare
+/// them, and its files.
+struct Shipped {
+    id: String,
+    files: Files,
+    group: wit_parser::UnresolvedPackageGroup,
+}
+
+impl Shipped {
+    /// The package `files` write, parsed as one package in the order of
+    /// their names, each named by its folder where the parser reports.
+    fn parsed(files: Files) -> Result<Self, String> {
+        let mut map = wit_parser::SourceMap::new();
+        for (name, (text, from)) in &files {
+            map.push_str(&from.join(name).display().to_string(), text.clone());
+        }
+        let folders: BTreeSet<String> = files
+            .values()
+            .map(|(_, from)| format!("`{}`", from.display()))
+            .collect();
+        let group = map.parse().map_err(|(_, e)| {
+            let folders: Vec<String> = folders.into_iter().collect();
+            format!("parsing the WIT in {}: {e}", folders.join(" and "))
+        })?;
+        Ok(Shipped {
+            id: group.main.name.to_string(),
+            files,
+            group,
+        })
+    }
+
+    /// The package with the files of another part of it, which another
+    /// folder ships: a file both ship is written alike in both.
+    fn add(&mut self, files: Files) -> Result<(), String> {
+        let mut all = self.files.clone();
+        for (name, (text, from)) in files {
+            match all.get(&name) {
+                Some((other, other_from)) if *other != text => {
+                    return Err(format!(
+                        "`{name}` of `{}` is written two ways, in `{}` and in `{}`: a file of a \
+                         package is written alike wherever it is shipped",
+                        self.id,
+                        other_from.display(),
+                        from.display()
+                    ));
+                }
+                Some(_) => {}
+                None => {
+                    all.insert(name, (text, from));
+                }
+            }
+        }
+        *self = Self::parsed(all)?;
+        Ok(())
+    }
+
+    /// Whether the package is the one `module` is an interface of, at its
+    /// version, and declares that interface itself. One it only uses from
+    /// another package is in WIT's parser's list too, with no name.
+    fn declares(&self, module: &str) -> bool {
+        let Ok(ImportModule::Interface { interface, .. }) = import_module(module) else {
+            return false;
+        };
+        package_id(module).as_deref() == Some(self.id.as_str())
+            && self
+                .group
+                .main
+                .interfaces
+                .iter()
+                .any(|(_, own)| own.name.as_deref() == Some(interface))
+    }
+}
+
+/// Why the build cannot type an import from `module`, an interface of a
+/// package that no WIT folder ships as the module names it: the package is
+/// shipped without that interface, at another version, or not at all. rk
+/// writes no WIT for a package: its WIT is its own.
+fn unshipped(module: &str, shipped: &[Shipped]) -> String {
+    let id = package_id(module).unwrap_or_default();
+    let name = id.split('@').next().unwrap_or_default();
+    let interface = match import_module(module) {
+        Ok(ImportModule::Interface { interface, .. }) => interface,
+        _ => module,
+    };
+    if let Some(package) = shipped.iter().find(|package| package.id == id) {
+        return format!(
+            "the module imports `{module}`, and the WIT folders ship `{}` without the \
+             interface `{interface}`",
+            package.id
+        );
+    }
+    if let Some(other) = shipped
+        .iter()
+        .find(|package| package.id.split('@').next() == Some(name))
+    {
+        return format!(
+            "the module imports `{module}`, and a WIT folder ships the package as `{}`, at \
+             another version",
+            other.id
+        );
+    }
+    format!(
+        "the module imports `{module}`, which no `wit/` folder of the workspace or of a \
+         library describes"
+    )
+}
+
+/// The packages the WIT `folders` hold: each folder's own, from its files,
+/// and one from each folder in its `deps/`, as WIT's tools lay them out.
+/// The parts of one package that several folders ship are one package, of
+/// all their files: a library ships the files of a package that declare
+/// what it imports, as the standard library ships WASI's.
+fn shipped(folders: &[std::path::PathBuf]) -> Result<Vec<Shipped>, String> {
+    let mut found: Vec<Shipped> = Vec::new();
+    for folder in folders.iter().filter(|folder| folder.is_dir()) {
+        let deps = folder.join("deps");
+        // A folder may ship the packages in its `deps/` alone.
+        let own = std::fs::read_dir(folder)
+            .map_err(|e| format!("reading `{}`: {e}", folder.display()))?
+            .filter_map(|entry| Some(entry.ok()?.path()))
+            .any(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "wit"));
+        let mut packages: Vec<_> = own.then(|| folder.clone()).into_iter().collect();
+        if deps.is_dir() {
+            let mut inside: Vec<_> = std::fs::read_dir(&deps)
+                .map_err(|e| format!("reading `{}`: {e}", deps.display()))?
+                .filter_map(|entry| Some(entry.ok()?.path()))
+                .filter(|path| path.is_dir())
+                .collect();
+            inside.sort();
+            packages.extend(inside);
+        }
+        for package in packages {
+            let read = read_package(&package)?;
+            if wit::packages().any(|own| own.id == read.id) {
+                return Err(format!(
+                    "`{}` holds `{}`, which rk declares itself: a library's `wit/` holds \
+                     the packages it calls",
+                    package.display(),
+                    read.id
+                ));
+            }
+            match found.iter_mut().find(|other| other.id == read.id) {
+                Some(other) => other.add(read.files)?,
+                None => found.push(read),
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// The package, or the part of one, written in the `.wit` files of the
+/// folder `from`. A checkout's line endings do not count.
+fn read_package(from: &std::path::Path) -> Result<Shipped, String> {
+    let mut files = Files::new();
+    for entry in
+        std::fs::read_dir(from).map_err(|e| format!("reading `{}`: {e}", from.display()))?
+    {
+        let path = entry
+            .map_err(|e| format!("reading `{}`: {e}", from.display()))?
+            .path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if path.is_file() && name.ends_with(".wit") {
+            let text = std::fs::read_to_string(&path)
+                .map_err(|e| format!("reading `{}`: {e}", path.display()))?;
+            files.insert(
+                name.to_string(),
+                (text.replace("\r\n", "\n"), from.to_path_buf()),
+            );
+        }
+    }
+    Shipped::parsed(files)
+}
+
+/// The name and version of the package `module` is an interface of:
+/// `wasi:clocks/monotonic-clock@0.3.0` is in `wasi:clocks@0.3.0`.
+fn package_id(module: &str) -> Option<String> {
+    match import_module(module).ok()? {
+        ImportModule::Interface {
+            namespace,
+            package,
+            version,
+            ..
+        } => Some(match version {
+            Some(version) => format!("{namespace}:{package}@{version}"),
+            None => format!("{namespace}:{package}"),
+        }),
+        ImportModule::Plain(_) => None,
+    }
 }
 
 /// How many bytes each import of `module` holds of its result
@@ -220,8 +440,8 @@ fn moved(module: &mir::MirModule) -> BTreeMap<(String, String), Moved> {
         .collect()
 }
 
-/// The functions `externs` import from modules other than WASI's, typed
-/// in WIT: what HIR accepts on such an import has a WIT type and name.
+/// The functions `externs` import from plain modules, typed in WIT: what
+/// HIR accepts on such an import has a WIT type and name.
 fn host_functions(
     db: &dyn db::WorkspaceDataBase,
     externs: &[MirExternFunction],
@@ -230,7 +450,7 @@ fn host_functions(
     // The component model's built-ins are no interface's.
     for ext in externs
         .iter()
-        .filter(|ext| !is_wasi_module(&ext.module) && ext.module != mir::async_call::ROOT)
+        .filter(|ext| !names_a_package(&ext.module) && ext.module != mir::async_call::ROOT)
     {
         let declared_by = ext.name.text(db).to_string();
         let untyped = |what: &str| {
@@ -309,12 +529,18 @@ fn records_named_apart(interface: &str, functions: &[(&str, bool)]) -> Result<()
 }
 
 /// Wraps `core` into a component, its world in the package named after
-/// `project`, the functions it imports from modules other than WASI's and
-/// those it exports typed by `interfaces`. `Err` says what the module
+/// `project`, the functions it imports from plain modules and those it
+/// exports typed by `interfaces`, those it imports from a package's
+/// interface by the WIT that `interfaces` names. `Err` says what the module
 /// imports that rk cannot type.
 pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Component, String> {
     let hosts = &interfaces.imports;
     let imports = imported_functions(core)?;
+    let shipped = shipped(&interfaces.wit)?;
+    // A package rk declares, or one a WIT folder ships, types the module.
+    let typed = |module: &str| {
+        wit::package_of(module).is_some() || shipped.iter().any(|package| package.declares(module))
+    };
     let mut carried = BTreeSet::new();
     let mut own: BTreeMap<&str, Vec<&HostFunction>> = BTreeMap::new();
     for (module, names) in &imports {
@@ -322,14 +548,12 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
         if module == mir::async_call::ROOT {
             continue;
         }
-        if wit::package_of(module).is_some() {
+        if typed(module) {
             carried.insert(module.as_str());
             continue;
         }
-        if is_wasi_module(module) {
-            return Err(format!(
-                "the module imports `{module}`, which no WIT package rk carries describes"
-            ));
+        if names_a_package(module) {
+            return Err(unshipped(module, &shipped));
         }
         for name in names {
             own.entry(module)
@@ -352,7 +576,6 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
         .collect();
     records_named_apart(&interfaces.export_interface, &exported)?;
 
-    let packages = own_packages(&own)?;
     if !interfaces.exports.is_empty() && own.contains_key(interfaces.export_interface.as_str()) {
         return Err(format!(
             "the module imports from `{0}`, and exports its FUNCTIONs in the interface `{0}`, \
@@ -369,14 +592,7 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
     let mut deps = wit::packages()
         .map(|package| parse(package.dir, package.files))
         .collect::<Result<Vec<_>, _>>()?;
-    for package in &packages {
-        let files: Vec<(&str, &str)> = package
-            .files
-            .iter()
-            .map(|(file, text)| (file.as_str(), text.as_str()))
-            .collect();
-        deps.push(parse(&package.dir, &files)?);
-    }
+    deps.extend(shipped.into_iter().map(|package| package.group));
     let main = parse(".", &[("world.wit", world.as_str())])?;
     let package = resolve
         .push_groups(main, deps)
@@ -389,7 +605,7 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
         .fill(&resolve)
         .map_err(|e| format!("laying out the component's WIT types: {e:#}"))?;
     for module in &carried {
-        as_wasi_declares(&resolve, &sizes, module, &imports[*module], interfaces)?;
+        as_its_wit_declares(&resolve, &sizes, module, &imports[*module], interfaces)?;
     }
 
     let mut module = core.to_vec();
@@ -407,69 +623,7 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
         .and_then(|encoder| encoder.encode())
         .map_err(|e| format!("wrapping the module into a component: {e:#}"))?;
 
-    let named = named_packages(&resolve, package);
-    let mut files = Vec::new();
-    for package in wit::packages().filter(|package| named.contains(package.id)) {
-        for (file, text) in package.files {
-            files.push((format!("deps/{}/{file}", package.dir), Cow::Borrowed(*text)));
-        }
-        if let Some(license) = package.license {
-            files.push((
-                format!("deps/{}/LICENSE.md", package.dir),
-                Cow::Borrowed(license),
-            ));
-        }
-    }
-    for package in packages {
-        for (file, text) in package.files {
-            files.push((format!("deps/{}/{file}", package.dir), Cow::Owned(text)));
-        }
-    }
-    Ok(Component {
-        bytes,
-        wit: files,
-        world,
-    })
-}
-
-/// The component's WIT folder, `wit/` beside `output`: `world.wit`, and
-/// each package it names under `deps/`. A package's folder is written
-/// whole, so a file an earlier build left in it goes; nothing else in the
-/// folder is touched.
-pub fn write_wit(output: &std::path::Path, component: &Component) -> Result<(), String> {
-    let dir = output
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."))
-        .join("wit");
-    let packages: BTreeSet<_> = component
-        .wit
-        .iter()
-        .filter_map(|(path, _)| std::path::Path::new(path).parent())
-        .collect();
-    for package in packages {
-        let package = dir.join(package);
-        match std::fs::remove_dir_all(&package) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-                return Err(format!("removing {}: {e}", package.display()));
-            }
-            _ => {}
-        }
-    }
-    let files = std::iter::once(("world.wit".to_string(), component.world.as_str())).chain(
-        component
-            .wit
-            .iter()
-            .map(|(path, text)| (path.clone(), text.as_ref())),
-    );
-    for (path, text) in files {
-        let path = dir.join(path);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("creating directory {}: {e}", parent.display()))?;
-        }
-        std::fs::write(&path, text).map_err(|e| format!("writing {}: {e}", path.display()))?;
-    }
-    Ok(())
+    Ok(Component { bytes, world })
 }
 
 /// What `core` imports, by module: each function's name.
@@ -525,80 +679,8 @@ fn host_function<'a>(
     }
 }
 
-/// A package rk writes for the interfaces the module imports from it.
-struct OwnPackage {
-    /// Its folder under `deps/`.
-    dir: String,
-    /// One file per interface.
-    files: Vec<(String, String)>,
-}
-
-/// A package's interfaces the module imports, by version: each one's name,
-/// and the module that names it.
-type Versions<'a> = BTreeMap<Option<&'a str>, Vec<(&'a str, &'a str)>>;
-
-/// The packages of the interfaces in `own` named by an interface name,
-/// `acme:modbus/rtu@1.0.0`, each in its folder under `deps/`: the package
-/// folder, `acme-modbus`, with `@1.0.0` after it when the module imports
-/// from the package at two versions.
-fn own_packages(own: &BTreeMap<&str, Vec<&HostFunction>>) -> Result<Vec<OwnPackage>, String> {
-    let mut by_package: BTreeMap<(&str, &str), Versions> = BTreeMap::new();
-    for module in own.keys() {
-        if let Ok(ImportModule::Interface {
-            namespace,
-            package,
-            interface,
-            version,
-        }) = import_module(module)
-        {
-            if let Some(carried) = wit::packages().find(|carried| {
-                carried.id.split('@').next() == Some(&format!("{namespace}:{package}"))
-            }) {
-                return Err(format!(
-                    "the module imports `{module}`, from the package `{}` rk declares itself",
-                    carried.id
-                ));
-            }
-            by_package
-                .entry((namespace, package))
-                .or_default()
-                .entry(version)
-                .or_default()
-                .push((interface, module));
-        }
-    }
-    let mut packages = Vec::new();
-    for ((namespace, package), versions) in by_package {
-        let several = versions.len() > 1;
-        for (version, interfaces) in versions {
-            let mut dir = format!("{namespace}-{package}");
-            let mut name = format!("{}:{}", wit_id(namespace), wit_id(package));
-            if let Some(version) = version {
-                name.push_str(&format!("@{version}"));
-                if several {
-                    dir.push_str(&format!("@{version}"));
-                }
-            }
-            let files = interfaces
-                .into_iter()
-                .map(|(interface, module)| {
-                    let text = format!(
-                        "// What the module imports from `{module}`, written by rk at each build.\n\
-                         package {name};\n\ninterface {} {{\n{}}}\n",
-                        wit_id(interface),
-                        functions_text(&own[module], "    ")
-                    );
-                    (format!("{interface}.wit"), text)
-                })
-                .collect();
-            packages.push(OwnPackage { dir, files });
-        }
-    }
-    Ok(packages)
-}
-
-/// Refuses an import of WASI's `module` that WASI's WIT does not declare as
-/// the declaration says: a function the interface does not have, a
+/// Refuses an import from `module`, an interface of a package, that the
+/// package's WIT does not declare as the declaration says: a function the interface does not have, a
 /// resource's among them, under the name WIT gives it (`[method]R.f`); the
 /// drop of a resource the interface does not have; a stream's
 /// or a future's built-in whose number names none of the function's streams
@@ -614,7 +696,7 @@ fn own_packages(own: &BTreeMap<&str, Vec<&HostFunction>>) -> Result<Vec<OwnPacka
 /// FUNCTION's call of an `async func` traps when the host does not answer
 /// at once, and an async call of any other gains nothing. Each error names
 /// the POU that declares the import ([`Interfaces::declared`]).
-fn as_wasi_declares(
+fn as_its_wit_declares(
     resolve: &wit_parser::Resolve,
     sizes: &wit_parser::SizeAlign,
     module: &str,
@@ -646,8 +728,8 @@ fn as_wasi_declares(
             });
             if !declared {
                 return Err(format!(
-                    "`{by}` imports `{imported}` of `{module}`, and WASI's WIT declares no \
-                     resource `{resource}` there"
+                    "`{by}` imports `{imported}` of `{module}`, and its package's WIT declares \
+                     no resource `{resource}` there"
                 ));
             }
             continue;
@@ -656,8 +738,8 @@ fn as_wasi_declares(
         let function = builtin.map_or(imported, |(_, function)| function);
         let Some(wit) = interface.functions.get(function) else {
             return Err(format!(
-                "`{by}` imports `{imported}` of `{module}`, and WASI's WIT declares no \
-                 function `{function}` there"
+                "`{by}` imports `{imported}` of `{module}`, and its package's WIT declares \
+                 no function `{function}` there"
             ));
         };
         if let Some((builtin, _)) = builtin {
@@ -735,13 +817,14 @@ fn as_wasi_declares(
             (true, false) => {
                 return Err(format!(
                     "`{by}` imports `{function}` of `{module}` with {{extern async}}, and \
-                     WASI's WIT declares it a `func`: import it with {{extern}} on a FUNCTION"
+                     its package's WIT declares it a `func`: import it with {{extern}} on a \
+                     FUNCTION"
                 ));
             }
             (false, true) => {
                 return Err(format!(
-                    "`{by}` imports `{function}` of `{module}` with {{extern}}, and WASI's \
-                     WIT declares it an `async func`: import it with {{extern async}} on a \
+                    "`{by}` imports `{function}` of `{module}` with {{extern}}, and its \
+                     package's WIT declares it an `async func`: import it with {{extern async}} on a \
                      FUNCTION_BLOCK"
                 ));
             }
@@ -779,23 +862,9 @@ fn carried(resolve: &wit_parser::Resolve, payload: Option<wit_parser::Type>) -> 
     }
 }
 
-/// The packages `package` names, and those they name in turn, by name and
-/// version (`wasi:clocks@0.3.0`): what a tool reading the world needs.
-fn named_packages(
-    resolve: &wit_parser::Resolve,
-    package: wit_parser::PackageId,
-) -> BTreeSet<String> {
-    let mut named = BTreeSet::new();
-    let mut next = vec![package];
-    while let Some(id) = next.pop() {
-        for dep in resolve.package_direct_deps(id) {
-            if named.insert(resolve.packages[dep].name.to_string()) {
-                next.push(dep);
-            }
-        }
-    }
-    named
-}
+/// One level of the world's layout: two spaces, as WASI's own files and
+/// wasm-tools' printers indent WIT.
+const INDENT: &str = "  ";
 
 /// The world: what the component imports, and the control interface. An
 /// interface named by a plain name is declared in the world itself.
@@ -805,27 +874,25 @@ fn world_text(
     own: &BTreeMap<&str, Vec<&HostFunction>>,
     interfaces: &Interfaces,
 ) -> String {
-    let mut text = format!(
-        "// The world of `{project}`, written by rk at each build.\npackage local:{};\n\nworld {WORLD} {{\n",
-        wit_name(project)
-    );
+    let (one, two) = (INDENT, INDENT.repeat(2));
+    let mut text = format!("package local:{};\n\nworld {WORLD} {{\n", wit_name(project));
+    // A package's name may be spelled like a keyword too.
     for interface in carried {
-        text.push_str(&format!("    import {interface};\n"));
+        text.push_str(&format!("{one}import {};\n", interface_path(interface)));
     }
+    // Every other import is a plain module's, its interface written from
+    // the FUNCTIONs that import it.
     for (module, functions) in own {
-        match import_module(module) {
-            Ok(ImportModule::Plain(name)) => text.push_str(&format!(
-                "    import {}: interface {{\n{}    }}\n",
-                wit_id(name),
-                functions_text(functions, "        ")
-            )),
-            _ => text.push_str(&format!("    import {};\n", interface_path(module))),
-        }
+        text.push_str(&format!(
+            "{one}import {}: interface {{\n{}{one}}}\n",
+            wit_id(module),
+            functions_text(functions, &two)
+        ));
     }
-    text.push_str(&format!("    export {};\n", wit::CONTROL_INTERFACE));
+    text.push_str(&format!("{one}export {};\n", wit::CONTROL_INTERFACE));
     if !interfaces.exports.is_empty() {
         text.push_str(&format!(
-            "    export {}: interface {{\n",
+            "{one}export {}: interface {{\n",
             wit_id(&interfaces.export_interface)
         ));
         for function in &interfaces.exports {
@@ -836,18 +903,18 @@ fn world_text(
                         &function.name,
                         &function.outputs,
                         function.result,
-                        "        ",
+                        &two,
                     ));
                     record_name(&function.name)
                 }
             };
             text.push_str(&format!(
-                "        {}: func({}) -> result<{result}, string>;\n",
+                "{two}{}: func({}) -> result<{result}, string>;\n",
                 wit_id(&function.name),
                 params_text(&function.params),
             ));
         }
-        text.push_str("    }\n");
+        text.push_str(&format!("{one}}}\n"));
     }
     text.push_str("}\n");
     text
@@ -876,7 +943,7 @@ fn record_text(
         .map(|(field, ty)| (field.as_str(), *ty))
         .chain(result.map(|ty| (name, ty)));
     for (field, ty) in fields {
-        text.push_str(&format!("{indent}    {}: {ty},\n", wit_id(field)));
+        text.push_str(&format!("{indent}{INDENT}{}: {ty},\n", wit_id(field)));
     }
     text.push_str(&format!("{indent}}}\n"));
     text
@@ -933,7 +1000,9 @@ fn interface_path(module: &str) -> String {
     }
 }
 
-/// WIT's keywords: a name spelled like one is written after a `%`.
+/// WIT's keywords, as the wit-parser rk builds with lexes them: a name
+/// spelled like one is written after a `%`. A test reads that parser's
+/// keyword table, so a version that adds one fails until it is here.
 const KEYWORDS: &[&str] = &[
     "as",
     "async",
@@ -1030,5 +1099,103 @@ mod tests {
             parse("k", &[("k.wit", &escaped)]).unwrap_or_else(|e| panic!("{keyword}: {e}"));
         }
         assert_eq!(wit_id("read-coils"), "read-coils");
+    }
+
+    /// The source of the wit-parser this crate builds with, as cargo
+    /// resolved it: its lexer. Cargo is asked for the packages of its own
+    /// platform only, whose sources the build has already, so it needs no
+    /// network.
+    fn wit_parser_lexer() -> String {
+        let cargo = |args: &[&str]| {
+            let out = std::process::Command::new(env!("CARGO"))
+                .args(args)
+                .current_dir(env!("CARGO_MANIFEST_DIR"))
+                .output()
+                .expect("cargo runs");
+            assert!(
+                out.status.success(),
+                "cargo {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8(out.stdout).expect("cargo writes UTF-8")
+        };
+        let version = cargo(&["-vV"]);
+        let host = version
+            .lines()
+            .find_map(|line| line.strip_prefix("host: "))
+            .expect("cargo's host");
+        let metadata: serde_json::Value = serde_json::from_str(&cargo(&[
+            "metadata",
+            "--format-version",
+            "1",
+            "--offline",
+            "--filter-platform",
+            host,
+        ]))
+        .expect("cargo's metadata");
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+        let packages = metadata["packages"].as_array().expect("the packages");
+        let this = packages
+            .iter()
+            .find(|package| {
+                package["manifest_path"]
+                    .as_str()
+                    .is_some_and(|path| std::path::Path::new(path) == manifest)
+            })
+            .expect("this crate");
+        let node = metadata["resolve"]["nodes"]
+            .as_array()
+            .expect("the resolved graph")
+            .iter()
+            .find(|node| node["id"] == this["id"])
+            .expect("this crate's node");
+        let parser = node["deps"]
+            .as_array()
+            .expect("its dependencies")
+            .iter()
+            .find(|dep| dep["name"] == "wit_parser")
+            .expect("wit-parser among them");
+        let package = packages
+            .iter()
+            .find(|package| package["id"] == parser["pkg"])
+            .expect("wit-parser's package");
+        let root = std::path::Path::new(package["manifest_path"].as_str().expect("a path"))
+            .parent()
+            .expect("its folder")
+            .to_path_buf();
+        std::fs::read_to_string(root.join("src/ast/lex.rs"))
+            .unwrap_or_else(|e| panic!("wit-parser's lexer in {}: {e}", root.display()))
+    }
+
+    /// The keywords are all of wit-parser's: those of the `match` its lexer
+    /// tells a keyword from a name with, the arms before `_ => Id`, that a
+    /// name can be spelled as. A keyword missing here would be written bare
+    /// and refused; `_`, which stands for no type, is no name.
+    #[test]
+    fn the_keywords_are_all_of_wit_parser_s() {
+        let lexer = wit_parser_lexer();
+        let end = lexer
+            .find("_ => Id,")
+            .expect("the lexer's keyword table, which ends with `_ => Id,`");
+        let mut table: Vec<&str> = lexer[..end]
+            .lines()
+            .rev()
+            .map(str::trim)
+            .skip_while(|line| line.is_empty())
+            .map_while(|line| {
+                let word = line.strip_prefix('"')?;
+                let (word, rest) = word.split_once('"')?;
+                rest.trim_start().starts_with("=>").then_some(word)
+            })
+            .filter(|word| word.starts_with(|c: char| c.is_ascii_lowercase()))
+            .collect();
+        table.sort_unstable();
+        let mut ours = KEYWORDS.to_vec();
+        ours.sort_unstable();
+        assert!(!table.is_empty(), "the lexer's keyword table is empty");
+        assert_eq!(
+            ours, table,
+            "KEYWORDS must be the keywords of wit-parser's lexer, src/ast/lex.rs"
+        );
     }
 }

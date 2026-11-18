@@ -17,7 +17,7 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn an_alias_of_a_scalar_is_a_type(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface clock {
             /// A count of ticks.
@@ -31,8 +31,8 @@ fn an_alias_of_a_scalar_is_a_type(mut with_db: RootDatabase) {
             import clock;
         }
     "#), @r"
-    // wasi-example-clock.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-clock.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Clock
     			/* A count of ticks. */
@@ -40,11 +40,11 @@ fn an_alias_of_a_scalar_is_a_type(mut with_db: RootDatabase) {
 
     			TYPE SPAN : TICKS; END_TYPE
 
-    			{extern 'wasi:example/clock@0.3.0' 'now'}
+    			{extern 'acme:example/clock@0.3.0' 'now'}
     			FUNCTION NOW : TICKS
     			END_FUNCTION
 
-    			{extern 'wasi:example/clock@0.3.0' 'wait'}
+    			{extern 'acme:example/clock@0.3.0' 'wait'}
     			FUNCTION WAIT : BOOL
     			VAR_INPUT
     				how_long : SPAN;
@@ -61,7 +61,7 @@ fn an_alias_of_a_scalar_is_a_type(mut with_db: RootDatabase) {
 #[rstest]
 fn a_used_type_is_named_where_it_is_defined(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface types {
             type duration = u64;
@@ -77,8 +77,8 @@ fn a_used_type_is_named_where_it_is_defined(mut with_db: RootDatabase) {
             import timer;
         }
     "#), @r"
-    // wasi-example-types.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-types.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Types
     			TYPE DURATION : ULINT; END_TYPE
@@ -91,15 +91,15 @@ fn a_used_type_is_named_where_it_is_defined(mut with_db: RootDatabase) {
     	END_NAMESPACE
     END_NAMESPACE
 
-    // wasi-example-timer.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-timer.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Timer
-    			{extern 'wasi:example/timer@0.3.0' 'start'}
-    			FUNCTION START : Wasi.Example.Types.DURATION
+    			{extern 'acme:example/timer@0.3.0' 'start'}
+    			FUNCTION START : Acme.Example.Types.DURATION
     			VAR_INPUT
-    				how_long : Wasi.Example.Types.DURATION;
-    				by_ : Wasi.Example.Types.UNIT;
+    				how_long : Acme.Example.Types.DURATION;
+    				by_ : Acme.Example.Types.UNIT;
     			END_VAR
     			END_FUNCTION
     		END_NAMESPACE
@@ -116,7 +116,7 @@ fn a_used_type_is_named_where_it_is_defined(mut with_db: RootDatabase) {
 #[rstest]
 fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface shapes {
             record point { x: f64, y: f64 }
@@ -137,8 +137,8 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
             import shapes;
         }
     "#), @r"
-    // wasi-example-shapes.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-shapes.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Shapes
     			USING Std.Convert;
@@ -158,7 +158,7 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
     			/* `move-to` as the host has it: its parameters as the canonical ABI passes
     			   them, which `MOVE_TO` passes field by field, and the values of its
     			   result, which it puts in its members. */
-    			{extern 'wasi:example/shapes@0.3.0' 'move-to'}
+    			{extern 'acme:example/shapes@0.3.0' 'move-to'}
     			FUNCTION PRIVATE MOVE_TO_RAW
     			VAR_INPUT
     				where_x : LREAL;
@@ -177,7 +177,7 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
     				MOVE_TO_RAW(where_x := where.x, where_y := where.y, item0 => MOVE_TO.item0, item1 => MOVE_TO.item1);
     			END_FUNCTION
 
-    			{extern 'wasi:example/shapes@0.3.0' 'find'}
+    			{extern 'acme:example/shapes@0.3.0' 'find'}
     			FUNCTION FIND
     			VAR_INPUT
     				at_ : STRING[4096];
@@ -188,7 +188,7 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/shapes@0.3.0' 'check'}
+    			{extern 'acme:example/shapes@0.3.0' 'check'}
     			FUNCTION CHECK
     			VAR_OUTPUT
     				failed : BOOL;
@@ -199,7 +199,7 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
     			/* `list-all` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `LIST_ALL` reads, and its list in
     			   `value`, where the host writes it. */
-    			{extern 'wasi:example/shapes@0.3.0' 'list-all'}
+    			{extern 'acme:example/shapes@0.3.0' 'list-all'}
     			FUNCTION PRIVATE LIST_ALL_RAW
     			VAR_IN_OUT
     				value : ARRAY[*] OF STRING;
@@ -228,7 +228,7 @@ fn an_alias_of_what_is_passed_otherwise_writes_no_type(mut with_db: RootDatabase
     			/* `here` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `HERE` reads, and its string in
     			   `value`, where the host writes it. */
-    			{extern 'wasi:example/shapes@0.3.0' 'here'}
+    			{extern 'acme:example/shapes@0.3.0' 'here'}
     			FUNCTION PRIVATE HERE_RAW
     			VAR_IN_OUT
     				value : STRING;

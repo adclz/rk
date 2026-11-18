@@ -317,8 +317,8 @@ fn profile_dir(workspace: &std::path::Path, profile: wasm_codegen::Profile) -> s
 }
 
 /// Where `rk compile` writes the component of `workspace`: named after its
-/// project, with its WIT in `wit/` beside it. Every command writes it fresh;
-/// nothing reads it back expecting another to have filled it in.
+/// project. Every command writes it fresh; nothing reads it back expecting
+/// another to have filled it in.
 pub fn component_path(
     workspace: &std::path::Path,
     profile: wasm_codegen::Profile,

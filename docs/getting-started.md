@@ -97,7 +97,7 @@ rk test next
 
 ```sh
 rk fmt                 # formats every .st file in place
-rk compile             # rk_build/debug/plant.wasm, its WIT in rk_build/debug/wit/
+rk compile             # rk_build/debug/plant.wasm
 rk compile --release   # rk_build/release/plant.wasm, optimized
 ```
 

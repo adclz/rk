@@ -53,6 +53,7 @@ debug_format = { path = "crates/debug_format" }
 formatter = { path = "crates/formatter" }
 linter = { path = "crates/linter" }
 fetch = { path = "crates/fetch" }
+rk-bindgen = { path = "crates/bindgen" }
 index = { path = "crates/index" }
 macros = { path = "crates/macros" }
 bon = "3.6.4"
@@ -152,7 +153,7 @@ fetch = { workspace = true }
 clap = { workspace = true }
 serde_json = { workspace = true }
 debug_format = { workspace = true }
-rk-bindgen = { path = "crates/bindgen" }
+rk-bindgen = { workspace = true }
 # What the bindgen tests check generated imports against: the canonical
 # ABI's core type of each WIT function.
 wit-parser = { workspace = true }

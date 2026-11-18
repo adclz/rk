@@ -26,7 +26,7 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn a_record_passed_in_is_its_fields(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface places {
             enum side { left, right }
@@ -44,8 +44,8 @@ fn a_record_passed_in_is_its_fields(mut with_db: RootDatabase) {
             import places;
         }
     "#), @r"
-    // wasi-example-places.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-places.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Places
     			TYPE SIDE : USINT (
@@ -56,7 +56,7 @@ fn a_record_passed_in_is_its_fields(mut with_db: RootDatabase) {
     			TYPE DOOR : UDINT; END_TYPE
 
     			/* Lets go of `handle`, a handle of `door` the host gave. */
-    			{extern 'wasi:example/places@0.3.0' '[resource-drop]door'}
+    			{extern 'acme:example/places@0.3.0' '[resource-drop]door'}
     			FUNCTION DOOR_DROP
     			VAR_INPUT
     				handle : DOOR;
@@ -81,7 +81,7 @@ fn a_record_passed_in_is_its_fields(mut with_db: RootDatabase) {
 
     			/* `offset` as the host takes it: its parameters as the canonical ABI
     			   passes them, which `OFFSET` passes field by field. */
-    			{extern 'wasi:example/places@0.3.0' 'offset'}
+    			{extern 'acme:example/places@0.3.0' 'offset'}
     			FUNCTION PRIVATE OFFSET_RAW : LINT
     			VAR_INPUT
     				when_seconds : LINT;
@@ -96,7 +96,7 @@ fn a_record_passed_in_is_its_fields(mut with_db: RootDatabase) {
     				OFFSET := OFFSET_RAW(when_seconds := when.seconds, when_nanoseconds := when.nanoseconds);
     			END_FUNCTION
 
-    			{extern 'wasi:example/places@0.3.0' 'split'}
+    			{extern 'acme:example/places@0.3.0' 'split'}
     			FUNCTION SPLIT
     			VAR_INPUT
     				pair_0 : USINT;
@@ -107,7 +107,7 @@ fn a_record_passed_in_is_its_fields(mut with_db: RootDatabase) {
 
     			/* `print` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `PRINT` passes field by field. */
-    			{extern 'wasi:example/places@0.3.0' 'print'}
+    			{extern 'acme:example/places@0.3.0' 'print'}
     			FUNCTION PRIVATE PRINT_RAW
     			VAR_INPUT
     				what_text : STRING[4096];
@@ -126,7 +126,7 @@ fn a_record_passed_in_is_its_fields(mut with_db: RootDatabase) {
 
     			/* `go` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `GO` passes field by field. */
-    			{extern 'wasi:example/places@0.3.0' 'go'}
+    			{extern 'acme:example/places@0.3.0' 'go'}
     			FUNCTION PRIVATE GO_RAW
     			VAR_INPUT
     				how_way : SIDE;
@@ -156,7 +156,7 @@ fn a_record_passed_in_is_its_fields(mut with_db: RootDatabase) {
 #[rstest]
 fn a_record_that_comes_back_is_the_function_s_value(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface readings {
             enum unit { kelvin, celsius }
@@ -174,8 +174,8 @@ fn a_record_that_comes_back_is_the_function_s_value(mut with_db: RootDatabase) {
             import readings;
         }
     "#), @r"
-    // wasi-example-readings.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-readings.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Readings
     			TYPE UNIT : USINT (
@@ -199,7 +199,7 @@ fn a_record_that_comes_back_is_the_function_s_value(mut with_db: RootDatabase) {
 
     			/* `now` as the host gives it: the values of its result, which `NOW` puts
     			   in its members. */
-    			{extern 'wasi:example/readings@0.3.0' 'now'}
+    			{extern 'acme:example/readings@0.3.0' 'now'}
     			FUNCTION PRIVATE NOW_RAW
     			VAR_OUTPUT
     				value : LREAL;
@@ -214,7 +214,7 @@ fn a_record_that_comes_back_is_the_function_s_value(mut with_db: RootDatabase) {
 
     			/* `count` as the host gives it: the one value of its result, which `COUNT`
     			   puts in its member. */
-    			{extern 'wasi:example/readings@0.3.0' 'count'}
+    			{extern 'acme:example/readings@0.3.0' 'count'}
     			FUNCTION PRIVATE COUNT_RAW
     			VAR_OUTPUT
     				count : UDINT;
@@ -227,7 +227,7 @@ fn a_record_that_comes_back_is_the_function_s_value(mut with_db: RootDatabase) {
 
     			/* `unbox` as the host gives it: the one value of its result, which `UNBOX`
     			   puts in its member. */
-    			{extern 'wasi:example/readings@0.3.0' 'unbox'}
+    			{extern 'acme:example/readings@0.3.0' 'unbox'}
     			FUNCTION PRIVATE UNBOX_RAW
     			VAR_OUTPUT
     				inner_count : UDINT;
@@ -238,7 +238,7 @@ fn a_record_that_comes_back_is_the_function_s_value(mut with_db: RootDatabase) {
     				UNBOX_RAW(inner_count => UNBOX.inner.count);
     			END_FUNCTION
 
-    			{extern 'wasi:example/readings@0.3.0' 'pair'}
+    			{extern 'acme:example/readings@0.3.0' 'pair'}
     			FUNCTION PAIR
     			VAR_OUTPUT
     				item0 : ULINT;
@@ -246,7 +246,7 @@ fn a_record_that_comes_back_is_the_function_s_value(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/readings@0.3.0' 'keyword'}
+    			{extern 'acme:example/readings@0.3.0' 'keyword'}
     			FUNCTION KEYWORD
     			VAR_OUTPUT
     				item0 : BOOL;
@@ -264,7 +264,7 @@ fn a_record_that_comes_back_is_the_function_s_value(mut with_db: RootDatabase) {
 #[rstest]
 fn a_field_named_as_a_keyword(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface span {
             record range { step: u32, to: u32, by: u32 }
@@ -276,8 +276,8 @@ fn a_field_named_as_a_keyword(mut with_db: RootDatabase) {
             import span;
         }
     "#), @r"
-    // wasi-example-span.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-span.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Span
     			TYPE RANGE : STRUCT
@@ -288,7 +288,7 @@ fn a_field_named_as_a_keyword(mut with_db: RootDatabase) {
 
     			/* `make` as the host gives it: the values of its result, which `MAKE` puts
     			   in its members. */
-    			{extern 'wasi:example/span@0.3.0' 'make'}
+    			{extern 'acme:example/span@0.3.0' 'make'}
     			FUNCTION PRIVATE MAKE_RAW
     			VAR_OUTPUT
     				step_ : UDINT;
@@ -303,7 +303,7 @@ fn a_field_named_as_a_keyword(mut with_db: RootDatabase) {
 
     			/* `walk` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `WALK` passes field by field. */
-    			{extern 'wasi:example/span@0.3.0' 'walk'}
+    			{extern 'acme:example/span@0.3.0' 'walk'}
     			FUNCTION PRIVATE WALK_RAW
     			VAR_INPUT
     				r_step : UDINT;
@@ -332,7 +332,7 @@ fn a_field_named_as_a_keyword(mut with_db: RootDatabase) {
 #[rstest]
 fn a_record_of_records_passes_by_field_and_comes_back_in_words(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface nested {
             record point { x: f64, y: f64 }
@@ -345,8 +345,8 @@ fn a_record_of_records_passes_by_field_and_comes_back_in_words(mut with_db: Root
             import nested;
         }
     "#), @r"
-    // wasi-example-nested.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-nested.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Nested
     			USING Std.Convert;
@@ -364,7 +364,7 @@ fn a_record_of_records_passes_by_field_and_comes_back_in_words(mut with_db: Root
 
     			/* `draw` as the host takes it: its parameters as the canonical ABI passes
     			   them, which `DRAW` passes field by field. */
-    			{extern 'wasi:example/nested@0.3.0' 'draw'}
+    			{extern 'acme:example/nested@0.3.0' 'draw'}
     			FUNCTION PRIVATE DRAW_RAW
     			VAR_INPUT
     				s_start_x : LREAL;
@@ -384,7 +384,7 @@ fn a_record_of_records_passes_by_field_and_comes_back_in_words(mut with_db: Root
 
     			/* `longest` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `LONGEST` reads. */
-    			{extern 'wasi:example/nested@0.3.0' 'longest'}
+    			{extern 'acme:example/nested@0.3.0' 'longest'}
     			FUNCTION PRIVATE LONGEST_RAW
     			VAR_OUTPUT
     				w0 : LWORD;
@@ -423,7 +423,7 @@ fn a_record_of_records_passes_by_field_and_comes_back_in_words(mut with_db: Root
 #[rstest]
 fn a_record_s_string_comes_back_and_its_list_is_left_out(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface nested {
             record named { name: string, id: u32 }
@@ -436,8 +436,8 @@ fn a_record_s_string_comes_back_and_its_list_is_left_out(mut with_db: RootDataba
             import nested;
         }
     "#), @r"
-    // wasi-example-nested.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-nested.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Nested
     			USING Std.Convert;
@@ -450,7 +450,7 @@ fn a_record_s_string_comes_back_and_its_list_is_left_out(mut with_db: RootDataba
     			/* `who` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `WHO` reads, and its string in `name`,
     			   where the host writes it. */
-    			{extern 'wasi:example/nested@0.3.0' 'who'}
+    			{extern 'acme:example/nested@0.3.0' 'who'}
     			FUNCTION PRIVATE WHO_RAW
     			VAR_IN_OUT
     				name : STRING;

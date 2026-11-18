@@ -969,11 +969,14 @@ pub fn compile_tests_with_libraries(
 }
 
 /// What `rk test` builds from `mir`: the module with the raise hook,
-/// wrapped as a component.
+/// wrapped as a component. What a test declares of WASI's itself is typed
+/// by WASI's packages, as WASI's repository writes them, which a workspace
+/// that does so ships in its `wit/`.
 fn test_build(db: &RootDatabase, mut mir: mir::MirModule) -> TestBuild {
     mir::raise_hook::add(db, &mut mir);
     let core = wasm_codegen::generate_wasm(db, &mir).finish();
-    let interfaces = rk::component::interfaces(db, &mir).expect("typed interfaces");
+    let mut interfaces = rk::component::interfaces(db, &mir).expect("typed interfaces");
+    interfaces.wit.extend(crate::tests::utils::wasi_packages());
     let component = rk::component::wrap(&core, "plant", &interfaces)
         .expect("the module wraps")
         .bytes;

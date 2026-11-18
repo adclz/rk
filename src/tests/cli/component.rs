@@ -15,6 +15,7 @@ use crate::tests::codegen::{
     STD_TIMERS, compile_to_mir_and_wasm_as_built, compile_to_wasm_as_built, compile_with_libraries,
     expect_section, with_db,
 };
+use crate::tests::utils::{stdlib_wit, wasi_packages};
 
 const CONTROL: &str = debug_format::wit::CONTROL_INTERFACE;
 
@@ -204,15 +205,72 @@ const COUNTER: &str = r#"
     END_CONFIGURATION
 "#;
 
+/// `wasm` wrapped, with no function of its own to type: what it imports of
+/// WASI's, the standard library's, typed by Std's WIT folder.
 fn wrap(wasm: &[u8]) -> rk::component::Component {
-    rk::component::wrap(wasm, "plant", &Default::default()).expect("the module wraps")
+    let interfaces = rk::component::Interfaces {
+        wit: vec![stdlib_wit()],
+        ..Default::default()
+    };
+    rk::component::wrap(wasm, "plant", &interfaces).expect("the module wraps")
 }
 
-/// `source` built and wrapped, its own imports typed from its MIR.
+/// `source` built and wrapped, the imports of its plain modules typed from
+/// its MIR, WASI's by WASI's packages as WASI's repository writes them, and
+/// the host's packages these tests name by [`HOST_PACKAGES`]: what a
+/// workspace that declares such functions itself ships in its `wit/`.
 fn build(db: &mut db::RootDatabase, source: &str) -> Result<rk::component::Component, String> {
-    let (mir, wasm) = compile_to_mir_and_wasm_as_built(db, source);
-    let interfaces = rk::component::interfaces(db, &mir)?;
-    rk::component::wrap(&wasm, "plant", &interfaces)
+    let host = host_packages();
+    let mut folders = wasi_packages();
+    folders.push(host.path().join("wit"));
+    built_with(db, source, folders)
+}
+
+/// The host's own packages the tests import from, each file as a library
+/// ships it under its `wit/deps/`: rk writes the WIT of a plain module's
+/// interface only, and a package's is its own.
+const HOST_PACKAGES: &[(&str, &str)] = &[
+    (
+        "acme-display/text.wit",
+        "package acme:display@1.0.0;
+
+interface text {
+    show: func(line: string, marker: char, delay: s32) -> bool;
+}
+",
+    ),
+    (
+        "acme-drive/axis.wit",
+        "package acme:drive@1.0.0;
+
+interface axis {
+    record position-outputs {
+        counts: s32,
+    }
+    position: func() -> position-outputs;
+}
+",
+    ),
+    (
+        "acme-list/stream.wit",
+        "package acme:%list@1.0.0;
+
+interface %stream {
+    %type: func(%list: s16) -> s16;
+}
+",
+    ),
+];
+
+/// A library holding [`HOST_PACKAGES`] in its `wit/deps/`.
+fn host_packages() -> tempfile::TempDir {
+    let library = tempfile::tempdir().expect("a library");
+    for (path, text) in HOST_PACKAGES {
+        let path = library.path().join("wit/deps").join(path);
+        std::fs::create_dir_all(path.parent().expect("a folder")).expect("a folder");
+        std::fs::write(path, text).expect("a file");
+    }
+    library
 }
 
 /// A scan through the component: the inputs in, the outputs out.
@@ -535,9 +593,8 @@ fn the_component_is_named_after_the_project() {
     );
 }
 
-/// The world imports each WASI interface the module calls, as WASI
-/// declares it, and exports the control interface; the WIT folder holds
-/// each package the world names, and the ones those use.
+/// The world imports each WASI interface the module calls, as the standard
+/// library's WIT folder declares it, and exports the control interface.
 #[rstest]
 fn the_world_imports_what_the_module_calls(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -550,7 +607,7 @@ fn the_world_imports_what_the_module_calls(mut with_db: db::RootDatabase) {
             Stamp := now();
         END_FUNCTION
     "#;
-    let component = build(&mut with_db, source).expect("the module wraps");
+    let component = built_with(&mut with_db, source, vec![stdlib_wit()]).expect("the module wraps");
     assert!(
         component
             .world
@@ -559,23 +616,6 @@ fn the_world_imports_what_the_module_calls(mut with_db: db::RootDatabase) {
         component.world
     );
     assert!(component.world.contains(&format!("export {CONTROL};")));
-    let files: Vec<&str> = component
-        .wit
-        .iter()
-        .map(|(path, _)| path.as_str())
-        .collect();
-    assert_eq!(
-        files,
-        [
-            "deps/rk-plc/control.wit",
-            "deps/wasi-clocks/monotonic-clock.wit",
-            "deps/wasi-clocks/system-clock.wit",
-            "deps/wasi-clocks/timezone.wit",
-            "deps/wasi-clocks/types.wit",
-            "deps/wasi-clocks/world.wit",
-            "deps/wasi-clocks/LICENSE.md",
-        ]
-    );
 
     let engine = engine();
     let loaded = Component::new(&engine, &component.bytes).expect("a valid component");
@@ -586,8 +626,9 @@ fn the_world_imports_what_the_module_calls(mut with_db: db::RootDatabase) {
     assert_eq!(exports, [CONTROL, EXPORTS]);
 }
 
-/// A module whose import names an interface at a version rk carries no WIT
-/// for is refused, the interface named.
+/// A module whose import names an interface at a version no WIT folder
+/// ships is refused, the interface named, and the version shipped: the
+/// standard library's folder ships WASI's clocks at the release it imports.
 #[rstest]
 fn an_import_at_another_version_is_refused(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -600,14 +641,399 @@ fn an_import_at_another_version_is_refused(mut with_db: db::RootDatabase) {
             Stamp := now();
         END_FUNCTION
     "#;
-    let refused = build(&mut with_db, source)
+    let refused = built_with(&mut with_db, source, vec![stdlib_wit()])
         .err()
         .expect("the module is refused");
     assert_eq!(
         refused,
-        "the module imports `wasi:clocks/monotonic-clock@0.2.6`, \
-         which no WIT package rk carries describes"
+        "the module imports `wasi:clocks/monotonic-clock@0.2.6`, and a WIT folder ships the \
+         package as `wasi:clocks@0.3.0`, at another version"
     );
+}
+
+/// The files of a WIT package, written into the folder `dir`.
+fn ship(dir: &std::path::Path, files: &[(&str, &str)]) {
+    std::fs::create_dir_all(dir).expect("a folder");
+    for (name, text) in files {
+        std::fs::write(dir.join(name), text).expect("a file");
+    }
+}
+
+/// `source` built, wrapped with the WIT `folders` hold.
+fn built_with(
+    db: &mut db::RootDatabase,
+    source: &str,
+    folders: Vec<std::path::PathBuf>,
+) -> Result<rk::component::Component, String> {
+    let (mir, wasm) = compile_to_mir_and_wasm_as_built(db, source);
+    let mut interfaces = rk::component::interfaces(db, &mir)?;
+    interfaces.wit = folders;
+    rk::component::wrap(&wasm, "plant", &interfaces)
+}
+
+/// A drive's package, as a library ships it.
+const DRIVE: &str = "/// A drive.
+package example:drive@0.1.0;
+
+interface axis {
+    /// Where the axis stands.
+    position: func() -> u32;
+}
+";
+
+/// A module that reads the drive's axis.
+const READS_THE_AXIS: &str = r#"
+    {extern 'example:drive/axis@0.1.0' 'position'}
+    FUNCTION Position : UDINT
+    END_FUNCTION
+
+    {export}
+    FUNCTION Where : UDINT
+        Where := Position();
+    END_FUNCTION
+"#;
+
+/// An import from a package a library ships in its `wit/` folder is typed
+/// by that WIT, and not one written from the declaration. The folder's
+/// other files, its license, are not read as WIT.
+#[rstest]
+fn a_library_s_wit_types_its_package(mut with_db: db::RootDatabase) {
+    let library = tempfile::tempdir().expect("a library");
+    let wit = library.path().join("wit");
+    ship(
+        &wit,
+        &[("drive.wit", DRIVE), ("LICENSE", "The drive's terms.\n")],
+    );
+    let component = built_with(&mut with_db, READS_THE_AXIS, vec![wit]).expect("it wraps");
+    assert!(
+        component.world.contains("import example:drive/axis@0.1.0;"),
+        "{}",
+        component.world
+    );
+}
+
+/// A library may ship the packages in its `deps/` alone, with no package of
+/// its own, and two libraries may ship one package, written alike.
+#[rstest]
+fn libraries_ship_packages_in_their_deps(mut with_db: db::RootDatabase) {
+    let first = tempfile::tempdir().expect("a library");
+    let second = tempfile::tempdir().expect("another");
+    for library in [&first, &second] {
+        ship(
+            &library.path().join("wit/deps/drive"),
+            &[("drive.wit", DRIVE)],
+        );
+    }
+    let folders = vec![first.path().join("wit"), second.path().join("wit")];
+    let component = built_with(&mut with_db, READS_THE_AXIS, folders).expect("it wraps");
+    assert!(
+        component.world.contains("import example:drive/axis@0.1.0;"),
+        "{}",
+        component.world
+    );
+}
+
+/// Two libraries may each ship a part of one package, the files that
+/// declare what each imports: the build reads them as one package.
+#[rstest]
+fn the_parts_of_one_package_are_one_package(mut with_db: db::RootDatabase) {
+    let first = tempfile::tempdir().expect("a library");
+    let second = tempfile::tempdir().expect("another");
+    ship(&first.path().join("wit"), &[("drive.wit", DRIVE)]);
+    let belt = "package example:drive@0.1.0;\n\ninterface belt {\n    speed: func() -> u32;\n}\n";
+    ship(&second.path().join("wit"), &[("belt.wit", belt)]);
+    let source = r#"
+        {extern 'example:drive/axis@0.1.0' 'position'}
+        FUNCTION Position : UDINT
+        END_FUNCTION
+
+        {extern 'example:drive/belt@0.1.0' 'speed'}
+        FUNCTION Speed : UDINT
+        END_FUNCTION
+
+        {export}
+        FUNCTION Where : UDINT
+            Where := Position() + Speed();
+        END_FUNCTION
+    "#;
+    let folders = vec![first.path().join("wit"), second.path().join("wit")];
+    let component = built_with(&mut with_db, source, folders).expect("it wraps");
+    for interface in ["axis", "belt"] {
+        assert!(
+            component
+                .world
+                .contains(&format!("import example:drive/{interface}@0.1.0;")),
+            "{}",
+            component.world
+        );
+    }
+}
+
+/// One interface written in two files, which two libraries ship as parts
+/// of one package, is refused by WIT's parser, both folders named.
+#[rstest]
+fn one_interface_in_two_files_is_refused(mut with_db: db::RootDatabase) {
+    let first = tempfile::tempdir().expect("a library");
+    let second = tempfile::tempdir().expect("another");
+    ship(&first.path().join("wit"), &[("drive.wit", DRIVE)]);
+    // A package's doc comment is in one of its files.
+    let undocumented = DRIVE.replacen("/// A drive.\n", "", 1);
+    ship(&second.path().join("wit"), &[("axis.wit", &undocumented)]);
+    let folders = vec![first.path().join("wit"), second.path().join("wit")];
+    let refused = built_with(&mut with_db, READS_THE_AXIS, folders)
+        .err()
+        .expect("refused");
+    let mut named: Vec<String> = [&first, &second]
+        .iter()
+        .map(|library| format!("`{}`", library.path().join("wit").display()))
+        .collect();
+    named.sort();
+    assert!(
+        refused.starts_with(&format!("parsing the WIT in {}: ", named.join(" and "))),
+        "{refused}"
+    );
+    assert!(refused.contains("duplicate item named `axis`"), "{refused}");
+}
+
+/// One file of a package written two ways by two libraries is refused, the
+/// file and both folders named.
+#[rstest]
+fn a_file_written_two_ways_is_refused(mut with_db: db::RootDatabase) {
+    let first = tempfile::tempdir().expect("a library");
+    let second = tempfile::tempdir().expect("another");
+    ship(&first.path().join("wit"), &[("drive.wit", DRIVE)]);
+    let other = DRIVE.replace("u32", "u64");
+    ship(&second.path().join("wit"), &[("drive.wit", &other)]);
+    let folders = vec![first.path().join("wit"), second.path().join("wit")];
+    let refused = built_with(&mut with_db, READS_THE_AXIS, folders)
+        .err()
+        .expect("refused");
+    assert_eq!(
+        refused,
+        format!(
+            "`drive.wit` of `example:drive@0.1.0` is written two ways, in `{}` and in `{}`: \
+             a file of a package is written alike wherever it is shipped",
+            first.path().join("wit").display(),
+            second.path().join("wit").display()
+        )
+    );
+}
+
+/// A library may ship more of a WASI package than the standard library
+/// does, the files WASI writes beside the ones Std ships: the files both
+/// ship are WASI's own in both, a checkout's line endings aside, and one
+/// written otherwise is refused.
+#[rstest]
+fn a_wasi_file_a_library_writes_otherwise_is_refused(mut with_db: db::RootDatabase) {
+    let library = tempfile::tempdir().expect("a library");
+    let cli = crate::tests::utils::wasi_repository().join("proposals/cli/wit");
+    let wasi_s = |name: &str| {
+        std::fs::read_to_string(cli.join(name))
+            .expect("WASI's file")
+            .replace("\r\n", "\n")
+    };
+    let (stdio, exit) = (wasi_s("stdio.wit"), wasi_s("exit.wit"));
+    let copy = library.path().join("wit").join("deps").join("cli");
+    let header = "package wasi:cli@0.3.0;\n";
+    ship(
+        &copy,
+        &[
+            ("package.wit", header),
+            ("stdio.wit", &stdio.replace('\n', "\r\n")),
+            ("exit.wit", &exit),
+        ],
+    );
+    let source = READS_THE_AXIS.replace("example:drive/axis@0.1.0", "host");
+    let (mir, wasm) = compile_to_mir_and_wasm_as_built(&mut with_db, &source);
+    let mut interfaces = rk::component::interfaces(&with_db, &mir).expect("typed interfaces");
+    interfaces.wit = vec![stdlib_wit(), library.path().join("wit")];
+    rk::component::wrap(&wasm, "plant", &interfaces).expect("WASI's own, in both");
+    ship(&copy, &[("stdio.wit", &stdio.replacen("u8", "u16", 1))]);
+    let refused = rk::component::wrap(&wasm, "plant", &interfaces)
+        .err()
+        .expect("refused");
+    assert_eq!(
+        refused,
+        format!(
+            "`stdio.wit` of `wasi:cli@0.3.0` is written two ways, in `{}` and in `{}`: a file \
+             of a package is written alike wherever it is shipped",
+            stdlib_wit().join("deps").join("wasi-cli").display(),
+            copy.display()
+        )
+    );
+}
+
+/// An import from a package a folder ships at another version is refused,
+/// and rk writes no package of its own beside the one shipped.
+#[rstest]
+fn an_import_of_a_shipped_package_at_another_version_is_refused(mut with_db: db::RootDatabase) {
+    let library = tempfile::tempdir().expect("a library");
+    ship(&library.path().join("wit"), &[("drive.wit", DRIVE)]);
+    let source = READS_THE_AXIS.replace("@0.1.0", "@0.2.0");
+    let refused = built_with(&mut with_db, &source, vec![library.path().join("wit")])
+        .err()
+        .expect("refused");
+    assert_eq!(
+        refused,
+        "the module imports `example:drive/axis@0.2.0`, and a WIT folder ships the package \
+         as `example:drive@0.1.0`, at another version"
+    );
+}
+
+/// A WIT folder that holds a package rk declares itself is refused: most
+/// likely the WIT an earlier build wrote beside its component.
+#[rstest]
+fn a_wit_folder_holding_rk_s_own_package_is_refused(mut with_db: db::RootDatabase) {
+    let library = tempfile::tempdir().expect("a library");
+    let control = library.path().join("wit").join("deps").join("rk-plc");
+    ship(
+        &control,
+        &[("control.wit", debug_format::wit::RK_PLC.files[0].1)],
+    );
+    let refused = built_with(
+        &mut with_db,
+        READS_THE_AXIS,
+        vec![library.path().join("wit")],
+    )
+    .err()
+    .expect("refused");
+    assert_eq!(
+        refused,
+        format!(
+            "`{}` holds `rk:plc@0.1.0`, which rk declares itself: a library's `wit/` holds \
+             the packages it calls",
+            control.display()
+        )
+    );
+}
+
+/// `rk compile` writes the component alone, with no WIT beside it: the
+/// component carries its types. So it may go anywhere, into the
+/// workspace's root too.
+#[test]
+fn a_build_writes_the_component_alone() {
+    super::disable_stdlib();
+    let (_ws, root) = super::temp_workspace(&[("main.st", COUNTER)]);
+    for output in [root.join("plc.wasm"), root.join("out").join("plc.wasm")] {
+        compiled(&root, output.clone()).expect("it builds");
+        let beside = output.parent().expect("a folder");
+        assert!(output.is_file(), "{}", output.display());
+        assert!(!beside.join("wit").exists(), "{}", beside.display());
+    }
+}
+
+/// `rk compile` into `output`, in the workspace `root`.
+fn compiled(root: &std::path::Path, output: std::path::PathBuf) -> rk::error::CliResult<()> {
+    rk::run(
+        root,
+        false,
+        rk::cli::OutputFormat::Concise,
+        rk::cli::Command::Compile {
+            output: Some(output),
+            release: false,
+            opt_level: None,
+            debug: false,
+            watch: false,
+        },
+    )
+}
+
+/// The host's display, as the workspace ships it in its own `wit/`.
+const DISPLAY: &str = "package acme:display@1.0.0;
+
+interface text {
+  show: func(line: string) -> bool;
+}
+";
+
+/// A program that writes to the console, through the standard library's
+/// WASI, and calls the host's display and a plain module of its own.
+const CALLS_EVERY_KIND: &str = r#"
+    USING Std.Console;
+
+    {extern 'acme:display/text@1.0.0' 'show'}
+    FUNCTION Show : BOOL
+    VAR_INPUT line : STRING; END_VAR
+    END_FUNCTION
+
+    {extern 'modbus' 'read-coils'}
+    FUNCTION ReadCoils : UDINT
+    VAR_INPUT start_address : UINT; END_VAR
+    END_FUNCTION
+
+    {export}
+    FUNCTION Ping : BOOL
+        Ping := Show(line := 'ping') AND ReadCoils(start_address := 1) > 0;
+    END_FUNCTION
+
+    PROGRAM P
+    VAR out : STDOUT; END_VAR
+        out(REQ := TRUE, IN := 'hello$N');
+    END_PROGRAM
+
+    CONFIGURATION Cfg
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM Main WITH T : P;
+        END_RESOURCE
+    END_CONFIGURATION
+"#;
+
+/// The component carries its world: the WIT a host's tools read from the
+/// binary, as `wasm-tools component wit` does, names what the component
+/// imports and exports: the standard library's WASI, the workspace's
+/// package, a plain module, and the control interface.
+#[test]
+fn the_component_carries_its_world() {
+    super::unset_stdlib();
+    let (_ws, root) = super::temp_workspace(&[("main.st", CALLS_EVERY_KIND)]);
+    std::fs::create_dir_all(root.join("wit")).unwrap();
+    std::fs::write(root.join("wit/display.wit"), DISPLAY).unwrap();
+    compiled(&root, root.join("out/plc.wasm")).expect("it builds");
+    let bytes = std::fs::read(root.join("out/plc.wasm")).expect("the component");
+
+    let wit_parser::decoding::DecodedWasm::Component(resolve, world) =
+        wit_parser::decoding::decode(&bytes).expect("the binary's types")
+    else {
+        panic!("a component, not a WIT package");
+    };
+    let names = |items: Vec<(&wit_parser::WorldKey, &wit_parser::WorldItem)>| {
+        let mut names: Vec<String> = items
+            .into_iter()
+            .filter(|(_, item)| matches!(item, wit_parser::WorldItem::Interface { .. }))
+            .map(|(key, _)| resolve.name_world_key(key))
+            .collect();
+        names.sort();
+        names
+    };
+    let world = &resolve.worlds[world];
+    let (imports, exports) = (
+        names(world.imports.iter().collect()),
+        names(world.exports.iter().collect()),
+    );
+
+    let engine = engine();
+    let loaded = Component::new(&engine, &bytes).expect("a valid component");
+    let ty = loaded.component_type();
+    let mut component_imports: Vec<String> = ty
+        .imports(&engine)
+        .map(|(name, _)| name.to_string())
+        .collect();
+    component_imports.sort();
+    let mut component_exports: Vec<String> = ty
+        .exports(&engine)
+        .map(|(name, _)| name.to_string())
+        .collect();
+    component_exports.sort();
+    assert_eq!(imports, component_imports);
+    assert_eq!(exports, component_exports);
+    for import in ["acme:display/text@1.0.0", "modbus", "wasi:cli/stdout@0.3.0"] {
+        assert!(
+            imports.iter().any(|name| name == import),
+            "{import} in {imports:?}"
+        );
+    }
+    assert!(exports.iter().any(|name| name == CONTROL), "{exports:?}");
 }
 
 /// A task that calls the host's own interfaces: one named by a plain name,
@@ -646,50 +1072,118 @@ const HOST_CALLS: &str = r#"
     END_CONFIGURATION
 "#;
 
-/// The world imports the host's own interfaces as their `{extern}`
-/// FUNCTIONs type them: one named by a plain name is declared in the world,
-/// one named by an interface's name in a package rk writes under `deps/`.
+/// The world imports the host's own interfaces: a plain module's as its
+/// `{extern}` FUNCTIONs type it, declared in the world itself, and a
+/// package's as the WIT a folder ships types it.
 #[rstest]
-fn the_host_s_own_interfaces_are_typed_from_their_declarations(mut with_db: db::RootDatabase) {
+fn the_host_s_interfaces_are_typed_by_their_declarations_or_their_wit(
+    mut with_db: db::RootDatabase,
+) {
     let component = build(&mut with_db, HOST_CALLS).expect("the module wraps");
     assert_eq!(
         component.world,
-        "// The world of `plant`, written by rk at each build.
-package local:plant;
+        "package local:plant;
 
 world plc {
-    import acme:display/text@1.0.0;
-    import modbus: interface {
-        read-coils: func(start-address: u16, count: u16) -> u32;
-    }
-    export rk:plc/control@0.1.0;
+  import acme:display/text@1.0.0;
+  import modbus: interface {
+    read-coils: func(start-address: u16, count: u16) -> u32;
+  }
+  export rk:plc/control@0.1.0;
 }
 "
-    );
-    let files: Vec<(&str, &str)> = component
-        .wit
-        .iter()
-        .map(|(path, text)| (path.as_str(), text.as_ref()))
-        .collect();
-    assert_eq!(files[0].0, "deps/rk-plc/control.wit");
-    assert_eq!(
-        files[1..],
-        [(
-            "deps/acme-display/text.wit",
-            "// What the module imports from `acme:display/text@1.0.0`, written by rk at each build.
-package acme:display@1.0.0;
-
-interface text {
-    show: func(line: string, marker: char, delay: s32) -> bool;
-}
-"
-        )]
     );
     let engine = engine();
     let loaded = Component::new(&engine, &component.bytes).expect("a valid component");
     let ty = loaded.component_type();
     let imports: Vec<&str> = ty.imports(&engine).map(|(name, _)| name).collect();
     assert_eq!(imports, ["acme:display/text@1.0.0", "modbus"]);
+}
+
+/// Only a plain module's functions are typed from their declarations: a
+/// package's are typed by its WIT, which the build reads.
+#[rstest]
+fn only_a_plain_module_s_functions_are_typed_from_declarations(mut with_db: db::RootDatabase) {
+    let (mir, _) = compile_to_mir_and_wasm_as_built(&mut with_db, HOST_CALLS);
+    let interfaces = rk::component::interfaces(&with_db, &mir).expect("typed interfaces");
+    let modules: Vec<&str> = interfaces
+        .imports
+        .iter()
+        .map(|function| function.module.as_str())
+        .collect();
+    assert_eq!(modules, ["modbus"]);
+}
+
+/// An interface of a package is typed by the package's WIT, which rk does
+/// not write: one no WIT folder ships is refused, and so is one whose
+/// package is shipped without it.
+#[rstest]
+fn an_interface_of_a_package_no_folder_ships_is_refused(mut with_db: db::RootDatabase) {
+    let (mir, wasm) = compile_to_mir_and_wasm_as_built(&mut with_db, HOST_CALLS);
+    let mut interfaces = rk::component::interfaces(&with_db, &mir).expect("typed interfaces");
+    let mut wrapped = |wit: Vec<std::path::PathBuf>| {
+        interfaces.wit = wit;
+        rk::component::wrap(&wasm, "plant", &interfaces).err()
+    };
+    assert_eq!(
+        wrapped(wasi_packages()),
+        Some(
+            "the module imports `acme:display/text@1.0.0`, which no `wit/` folder of the \
+             workspace or of a library describes"
+                .to_string()
+        )
+    );
+    let library = tempfile::tempdir().expect("a library");
+    ship(
+        &library.path().join("wit"),
+        &[(
+            "display.wit",
+            "package acme:display@1.0.0;\n\ninterface lamp {\n    on: func() -> bool;\n}\n",
+        )],
+    );
+    assert_eq!(
+        wrapped(vec![library.path().join("wit")]),
+        Some(
+            "the module imports `acme:display/text@1.0.0`, and the WIT folders ship \
+             `acme:display@1.0.0` without the interface `text`"
+                .to_string()
+        )
+    );
+}
+
+/// An interface a package only uses from another package is none of its
+/// own: the drive's axis uses WASI's clocks' `types`, and `types` of the
+/// drive is still refused.
+#[rstest]
+fn an_interface_a_package_uses_is_none_of_its_own(mut with_db: db::RootDatabase) {
+    let library = tempfile::tempdir().expect("a library");
+    ship(
+        &library.path().join("wit"),
+        &[(
+            "drive.wit",
+            "package acme:drive@1.0.0;\n\ninterface axis {\n    \
+             use wasi:clocks/types@0.3.0.{duration};\n    settle: func() -> duration;\n}\n",
+        )],
+    );
+    let source = r#"
+        {extern 'acme:drive/types@1.0.0' 'now'}
+        FUNCTION Now : DINT
+        END_FUNCTION
+
+        {export}
+        FUNCTION When : DINT
+            When := Now();
+        END_FUNCTION
+    "#;
+    let folders = vec![stdlib_wit(), library.path().join("wit")];
+    assert_eq!(
+        built_with(&mut with_db, source, folders).err(),
+        Some(
+            "the module imports `acme:drive/types@1.0.0`, and the WIT folders ship \
+             `acme:drive@1.0.0` without the interface `types`"
+                .to_string()
+        )
+    );
 }
 
 /// A host built on those types runs the component: what a call passes
@@ -781,7 +1275,8 @@ fn one_function_imported_with_two_signatures_is_refused(mut with_db: db::RootDat
 }
 
 /// A name spelled like a WIT keyword is written after a `%` in the WIT rk
-/// writes, wherever it stands, and the host finds it under its own name.
+/// writes, wherever it stands, a shipped package's name in the world too,
+/// and the host finds it under its own name.
 #[rstest]
 fn a_name_spelled_like_a_wit_keyword_is_escaped(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -925,27 +1420,26 @@ fn the_world_exports_the_functions_a_host_calls(mut with_db: db::RootDatabase) {
     let component = build(&mut with_db, EXPORTED).expect("the module wraps");
     assert_eq!(
         component.world,
-        "// The world of `plant`, written by rk at each build.
-package local:plant;
+        "package local:plant;
 
 world plc {
-    export rk:plc/control@0.1.0;
-    export plc: interface {
-        scale: func(raw: s16, gain: f32) -> result<f32, string>;
-        divide: func(a: s64, b: s64) -> result<s64, string>;
-        greet: func(who: string, times: u8) -> result<string, string>;
-        pick: func(left: string, right: string) -> result<string, string>;
-        latin: func() -> result<string, string>;
-        half: func(level: s16) -> result<s16, string>;
-        next-mode: func(mode: s32) -> result<s32, string>;
-        is-even: func(n: u32) -> result<bool, string>;
-        upper: func(c: char) -> result<char, string>;
-        wide: func(x: f64, small: s8, count: u16) -> result<f64, string>;
-        mask: func(bits: u16) -> result<u16, string>;
-        bump: func(start-value: s16) -> result<s16, string>;
-        motion-axis-stop: func() -> result<_, string>;
-        motion-axis-halt: func(why: string) -> result<_, string>;
-    }
+  export rk:plc/control@0.1.0;
+  export plc: interface {
+    scale: func(raw: s16, gain: f32) -> result<f32, string>;
+    divide: func(a: s64, b: s64) -> result<s64, string>;
+    greet: func(who: string, times: u8) -> result<string, string>;
+    pick: func(left: string, right: string) -> result<string, string>;
+    latin: func() -> result<string, string>;
+    half: func(level: s16) -> result<s16, string>;
+    next-mode: func(mode: s32) -> result<s32, string>;
+    is-even: func(n: u32) -> result<bool, string>;
+    upper: func(c: char) -> result<char, string>;
+    wide: func(x: f64, small: s8, count: u16) -> result<f64, string>;
+    mask: func(bits: u16) -> result<u16, string>;
+    bump: func(start-value: s16) -> result<s16, string>;
+    motion-axis-stop: func() -> result<_, string>;
+    motion-axis-halt: func(why: string) -> result<_, string>;
+  }
 }
 "
     );
@@ -1283,65 +1777,43 @@ fn a_function_with_outputs_returns_a_record(mut with_db: db::RootDatabase) {
     let component = build(&mut with_db, OUTPUTS).expect("the module wraps");
     assert_eq!(
         component.world,
-        "// The world of `plant`, written by rk at each build.
-package local:plant;
+        "package local:plant;
 
 world plc {
-    import acme:drive/axis@1.0.0;
-    import modbus: interface {
-        record read-register-outputs {
-            quality: s8,
-            value: s64,
-            read-register: bool,
-        }
-        read-register: func(address: u16) -> read-register-outputs;
+  import acme:drive/axis@1.0.0;
+  import modbus: interface {
+    record read-register-outputs {
+      quality: s8,
+      value: s64,
+      read-register: bool,
     }
-    export rk:plc/control@0.1.0;
-    export plc: interface {
-        record measure-outputs {
-            unit: string,
-            clamped: bool,
-            peak: s64,
-            mark: char,
-            measure: f32,
-        }
-        measure: func(raw: s16) -> result<measure-outputs, string>;
-        record twice-outputs {
-            doubled: u16,
-        }
-        twice: func(n: u8) -> result<twice-outputs, string>;
-        record label-outputs {
-            text: string,
-        }
-        label: func() -> result<label-outputs, string>;
-        record echo-outputs {
-            copy: string,
-        }
-        echo: func(text: string) -> result<echo-outputs, string>;
+    read-register: func(address: u16) -> read-register-outputs;
+  }
+  export rk:plc/control@0.1.0;
+  export plc: interface {
+    record measure-outputs {
+      unit: string,
+      clamped: bool,
+      peak: s64,
+      mark: char,
+      measure: f32,
     }
+    measure: func(raw: s16) -> result<measure-outputs, string>;
+    record twice-outputs {
+      doubled: u16,
+    }
+    twice: func(n: u8) -> result<twice-outputs, string>;
+    record label-outputs {
+      text: string,
+    }
+    label: func() -> result<label-outputs, string>;
+    record echo-outputs {
+      copy: string,
+    }
+    echo: func(text: string) -> result<echo-outputs, string>;
+  }
 }
 "
-    );
-    let files: Vec<(&str, &str)> = component
-        .wit
-        .iter()
-        .map(|(path, text)| (path.as_str(), text.as_ref()))
-        .collect();
-    assert_eq!(
-        files[1..],
-        [(
-            "deps/acme-drive/axis.wit",
-            "// What the module imports from `acme:drive/axis@1.0.0`, written by rk at each build.
-package acme:drive@1.0.0;
-
-interface axis {
-    record position-outputs {
-        counts: s32,
-    }
-    position: func() -> position-outputs;
-}
-"
-        )]
     );
 }
 
@@ -1970,13 +2442,13 @@ fn a_host_s_async_function_is_an_async_func(mut with_db: db::RootDatabase) {
     let component = build(&mut with_db, FETCHING).expect("the module wraps");
     assert!(
         component.world.contains(
-            "    import probe: interface {
-        record fetch-outputs {
-            value: u32,
-            ok: bool,
-        }
-        fetch: async func(a: s32, b: s32, c: s32, label: string) -> fetch-outputs;
-    }"
+            "  import probe: interface {
+    record fetch-outputs {
+      value: u32,
+      ok: bool,
+    }
+    fetch: async func(a: s32, b: s32, c: s32, label: string) -> fetch-outputs;
+  }"
         ),
         "{}",
         component.world
@@ -2038,7 +2510,7 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
         build(&mut with_db, block_of_a_func).err(),
         Some(
             "`NOW` imports `now` of `wasi:clocks/monotonic-clock@0.3.0` with {extern async}, \
-             and WASI's WIT declares it a `func`: import it with {extern} on a FUNCTION"
+             and its package's WIT declares it a `func`: import it with {extern} on a FUNCTION"
                 .to_string()
         )
     );
@@ -2059,7 +2531,7 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
         build(&mut db, function_of_an_async_func).err(),
         Some(
             "`WAIT_FOR` imports `wait-for` of `wasi:clocks/monotonic-clock@0.3.0` with \
-             {extern}, and WASI's WIT declares it an `async func`: import it with {extern \
+             {extern}, and its package's WIT declares it an `async func`: import it with {extern \
              async} on a FUNCTION_BLOCK"
                 .to_string()
         )
@@ -2096,13 +2568,13 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
      VAR_OUTPUT readable : UDINT; writable : UDINT; END_VAR
      END_FUNCTION",
     "`NEW_STREAM` imports `[stream-new-0]write-to-stream` of `wasi:cli/stdout@0.3.0`, and \
-     WASI's WIT declares no function `write-to-stream` there"
+     its package's WIT declares no function `write-to-stream` there"
 )]
 #[case::misspelled(
     "{extern 'wasi:clocks/monotonic-clock@0.3.0' 'nwo'}
      FUNCTION NOW : ULINT
      END_FUNCTION",
-    "`NOW` imports `nwo` of `wasi:clocks/monotonic-clock@0.3.0`, and WASI's WIT declares no \
+    "`NOW` imports `nwo` of `wasi:clocks/monotonic-clock@0.3.0`, and its package's WIT declares no \
      function `nwo` there"
 )]
 #[case::no_such_method(
@@ -2112,7 +2584,7 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
      VAR_OUTPUT stream : UDINT; finished : UDINT; END_VAR
      END_FUNCTION",
     "`READ_VIA_PIPE` imports `[method]descriptor.read-via-pipe` of \
-     `wasi:filesystem/types@0.3.0`, and WASI's WIT declares no function \
+     `wasi:filesystem/types@0.3.0`, and its package's WIT declares no function \
      `[method]descriptor.read-via-pipe` there"
 )]
 #[case::no_such_resource(
@@ -2121,7 +2593,7 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
      VAR_INPUT handle : UDINT; END_VAR
      END_FUNCTION",
     "`DROP_DIRECTORY` imports `[resource-drop]directory` of `wasi:filesystem/types@0.3.0`, \
-     and WASI's WIT declares no resource `directory` there"
+     and its package's WIT declares no resource `directory` there"
 )]
 #[case::async_method_on_a_function(
     "{extern 'wasi:filesystem/types@0.3.0' '[method]descriptor.open-at'}
@@ -2129,7 +2601,7 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
      VAR_INPUT dir : UDINT; END_VAR
      END_FUNCTION",
     "`OPEN_AT` imports `[method]descriptor.open-at` of `wasi:filesystem/types@0.3.0` with \
-     {extern}, and WASI's WIT declares it an `async func`: import it with {extern async} on \
+     {extern}, and its package's WIT declares it an `async func`: import it with {extern async} on \
      a FUNCTION_BLOCK"
 )]
 #[case::number_past_a_method_s_last(

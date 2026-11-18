@@ -1,0 +1,16 @@
+/// The WASI interfaces the standard library's blocks call: rk-bindgen
+/// writes their declarations into `generated/`, and a build types the
+/// imports of a component with this folder, as it does with any library's.
+/// `deps/` holds the files of WASI's packages that declare these interfaces,
+/// as WASI's own repository writes them, each package with its license;
+/// `package.wit` names the command line's package, which WASI names in the
+/// files that take the rest of WASI in.
+package rk:std;
+
+world std {
+    import wasi:cli/stdout@0.3.0;
+    import wasi:cli/stderr@0.3.0;
+    import wasi:clocks/monotonic-clock@0.3.0;
+    import wasi:clocks/system-clock@0.3.0;
+    import wasi:clocks/timezone@0.3.0;
+}

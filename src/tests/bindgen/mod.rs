@@ -8,9 +8,11 @@
 //! them must have the core type the canonical ABI gives the WIT function
 //! ([`abi_mismatches`]), and take at least the bytes the host writes where
 //! a result comes back in memory ([`short_results`]). `wasi` generates
-//! every interface of the WASI rk
-//! carries and builds them into a component, which checks each import
-//! against WASI's WIT; `runtime` runs generated declarations on wasmtime.
+//! every interface of WASI's packages, as WASI's repository writes them,
+//! and builds them into a component, which checks each import against
+//! WASI's WIT, and Std's from Std's own WIT folder;
+//! `runtime` runs generated declarations on wasmtime;
+//! `packages` generates for a package of any namespace, from a WIT folder.
 //! What a result read out of words holds is checked there too, against a
 //! host of the test's own ([`hosted`]): wasmtime lays out what the host
 //! returns, and the generated code reads it back; and what the generated
@@ -24,6 +26,7 @@ mod flags;
 mod lists;
 mod names;
 mod options_and_results;
+mod packages;
 mod records;
 mod resources;
 mod runtime;
@@ -38,7 +41,7 @@ use wit_parser::Resolve;
 use wit_parser::abi::{AbiVariant, WasmType};
 
 use crate::tests::cli::component_host::{Host, Plc};
-use crate::tests::utils::{lower_workspace, test_diagnostics};
+use crate::tests::utils::{lower_workspace, stdlib_wit, test_diagnostics, wasi_packages};
 
 /// What rk-bindgen writes for a world, with the WIT it read.
 pub(super) struct Bindings {
@@ -46,10 +49,24 @@ pub(super) struct Bindings {
     pub(super) files: Vec<rk_bindgen::File>,
 }
 
+/// The world in `wit`, a package of its own beside WASI's packages, as
+/// WASI's repository writes them, whose interfaces it may import.
+pub(super) fn resolved(wit: &str) -> Result<(Resolve, wit_parser::WorldId), String> {
+    rk_bindgen::resolve(wit, &wasi_packages())
+}
+
 /// The files rk-bindgen writes for the world in `wit`, a package of its own
-/// beside the WASI rk carries.
+/// beside WASI's packages.
 pub(super) fn generated(wit: &str) -> Bindings {
-    let (resolve, world) = rk_bindgen::resolve(wit).expect("the WIT resolves");
+    let (resolve, world) = resolved(wit).expect("the WIT resolves");
+    let files = rk_bindgen::generate(&resolve, world).expect("it generates");
+    Bindings { resolve, files }
+}
+
+/// The files rk-bindgen writes for Std's WIT folder: Std's declarations.
+pub(super) fn generated_std() -> Bindings {
+    let (resolve, world) =
+        rk_bindgen::resolve_folder(&stdlib_wit(), None).expect("Std's WIT resolves");
     let files = rk_bindgen::generate(&resolve, world).expect("it generates");
     Bindings { resolve, files }
 }
@@ -175,14 +192,27 @@ pub(super) fn built(
 }
 
 /// The component rk builds from `mir` and `core`, as `rk compile` wraps a
-/// module: the build checks each WASI import against WASI's WIT.
+/// module whose WIT the folders `wit` hold, beside those the database's
+/// libraries hold: the build checks each WASI import against it.
+pub(super) fn wrapped_with(
+    db: &RootDatabase,
+    mir: &mir::MirModule,
+    core: &[u8],
+    wit: &[std::path::PathBuf],
+) -> rk::component::Component {
+    let mut interfaces = rk::component::interfaces(db, mir).expect("typed interfaces");
+    interfaces.wit.extend(wit.iter().cloned());
+    rk::component::wrap(core, "plant", &interfaces).expect("the module wraps")
+}
+
+/// [`wrapped_with`] WASI's packages, as WASI's repository writes them: what
+/// a library whose declarations are generated from them ships.
 pub(super) fn wrapped(
     db: &RootDatabase,
     mir: &mir::MirModule,
     core: &[u8],
 ) -> rk::component::Component {
-    let interfaces = rk::component::interfaces(db, mir).expect("typed interfaces");
-    rk::component::wrap(core, "plant", &interfaces).expect("the module wraps")
+    wrapped_with(db, mir, core, &wasi_packages())
 }
 
 /// A component on a wasmtime host, built from the declarations generated
@@ -221,7 +251,7 @@ pub(super) fn hosted(
 /// The component of `core`, a module that imports from `wit`, a package
 /// of the test's own: its world imports each interface the module imports
 /// from and exports the control interface, as `rk compile` types a module
-/// whose WIT rk carries.
+/// whose WIT a library ships.
 fn component_of(wit: &str, core: &[u8]) -> Vec<u8> {
     let parse = |dir: &str, files: &[(&str, &str)]| {
         let mut map = wit_parser::SourceMap::new();
@@ -257,6 +287,15 @@ fn component_of(wit: &str, core: &[u8]) -> Vec<u8> {
     let mut deps: Vec<_> = debug_format::wit::packages()
         .map(|package| parse(package.dir, package.files))
         .collect();
+    // WASI's packages, each its folder's `.wit` files.
+    for folder in wasi_packages() {
+        let mut map = wit_parser::SourceMap::new();
+        map.push_dir(&folder).expect("a package's files");
+        deps.push(
+            map.parse()
+                .unwrap_or_else(|(_, e)| panic!("{}: {e}", folder.display())),
+        );
+    }
     deps.push(parse("example", &[("example.wit", wit)]));
     let package = resolve
         .push_groups(parse(".", &[("world.wit", &world)]), deps)

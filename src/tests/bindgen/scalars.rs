@@ -17,7 +17,7 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn every_number_and_bool_goes_in_and_comes_back(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface numbers {
             flag: func(x: bool) -> bool;
@@ -37,81 +37,81 @@ fn every_number_and_bool_goes_in_and_comes_back(mut with_db: RootDatabase) {
             import numbers;
         }
     "#), @r"
-    // wasi-example-numbers.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-numbers.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Numbers
-    			{extern 'wasi:example/numbers@0.3.0' 'flag'}
+    			{extern 'acme:example/numbers@0.3.0' 'flag'}
     			FUNCTION FLAG : BOOL
     			VAR_INPUT
     				x : BOOL;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/numbers@0.3.0' 'byte'}
+    			{extern 'acme:example/numbers@0.3.0' 'byte'}
     			FUNCTION BYTE_ : USINT
     			VAR_INPUT
     				x : USINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/numbers@0.3.0' 'word'}
+    			{extern 'acme:example/numbers@0.3.0' 'word'}
     			FUNCTION WORD_ : UINT
     			VAR_INPUT
     				x : UINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/numbers@0.3.0' 'dword'}
+    			{extern 'acme:example/numbers@0.3.0' 'dword'}
     			FUNCTION DWORD_ : UDINT
     			VAR_INPUT
     				x : UDINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/numbers@0.3.0' 'lword'}
+    			{extern 'acme:example/numbers@0.3.0' 'lword'}
     			FUNCTION LWORD_ : ULINT
     			VAR_INPUT
     				x : ULINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/numbers@0.3.0' 'small'}
+    			{extern 'acme:example/numbers@0.3.0' 'small'}
     			FUNCTION SMALL : SINT
     			VAR_INPUT
     				x : SINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/numbers@0.3.0' 'half'}
+    			{extern 'acme:example/numbers@0.3.0' 'half'}
     			FUNCTION HALF : INT
     			VAR_INPUT
     				x : INT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/numbers@0.3.0' 'whole'}
+    			{extern 'acme:example/numbers@0.3.0' 'whole'}
     			FUNCTION WHOLE : DINT
     			VAR_INPUT
     				x : DINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/numbers@0.3.0' 'long'}
+    			{extern 'acme:example/numbers@0.3.0' 'long'}
     			FUNCTION LONG : LINT
     			VAR_INPUT
     				x : LINT;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/numbers@0.3.0' 'single'}
+    			{extern 'acme:example/numbers@0.3.0' 'single'}
     			FUNCTION SINGLE_ : REAL
     			VAR_INPUT
     				x : REAL;
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/numbers@0.3.0' 'double'}
+    			{extern 'acme:example/numbers@0.3.0' 'double'}
     			FUNCTION DOUBLE : LREAL
     			VAR_INPUT
     				x : LREAL;
@@ -128,7 +128,7 @@ fn every_number_and_bool_goes_in_and_comes_back(mut with_db: RootDatabase) {
 #[rstest]
 fn parameters_keep_their_order(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface order {
             reset: func();
@@ -139,15 +139,15 @@ fn parameters_keep_their_order(mut with_db: RootDatabase) {
             import order;
         }
     "#), @r"
-    // wasi-example-order.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-order.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Order
-    			{extern 'wasi:example/order@0.3.0' 'reset'}
+    			{extern 'acme:example/order@0.3.0' 'reset'}
     			FUNCTION RESET
     			END_FUNCTION
 
-    			{extern 'wasi:example/order@0.3.0' 'mix'}
+    			{extern 'acme:example/order@0.3.0' 'mix'}
     			FUNCTION MIX : UDINT
     			VAR_INPUT
     				first : USINT;
@@ -168,7 +168,7 @@ fn parameters_keep_their_order(mut with_db: RootDatabase) {
 #[rstest]
 fn a_string_goes_in_and_comes_back(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface text {
             greet: func(who: string);
@@ -180,18 +180,18 @@ fn a_string_goes_in_and_comes_back(mut with_db: RootDatabase) {
             import text;
         }
     "#), @r"
-    // wasi-example-text.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-text.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Text
-    			{extern 'wasi:example/text@0.3.0' 'greet'}
+    			{extern 'acme:example/text@0.3.0' 'greet'}
     			FUNCTION GREET
     			VAR_INPUT
     				who : STRING[4096];
     			END_VAR
     			END_FUNCTION
 
-    			{extern 'wasi:example/text@0.3.0' 'pair'}
+    			{extern 'acme:example/text@0.3.0' 'pair'}
     			FUNCTION PAIR : BOOL
     			VAR_INPUT
     				first : STRING[4096];
@@ -203,7 +203,7 @@ fn a_string_goes_in_and_comes_back(mut with_db: RootDatabase) {
     			/* `name` as the host gives it: its result in words of 8 bytes, as the
     			   canonical ABI lays it out, which `NAME` reads, and its string in
     			   `value`, where the host writes it. */
-    			{extern 'wasi:example/text@0.3.0' 'name'}
+    			{extern 'acme:example/text@0.3.0' 'name'}
     			FUNCTION PRIVATE NAME_RAW
     			VAR_IN_OUT
     				value : STRING;
@@ -234,7 +234,7 @@ fn a_string_goes_in_and_comes_back(mut with_db: RootDatabase) {
 #[rstest]
 fn a_char_is_left_out(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
-        package wasi:example@0.3.0;
+        package acme:example@0.3.0;
 
         interface letters {
             letter: func() -> char;
@@ -246,11 +246,11 @@ fn a_char_is_left_out(mut with_db: RootDatabase) {
             import letters;
         }
     "#), @r"
-    // wasi-example-letters.st
-    NAMESPACE INTERNAL Wasi
+    // acme-example-letters.st
+    NAMESPACE INTERNAL Acme
     	NAMESPACE Example
     		NAMESPACE Letters
-    			{extern 'wasi:example/letters@0.3.0' 'count'}
+    			{extern 'acme:example/letters@0.3.0' 'count'}
     			FUNCTION COUNT : UDINT
     			END_FUNCTION
     		END_NAMESPACE

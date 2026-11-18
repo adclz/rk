@@ -2906,6 +2906,7 @@ dependencies = [
  "mir",
  "notify",
  "rayon",
+ "rk-bindgen",
  "serde",
  "serde_json",
  "sha2",
@@ -2943,7 +2944,6 @@ dependencies = [
 name = "rk-bindgen"
 version = "0.1.0"
 dependencies = [
- "debug_format",
  "wit-parser",
 ]
 

@@ -307,6 +307,38 @@ fn standard_input_copied_to_standard_output(mut with_db: RootDatabase) {
     assert_eq!(String::from_utf8(copied).unwrap(), text);
 }
 
+/// Bytes that are no text, zeros and invalid UTF-8 among them, copied from
+/// standard input to standard output through an array: each chunk read into
+/// it, then written from it by reference, the count saying how many.
+#[rstest]
+fn bytes_are_copied_through_an_array(mut with_db: RootDatabase) {
+    let bindings = generated(&world_of(&[
+        "wasi:cli/stdin@0.3.0",
+        "wasi:cli/stdout@0.3.0",
+    ]));
+    // ECHO, with an array where it has a STRING.
+    let mut program = ECHO.to_string();
+    for (text, array) in [
+        ("BYTES_STREAM_READ;", "BYTES_STREAM_READ_ARRAY;"),
+        ("BYTES_STREAM_WRITE;", "BYTES_STREAM_WRITE_ARRAY;"),
+        (
+            "write(stream := writable, data := chunk.data);",
+            "write(stream := writable, data := REF(chunk.data[0]), count := chunk.read);",
+        ),
+    ] {
+        assert_eq!(program.matches(text).count(), 1, "{text}");
+        program = program.replace(text, array);
+    }
+    // Every byte, three chunks' worth.
+    let bytes: Vec<u8> = (0..20_000u32).map(|at| (at * 7 % 256) as u8).collect();
+    let stdin = Pipe(Arc::new(Mutex::new(bytes.iter().copied().collect())));
+    let stdout = Pipe::default();
+    let mut plc = plc(&mut with_db, &bindings, &program, stdin, stdout.clone());
+    assert_eq!(scan_until(&mut plc, 1, 200), 1);
+    let copied: Vec<u8> = stdout.0.lock().unwrap().iter().copied().collect();
+    assert_eq!(copied, bytes);
+}
+
 /// Random numbers through the generated declarations: a `u64` returned,
 /// and a tuple's two outputs. 1 when they look random.
 #[rstest]

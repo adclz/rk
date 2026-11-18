@@ -65,8 +65,9 @@ pub struct ExportPragma {
 /// pointer to the call-entry snapshot), scalar `VAR_OUTPUT` become the
 /// results in declaration order, and the return type, when declared, is the
 /// LAST result. Nothing is restated, so nothing can disagree. An import from
-/// a module other than WASI's is typed in WIT from the declaration, which
-/// takes it down to scalar and STRING inputs and the return value.
+/// a plain module, `modbus`, is typed in WIT from the declaration, which
+/// takes it down to scalar and STRING inputs and the return value; one from
+/// an interface of a package keeps the types the package's WIT gives it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct ExternPragma {
     /// The WASM import module (e.g. "wasi:clocks/monotonic-clock@0.3.0").
@@ -83,18 +84,21 @@ pub struct ExternPragma {
 }
 
 impl ExternPragma {
-    /// Whether the import is one of WASI's, its module in the `wasi`
-    /// namespace. A WASI function keeps the types WASI's WIT gives it, which
-    /// a declaration matches through `REF_TO` where a record comes back; any
-    /// other module's are the declaration's own, in WIT's types.
-    pub fn is_wasi(&self) -> bool {
-        is_wasi_module(&self.module)
+    /// Whether the import's module is an interface of a package,
+    /// `acme:modbus/rtu@1.0.0`. Its function keeps the types the package's
+    /// WIT gives it, which a `wit/` folder ships and the build checks the
+    /// declaration against, and which a declaration matches through `REF_TO`
+    /// where a record comes back. A plain module's, `modbus`, are the
+    /// declaration's own, in WIT's types.
+    pub fn names_a_package(&self) -> bool {
+        names_a_package(&self.module)
     }
 }
 
-/// Whether an import's module is one of WASI's: in the `wasi` namespace.
-pub fn is_wasi_module(module: &str) -> bool {
-    module.starts_with("wasi:")
+/// Whether an import's module is an interface of a package: what WIT writes
+/// `namespace:package/interface`, with or without a version.
+pub fn names_a_package(module: &str) -> bool {
+    matches!(import_module(module), Ok(ImportModule::Interface { .. }))
 }
 
 /// What an `{extern}`'s module names, to the component model.

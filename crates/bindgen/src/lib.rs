@@ -22,13 +22,16 @@
 //! holds one is passed the same way: `<NAME>` packs its values into the
 //! words `<NAME>_RAW` takes ([`lower`]).
 //!
-//! Each interface is a namespace inside its package's, inside `Wasi`, the
-//! one INTERNAL namespace: `wasi:clocks/monotonic-clock` is
-//! `Wasi.Clocks.MonotonicClock`, which only the library that holds the
-//! code reaches. Every declaration is in the namespace of the interface it
-//! is imported from, the built-ins too, named after their type and what
-//! carries it: `Wasi.Cli.Stdout.BYTES_STREAM_NEW`. A function or a type ST
-//! cannot express yet is left out, and the file says why at its end.
+//! Each interface is a namespace inside its package's, inside the one its
+//! package's namespace names: `wasi:clocks/monotonic-clock` is
+//! `Wasi.Clocks.MonotonicClock`, and `acme:drive/axis` is
+//! `Acme.Drive.Axis`. That root is INTERNAL, so that only the library that
+//! holds the code reaches it, unless the declarations are written for
+//! every program ([`Reach`]). Every declaration is in the namespace of the
+//! interface it is imported from, the built-ins too, named after their
+//! type and what carries it: `Wasi.Cli.Stdout.BYTES_STREAM_NEW`. A function
+//! or a type ST cannot express yet is left out, and the file says why at
+//! its end.
 //!
 //! ST compares names without case, and two WIT names may be written alike.
 //! The names WIT gives come first: of two that ST takes for one, the later
@@ -48,6 +51,7 @@ pub mod types;
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::path::{Path, PathBuf};
 
 use wit_parser::abi::AbiVariant;
 use wit_parser::{
@@ -57,18 +61,6 @@ use wit_parser::{
 
 use names::Scope;
 use shapes::{BYTES_AT_ONCE, HANDLES_AT_ONCE, STRING_LIMIT, Shape, Var};
-
-/// The interfaces `Std` reaches WASI through, as a world for [`resolve`].
-pub const STD_WORLD: &str = "package rk:std-wasi;
-
-world std {
-    import wasi:cli/stdout@0.3.0;
-    import wasi:cli/stderr@0.3.0;
-    import wasi:clocks/monotonic-clock@0.3.0;
-    import wasi:clocks/system-clock@0.3.0;
-    import wasi:clocks/timezone@0.3.0;
-}
-";
 
 /// The canonical ABI passes a function's parameters as values up to this
 /// many, and in memory past it, which an import declared in ST does not.
@@ -81,7 +73,8 @@ pub(crate) const MAX_FLAT_ASYNC_PARAMS: usize = 4;
 /// A file of generated code.
 #[derive(Debug)]
 pub struct File {
-    /// Its name, under `stdlib/generated/`: `wasi-clocks-monotonic-clock.st`.
+    /// Its name, its package's then its interface's:
+    /// `wasi-clocks-monotonic-clock.st`.
     pub name: String,
     pub text: String,
     /// What was left out of it.
@@ -97,17 +90,71 @@ pub struct Skipped {
     pub reason: String,
 }
 
+/// How every file rk-bindgen writes starts: the comment that says what it
+/// is generated from ([`header`]).
+const GENERATED: &str = "/* Generated from the WIT of ";
+
+/// Whether `text` is a file rk-bindgen wrote: it starts as every one does.
+pub fn is_generated(text: &str) -> bool {
+    text.starts_with(GENERATED)
+}
+
+/// The files [`write`] removed from a folder: the `.st` files rk-bindgen
+/// wrote there before that it no longer generates, by name.
+pub type Removed = Vec<String>;
+
+/// Writes `files` into `folder`, making it when it is missing, and removes
+/// the `.st` files it holds that rk-bindgen wrote before and no longer
+/// generates. A file it did not write, one that does not start as
+/// [`is_generated`] says, is left as it is, whatever its name: the folder
+/// may be a library's own.
+pub fn write(folder: &Path, files: &[File]) -> Result<Removed, String> {
+    std::fs::create_dir_all(folder).map_err(|e| format!("making `{}`: {e}", folder.display()))?;
+    let entries =
+        std::fs::read_dir(folder).map_err(|e| format!("reading `{}`: {e}", folder.display()))?;
+    let mut removed = Removed::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let stale = path.extension().is_some_and(|extension| extension == "st")
+            && !files.iter().any(|file| file.name == name)
+            && std::fs::read_to_string(&path).is_ok_and(|text| is_generated(&text));
+        if stale {
+            std::fs::remove_file(&path)
+                .map_err(|e| format!("removing `{}`: {e}", path.display()))?;
+            removed.push(name.to_string());
+        }
+    }
+    removed.sort();
+    for file in files {
+        let path = folder.join(&file.name);
+        std::fs::write(&path, &file.text)
+            .map_err(|e| format!("writing `{}`: {e}", path.display()))?;
+    }
+    Ok(removed)
+}
+
 /// The world in `world`, a WIT package with one world, resolved against the
-/// WASI packages rk carries, whose interfaces it may import.
-pub fn resolve(world: &str) -> Result<(Resolve, WorldId), String> {
+/// packages written in `packages`, a folder each, whose interfaces the world
+/// may import: the folders of a WIT folder's `deps/`, or those a package's
+/// repository keeps its files in.
+pub fn resolve(world: &str, packages: &[PathBuf]) -> Result<(Resolve, WorldId), String> {
     let mut resolve = Resolve {
         // WASI's time zone is `@unstable(feature = clocks-timezone)`.
         all_features: true,
         ..Default::default()
     };
-    let deps = debug_format::wit::WASI
+    let deps = packages
         .iter()
-        .map(|package| parse(package.dir, package.files))
+        .map(|folder| {
+            let mut map = wit_parser::SourceMap::new();
+            map.push_dir(folder)
+                .map_err(|e| format!("reading the WIT in `{}`: {e:#}", folder.display()))?;
+            map.parse()
+                .map_err(|(_, e)| format!("parsing the WIT in `{}`: {e}", folder.display()))
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let main = parse(".", &[("world.wit", world)])?;
     let package = resolve
@@ -117,6 +164,139 @@ pub fn resolve(world: &str) -> Result<(Resolve, WorldId), String> {
         .select_world(&[package], None)
         .map_err(|e| format!("selecting the world: {e:#}"))?;
     Ok((resolve, world))
+}
+
+/// The world rk-bindgen generates for the WIT folder `dir`, laid out as
+/// WIT's tools lay one out: the folder's own package, its files at the top,
+/// and in `deps/` a package for each it uses. `world` names a world of the
+/// folder's own package, and without it the package's one world is taken.
+/// A package that declares no world needs none written for it: the world
+/// imports every interface the package declares, or, when it declares none
+/// or the folder has no package of its own, every interface of each package
+/// in `deps/`. A host's package dropped into `wit/` is generated as it is.
+pub fn resolve_folder(dir: &Path, world: Option<&str>) -> Result<(Resolve, WorldId), String> {
+    let mut resolve = Resolve {
+        // A feature a package has not released yet is generated too, as
+        // WASI's time zone is.
+        all_features: true,
+        ..Default::default()
+    };
+    let own = own_package(dir)?;
+    if world.is_some() || own.as_ref().is_some_and(|own| own.main.worlds.len() > 0) {
+        let (package, _) = resolve
+            .push_dir(dir)
+            .map_err(|e| format!("reading the WIT in `{}`: {e:#}", dir.display()))?;
+        let world = resolve
+            .select_world(&[package], world)
+            .map_err(|e| format!("selecting the world: {e:#}"))?;
+        return Ok((resolve, world));
+    }
+    let deps = deps_packages(dir)?;
+    let mut imports = own.iter().flat_map(interfaces_of).collect::<Vec<_>>();
+    if imports.is_empty() {
+        imports = deps.iter().flat_map(interfaces_of).collect();
+    }
+    if imports.is_empty() {
+        return Err(format!(
+            "`{}` holds no interface to generate: no package with one, at its top or in its deps/",
+            dir.display()
+        ));
+    }
+    let world: String = imports
+        .iter()
+        .map(|interface| format!("  import {interface};\n"))
+        .collect();
+    let main = parse(
+        ".",
+        &[(
+            "world.wit",
+            &format!("package local:bindgen;\n\nworld bindgen {{\n{world}}}\n"),
+        )],
+    )?;
+    let package = resolve
+        .push_groups(main, own.into_iter().chain(deps).collect())
+        .map_err(|e| format!("reading the WIT in `{}`: {e:#}", dir.display()))?;
+    let world = resolve
+        .select_world(&[package], Some("bindgen"))
+        .map_err(|e| format!("selecting the world: {e:#}"))?;
+    Ok((resolve, world))
+}
+
+/// The package written in the `.wit` files at the top of `dir`, or `None`
+/// when there are none: the folder ships only what its `deps/` holds.
+fn own_package(dir: &Path) -> Result<Option<wit_parser::UnresolvedPackageGroup>, String> {
+    let has_wit = std::fs::read_dir(dir)
+        .map_err(|e| format!("reading the WIT in `{}`: {e}", dir.display()))?
+        .filter_map(|entry| Some(entry.ok()?.path()))
+        .any(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "wit"));
+    if !has_wit {
+        return Ok(None);
+    }
+    let mut map = wit_parser::SourceMap::new();
+    map.push_dir(dir)
+        .map_err(|e| format!("reading the WIT in `{}`: {e:#}", dir.display()))?;
+    map.parse()
+        .map(Some)
+        .map_err(|(_, e)| format!("parsing the WIT in `{}`: {e}", dir.display()))
+}
+
+/// The packages in the `deps/` of `dir`, as WIT's tools read them: a folder
+/// or a `.wit` file each, in the order of their names.
+fn deps_packages(dir: &Path) -> Result<Vec<wit_parser::UnresolvedPackageGroup>, String> {
+    let deps = dir.join("deps");
+    if !deps.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(&deps)
+        .map_err(|e| format!("reading `{}`: {e}", deps.display()))?
+        .filter_map(|entry| Some(entry.ok()?.path()))
+        .collect();
+    entries.sort();
+    let mut packages = Vec::new();
+    for path in entries {
+        let mut map = wit_parser::SourceMap::new();
+        let read = match path.is_dir() {
+            true => map.push_dir(&path),
+            false if path.extension().is_some_and(|ext| ext == "wit") => map.push_file(&path),
+            false => continue,
+        };
+        read.map_err(|e| format!("reading the WIT in `{}`: {e:#}", path.display()))?;
+        packages.push(
+            map.parse()
+                .map_err(|(_, e)| format!("parsing the WIT in `{}`: {e}", path.display()))?,
+        );
+    }
+    Ok(packages)
+}
+
+/// Each interface the package `group` declares, as a world imports it:
+/// every name after a `%`, which WIT takes before any name, so that one
+/// spelled like a keyword needs no list of them.
+fn interfaces_of(group: &wit_parser::UnresolvedPackageGroup) -> Vec<String> {
+    let name = &group.main.name;
+    let version = name
+        .version
+        .as_ref()
+        .map_or(String::new(), |version| format!("@{version}"));
+    group
+        .main
+        .interfaces
+        .iter()
+        // An interface the package only uses from another has no name.
+        .filter_map(|(_, interface)| interface.name.as_ref())
+        .map(|interface| format!("%{}:%{}/%{interface}{version}", name.namespace, name.name))
+        .collect()
+}
+
+/// Which programs reach the declarations rk-bindgen writes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Reach {
+    /// Only the library that holds them: their root namespace is INTERNAL,
+    /// and the library's own blocks wrap them, as Std's wrap WASI's.
+    #[default]
+    Library,
+    /// Every program that reads the library.
+    Everyone,
 }
 
 /// A package written in `files`, parsed.
@@ -131,8 +311,17 @@ fn parse(dir: &str, files: &[(&str, &str)]) -> Result<wit_parser::UnresolvedPack
 
 /// The ST declarations of every interface `world` imports, in the order it
 /// imports them, then the built-ins of the streams and the futures their
-/// functions take or give.
+/// functions take or give, which only the library that holds them reaches.
 pub fn generate(resolve: &Resolve, world: WorldId) -> Result<Vec<File>, String> {
+    generate_reaching(resolve, world, Reach::Library)
+}
+
+/// [`generate`], the declarations reaching what `reach` says.
+pub fn generate_reaching(
+    resolve: &Resolve,
+    world: WorldId,
+    reach: Reach,
+) -> Result<Vec<File>, String> {
     let mut sizes = SizeAlign::default();
     sizes
         .fill(resolve)
@@ -140,6 +329,7 @@ pub fn generate(resolve: &Resolve, world: WorldId) -> Result<Vec<File>, String> 
     let mut generator = Generator {
         resolve,
         sizes,
+        reach,
         files: Vec::new(),
         namespaces: HashMap::new(),
         named: HashMap::new(),
@@ -256,6 +446,7 @@ struct Generator<'a> {
     resolve: &'a Resolve,
     /// Where the canonical ABI puts each type's values.
     sizes: SizeAlign,
+    reach: Reach,
     files: Vec<File>,
     /// The interface each namespace written so far is, by the namespace
     /// in capitals, and the one each file is, by its name in lowercase.
@@ -388,8 +579,11 @@ impl Generator<'_> {
             .ok_or("an interface outside a package cannot be imported")?;
         let interface_name = interface.name.as_deref().unwrap_or_default();
         let here = Some(TypeOwner::Interface(id));
+        // The root is the package's namespace, which a type another
+        // interface declares is named from too ([`shapes::qualified`]).
+        let root = names::namespace(&package.namespace);
         let namespace = format!(
-            "Wasi.{}.{}",
+            "{root}.{}.{}",
             names::namespace(&package.name),
             names::namespace(interface_name)
         );
@@ -703,7 +897,10 @@ impl Generator<'_> {
         let mut text = header(&[package.to_string()]);
         if !out.text.is_empty() {
             let mut wrapper = Out::default();
-            wrapper.line("NAMESPACE INTERNAL Wasi");
+            wrapper.line(&match self.reach {
+                Reach::Library => format!("NAMESPACE INTERNAL {root}"),
+                Reach::Everyone => format!("NAMESPACE {root}"),
+            });
             wrapper.depth += 1;
             wrapper.line(&format!("NAMESPACE {}", names::namespace(&package.name)));
             wrapper.depth += 1;
@@ -1179,6 +1376,7 @@ impl Generator<'_> {
             if here.sets.contains(&key) {
                 continue;
             }
+            let fed = taken_from_the_program(resolve, here.owner, carrier, &key.1);
             here.sets.push(key);
             // A set says what it is: `BYTES_STREAM`, `RESULT_FUTURE`.
             let name = format!(
@@ -1203,6 +1401,7 @@ impl Generator<'_> {
                 payload,
                 &anchor,
                 here.owner,
+                fed,
             );
             let what = format!("a built-in of `{}`", wit_text(resolve, payload));
             for pou in written {
@@ -1354,7 +1553,7 @@ fn wrap(text: &str, width: usize, hang: &str) -> String {
     lines.join("\n")
 }
 
-/// The comment each generated file starts with.
+/// The comment each generated file starts with, as [`GENERATED`] says.
 fn header(packages: &[String]) -> String {
     let mut out = Out::default();
     out.prose(&format!(
@@ -1502,6 +1701,39 @@ fn wit_name(ty: Type) -> &'static str {
     }
 }
 
+/// Whether a function of the interface `owner` takes a stream or a future,
+/// as `carrier` says, of the payload `key` names from the program: one of
+/// its parameters holds one, which a write of the program's would feed.
+fn taken_from_the_program(
+    resolve: &Resolve,
+    owner: Option<TypeOwner>,
+    carrier: Carrier,
+    key: &str,
+) -> bool {
+    let Some(TypeOwner::Interface(interface)) = owner else {
+        return false;
+    };
+    resolve.interfaces[interface]
+        .functions
+        .values()
+        .any(|function| {
+            let mut params = function.clone();
+            params.result = None;
+            params
+                .find_futures_and_streams(resolve)
+                .into_iter()
+                .any(|ty| match &resolve.types[ty].kind {
+                    TypeDefKind::Stream(payload) => {
+                        carrier == Carrier::Stream && type_key(resolve, *payload) == key
+                    }
+                    TypeDefKind::Future(payload) => {
+                        carrier == Carrier::Future && type_key(resolve, *payload) == key
+                    }
+                    _ => false,
+                })
+        })
+}
+
 /// The name of the built-ins of a stream or a future of `payload`: a
 /// stream of bytes is `BYTES`, a named type is its own name, a result is
 /// `RESULT`, and its ok type after it, `RESULT_U64`.
@@ -1564,6 +1796,8 @@ fn capitals(name: &str) -> String {
 /// `import` says with the built-in's name in place of its `{}`, written to
 /// `out`, what is left out of them to `skipped`; the types they name, from
 /// `owner`. `converts` is set when a future's value is read out of words.
+/// `fed` says whether a function of the interface takes one from the
+/// program, without which a write would have no reader.
 /// The names of the POUs written: `name` and the built-in's own, with a
 /// `_` after it where `taken` holds that already.
 #[allow(clippy::too_many_arguments)]
@@ -1579,6 +1813,7 @@ fn built_in_set(
     payload: Option<Type>,
     import: &str,
     owner: Option<TypeOwner>,
+    fed: bool,
 ) -> Vec<String> {
     let mut written = Vec::new();
     let pou = |built_in: &str| spare(taken, format!("{name}_{built_in}"));
@@ -1677,6 +1912,31 @@ fn built_in_set(
             out.vars("VAR_OUTPUT", &[done(), handle("written"), closed()]);
             out.line("END_FUNCTION_BLOCK");
             out.line("");
+            // Bytes that are no text, from where they are: the address of
+            // the first, as the canonical ABI passes a buffer, and how many.
+            out.prose(
+                "Writes the `count` bytes from the one `data` points at, as many as the reader takes: `written` of them, after `DONE`. The host reads them where they are while the write runs, so they stay there, unchanged, until `DONE`. `closed` is TRUE once the reader has let go.",
+            );
+            out.line(&format!("{{extern async {}}}", pragma("write")));
+            let write = pou("WRITE_ARRAY");
+            out.line(&format!("FUNCTION_BLOCK {write}"));
+            written.push(write);
+            out.vars(
+                "VAR_INPUT",
+                &[
+                    handle(end),
+                    Var {
+                        name: "data".to_string(),
+                        ty: "REF_TO BYTE".to_string(),
+                        flat: 1,
+                        start: None,
+                    },
+                    handle("count"),
+                ],
+            );
+            out.vars("VAR_OUTPUT", &[done(), handle("written"), closed()]);
+            out.line("END_FUNCTION_BLOCK");
+            out.line("");
         }
         // A resource's handles, read into an array of its type, a UDINT:
         // what a stream of them is for, a listener's connections. Nothing a
@@ -1713,7 +1973,12 @@ fn built_in_set(
             out.line("");
             skipped.push(Skipped {
                 item: format!("`{name}_WRITE`"),
-                reason: "a stream's write moves bytes only".to_string(),
+                reason: match fed {
+                    true => "a stream's write moves bytes only".to_string(),
+                    false => format!(
+                        "no function of the interface takes a stream of {of} from the program"
+                    ),
+                },
             });
         }
         Carrier::Stream => skipped.push(Skipped {
@@ -1811,7 +2076,15 @@ fn built_in_set(
             }
             skipped.push(Skipped {
                 item: format!("`{name}_WRITE`"),
-                reason: "a future's write is not imported yet".to_string(),
+                reason: match (fed, payload) {
+                    (true, _) => "a future's write is not imported yet".to_string(),
+                    (false, Some(_)) => format!(
+                        "no function of the interface takes a future of {of} from the program"
+                    ),
+                    (false, None) => {
+                        "no function of the interface takes a future from the program".to_string()
+                    }
+                },
             });
         }
     }

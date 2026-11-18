@@ -60,8 +60,7 @@ pub enum Command {
     /// Compile the workspace to WebAssembly
     #[command(display_order = 2)]
     Compile {
-        /// Output file path (default: <workspace>/rk_build/<profile>/<project>.wasm),
-        /// with the component's WIT written in `wit/` beside it
+        /// Output file path (default: <workspace>/rk_build/<profile>/<project>.wasm)
         #[arg(short, long)]
         output: Option<PathBuf>,
 
@@ -96,6 +95,34 @@ pub enum Command {
     Explain {
         /// The code to explain, as diagnostics print it: E0301, L0002, ...
         code: String,
+    },
+    /// Write the ST declarations of a host's WIT interfaces
+    ///
+    /// By default every interface of the package in the workspace's `wit/`
+    /// folder, or of each package in its `deps/` when there is none at its
+    /// top, into its `generated/` folder, one file per interface. A `.st`
+    /// file this command wrote there before and no longer writes is removed;
+    /// any other is left as it is.
+    #[command(display_order = 8)]
+    Bindgen {
+        /// The WIT folder: a host's package at its top, and in `deps/` the
+        /// packages it uses (default: <workspace>/wit)
+        #[arg(long, value_name = "FOLDER")]
+        wit: Option<PathBuf>,
+
+        /// Where the declarations go (default: <workspace>/generated)
+        #[arg(short, long, value_name = "FOLDER")]
+        output: Option<PathBuf>,
+
+        /// The world whose imports are written, when the folder's package
+        /// declares several
+        #[arg(long)]
+        world: Option<String>,
+
+        /// Declarations every program reaches; by default they are
+        /// INTERNAL, reached by the library that holds them only
+        #[arg(long)]
+        public: bool,
     },
     /// Fetch the libraries the workspace depends on
     #[command(display_order = 7)]
