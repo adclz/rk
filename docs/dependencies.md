@@ -152,7 +152,8 @@ See [VAR_CONFIG](var-config.md).
 ## The host's interfaces
 
 A library calls the functions a host provides, WASI's or a runtime's own, through the interfaces of their packages.
-It ships the WIT of those packages in a `wit/` folder at its root, laid out as WIT's tools lay one out: a world of its own that imports the interfaces it calls, and in `deps/` a folder for each package, as its authors wrote it.
+It ships the WIT of those packages in a `wit/` folder at its root, as the host ships them: the host's package, its files at the top of the folder, and in `deps/` a folder for each package it uses.
+No world is written for it.
 
 ```schema
 drives/
@@ -160,24 +161,18 @@ drives/
 ├─ Axis.st                          the library's own blocks
 ├─ generated/                       what rk bindgen writes from wit/
 └─ wit/
-   ├─ world.wit                     the interfaces the library calls
-   └─ deps/
-      └─ acme-drive/                the host's package, as its authors wrote it
+   ├─ axis.wit                      the host's package, as the host ships it
+   └─ deps/                         the packages it uses, if any
 ```
 
-```wit
-package drives:host;
-
-world host {
-  import acme:drive/axis@1.0.0;
-}
-```
-
-[`rk bindgen`](../skills/cli-bindgen/SKILL.md), run in the library's folder, writes the ST declarations of those interfaces into `generated/`, one file per interface:
+[`rk bindgen`](../skills/cli-bindgen/SKILL.md), run in the library's folder, writes the ST declarations of every interface of the host's package into `generated/`, one file per interface, with those the package takes types from:
 
 ```sh
 rk bindgen
 ```
+
+A library that calls the packages of several hosts keeps them all in `deps/`, with no file at the top of `wit/`, and every interface of each package there is written.
+When the host's package declares a world, what that world imports is written instead, and `--world` names one of several.
 
 The declarations are `INTERNAL`: only the library's own blocks call them, as the standard library's blocks call WASI's.
 With `--public` they are written for every program.

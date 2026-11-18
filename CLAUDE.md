@@ -116,9 +116,11 @@ cd site && npm run pages
 # longer generates is removed (`rk_bindgen::write`: it starts with the
 # generated header, `is_generated`); any other file is left alone.
 cargo run -p rk-bindgen
-# The same for the world of any WIT folder, its packages in deps/; the
-# output folder is required. --world picks one of several, --public drops
-# the root's INTERNAL.
+# The same for any WIT folder, its packages in deps/; the output folder is
+# required. A folder needs no world (`rk_bindgen::resolve_folder`): the
+# imports of the world its own package declares, --world picking one of
+# several, or else every interface of that package, or, with none at its
+# top, of each package in deps/. --public drops the root's INTERNAL.
 cargo run -p rk-bindgen -- --wit <dir> [--world <name>] [--public] <folder>
 # What a library author runs: the same generator as an rk subcommand,
 # reading <workspace>/wit/ into <workspace>/generated/ by default
@@ -206,7 +208,7 @@ cli (binary `rk`) — check, compile, test, fmt, fetch, explain, env, bindgen
 | `server`                  | `crates/server`         | LSP server wiring: connects `auto-lsp` framework to IEC-specific handlers.                                              |
 | `formatter`               | `crates/formatter`      | Code formatter using Topiary (tree-sitter-based, declarative query rules).                                              |
 | `memory_usage`            | `crates/memory_usage`   | Utility for heap memory measurement.                                                                                    |
-| `cli`                     | `crates/cli`            | The `rk` binary: check, compile, test (on an in-process wasmtime host), fmt, fetch, explain, env, bindgen (rk-bindgen's declarations of a library's `wit/` world). |
+| `cli`                     | `crates/cli`            | The `rk` binary: check, compile, test (on an in-process wasmtime host), fmt, fetch, explain, env, bindgen (rk-bindgen's declarations of the host's interfaces in a library's `wit/`). |
 | `fetch`                   | `crates/fetch`          | Fetches a library: an archive or a commit of a git repository (its own client, no git needed), unpacked, hashed and kept in the cache; writes its entry in `config.toml`. Its tests are in `src/tests/dependencies/`. |
 | `mir`                     | `crates/mir`            | Mid-level IR between HIR and WASM codegen: layouts, lowering, the task schedule and retain map.                          |
 | `wasm_codegen`            | `crates/wasm_codegen`   | Emits the core WASM module from MIR, with the builtin bundle and the debug/test custom sections.                        |

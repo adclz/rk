@@ -11,9 +11,10 @@ description: Write the ST declarations of a host's WIT interfaces with `rk bindg
 
 ## Summary
 
-Writes the ST declarations of the interfaces a WIT world imports, one `.st` file per interface, so that ST code calls them as FUNCTIONs and FUNCTION_BLOCKs.
+Writes the ST declarations of a host's WIT interfaces, one `.st` file per interface, so that ST code calls them as FUNCTIONs and FUNCTION_BLOCKs.
 
-A library that calls a host's functions keeps the WIT of their packages in a `wit/` folder at its root: a world of its own, which imports the interfaces it calls, and in `deps/` a folder for each package, as its authors wrote it.
+A library that calls a host's functions keeps the WIT of the host's package in a `wit/` folder at its root, as the host ships it: the package's files at the top of the folder, and in `deps/` a folder for each package it uses.
+No world is written for it.
 
 ```
 drives/
@@ -21,20 +22,14 @@ drives/
 ├─ Axis.st              the library's own blocks
 ├─ generated/           what rk bindgen writes
 └─ wit/
-   ├─ world.wit         the interfaces the library calls
-   └─ deps/
-      └─ acme-drive/    the host's package
+   ├─ axis.wit          the host's package, as the host ships it
+   └─ deps/             the packages it uses, if any
 ```
 
-```wit
-package drives:host;
+Run in the library's folder, `rk bindgen` reads `wit/` and writes `generated/`: every interface of the host's package, and those it takes types from.
+A library that calls the packages of several hosts keeps them all in `deps/`, with no file at the top of `wit/`, and every interface of each package there is written.
+When the host's package declares a world, what that world imports is written instead, and `--world` names one of several.
 
-world host {
-  import acme:drive/axis@1.0.0;
-}
-```
-
-Run in the library's folder, `rk bindgen` reads `wit/` and writes `generated/`.
 The declarations are under the package's namespace, `Acme.Drive.Axis` for `acme:drive/axis`, and `INTERNAL`: only the library's own blocks call them, the way the standard library's blocks call WASI.
 
 The build reads the same `wit/` folder, and types each import of a package's interface with it, so the folder ships with the library.
@@ -46,7 +41,7 @@ An interface that no `wit/` ships stops the build.
 
 `-o, --output <FOLDER>` Where the declarations go, `generated/` of the workspace by default.
 
-`--world <WORLD>` The world, when the folder's package has several.
+`--world <WORLD>` The world whose imports are written, when the folder's package declares several.
 
 `--public` Declarations every program reaches, where by default only the library that holds them does.
 
