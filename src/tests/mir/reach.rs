@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! What a build keeps of a module (`MirModule::keep_reached`): the
-//! functions its roots reach, the functions lowering marks for export, and
-//! the imports those call, numbered again from zero, imports first.
+//! functions lowering marks for export, which are its roots, what those
+//! reach, and the imports they call, numbered again from zero, imports
+//! first.
 
 use std::collections::HashMap;
 

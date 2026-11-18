@@ -11,9 +11,12 @@
 //! build leaves them to Binaryen). A call names its callee, since lowering
 //! has resolved every dispatch: a method is copied for each POU that owns
 //! it, and an interface, only ever a parameter, is specialized at each call
-//! for the implementer bound to it. So what the roots reach is a walk over
-//! the calls, and a debug build imports what its code calls, as a release
-//! build does. A dispatch
+//! for the implementer bound to it. The checker keeps it so: an interface
+//! anywhere but a parameter is E1121, a VAR's or a block's input included,
+//! and a reference to a base takes no reference to a block derived from it
+//! (E0301), so no value changes implementer between calls. So what the
+//! roots reach is a walk over the calls, and a debug build imports what its
+//! code calls, as a release build does. A dispatch
 //! at run time, should one come, would reach every function its slot may
 //! hold, the overrides or the implementers, as HIR's call graph counts
 //! them: its call would list them for [`crate::stmt::callees`].
