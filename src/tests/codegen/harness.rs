@@ -121,11 +121,15 @@ fn compile(
     let file = add_source(db, source);
     let sem_idx = semantic_index(db, file);
     check_diagnostics(db, file, expectation);
-    let mir_module =
+    let mut mir_module =
         mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
     let wasm = match exports {
         Exports::Everything => wasm_codegen::generate_wasm(db, &export_everything(&mir_module)),
-        Exports::AsBuilt => wasm_codegen::generate_wasm(db, &mir_module),
+        // `rk compile` keeps what the exports reach.
+        Exports::AsBuilt => {
+            mir_module.keep_reached();
+            wasm_codegen::generate_wasm(db, &mir_module)
+        }
     }
     .finish();
     (mir_module, wasm)
@@ -973,6 +977,7 @@ pub fn compile_tests_with_libraries(
 /// by WASI's packages, as WASI's repository writes them, which a workspace
 /// that does so ships in its `wit/`.
 fn test_build(db: &RootDatabase, mut mir: mir::MirModule) -> TestBuild {
+    mir.keep_reached();
     mir::raise_hook::add(db, &mut mir);
     let core = wasm_codegen::generate_wasm(db, &mir).finish();
     let mut interfaces = rk::component::interfaces(db, &mir).expect("typed interfaces");
