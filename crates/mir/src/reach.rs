@@ -1,17 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! What a module keeps: the functions its exports reach, and the imports
+//! What a module keeps: the functions its roots reach, and the imports
 //! those call.
 //!
-//! The roots are the module's exports, the ones Binaryen keeps in a release
-//! build: `__init`, the PROGRAM bodies and their scans, the bodies of the
-//! function blocks a task runs, the `{export}` FUNCTIONs and the tests. A
-//! call names its callee, since lowering has resolved every dispatch: a
-//! method is copied for each POU that owns it, and an interface, only ever
-//! a parameter, is specialized at each call for the implementer bound to
-//! it. So what the exports reach is a walk over the calls, and a debug
-//! build imports what its code calls, as a release build does. A dispatch
+//! The roots are the functions lowering marks for export: `__init`, the
+//! PROGRAM bodies and their scans, the bodies of the function blocks a task
+//! runs, the `{export}` FUNCTIONs and the tests, which are roots in both
+//! profiles though codegen exports them in a debug build only (a release
+//! build leaves them to Binaryen). A call names its callee, since lowering
+//! has resolved every dispatch: a method is copied for each POU that owns
+//! it, and an interface, only ever a parameter, is specialized at each call
+//! for the implementer bound to it. So what the roots reach is a walk over
+//! the calls, and a debug build imports what its code calls, as a release
+//! build does. A dispatch
 //! at run time, should one come, would reach every function its slot may
 //! hold, the overrides or the implementers, as HIR's call graph counts
 //! them: its call would list them for [`crate::stmt::callees`].
@@ -23,7 +25,7 @@ use crate::MirModule;
 use crate::function::MirLinkage;
 
 impl MirModule {
-    /// Keep the functions the exports reach and the imports those call;
+    /// Keep the functions the roots reach and the imports those call;
     /// every other function and import is dropped, and what is kept is
     /// numbered again from zero, imports first, so that a function added
     /// after, numbered by the count of both, takes a number of its own. The
@@ -63,7 +65,7 @@ impl MirModule {
             .collect();
     }
 
-    /// The names of the functions and imports the exports reach.
+    /// The names of the functions and imports the roots reach.
     fn reached(&self) -> FxHashSet<Ident> {
         let bodies: FxHashMap<Ident, usize> = self
             .functions
