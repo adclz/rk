@@ -1,16 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! A built module wrapped into a component, and the WIT that types it.
+//! A built module wrapped into a component, typed by a world generated at
+//! each build.
 //!
-//! The world is generated from the module at each build: it imports the
-//! interfaces of packages the module calls, as the WIT folders of the
-//! libraries and of the workspace declare them (the standard library's
-//! holds the WASI interfaces its blocks call), the interfaces of plain
-//! modules, typed from the `{extern}` FUNCTIONs that import them, and
-//! exports the control interface every module has (`rk:plc/control`) and
-//! the workspace's `{export}` FUNCTIONs, in an interface named after the
-//! project.
+//! The world imports the interfaces of packages the module calls, as the
+//! WIT folders of the libraries and of the workspace declare them (the
+//! standard library's holds the WASI interfaces its blocks call), the
+//! interfaces of plain modules, typed from the `{extern}` FUNCTIONs that
+//! import them, and exports the control interface every module has
+//! (`rk:plc/control`) and the workspace's `{export}` FUNCTIONs, in an
+//! interface named after the project.
+//! The component carries the types of what it imports and exports, so rk
+//! writes no WIT beside it: a host's tools read them from the binary
+//! (`wasm-tools component wit`).
 //! Binaryen reads core modules only, so the wrapping is the build's last
 //! step, after `wasm-opt`.
 
@@ -27,15 +30,10 @@ use mir::types::MirType;
 /// The world every component exports its control interface from.
 pub const WORLD: &str = "plc";
 
-/// A component, and the WIT folder that types it: `world.wit`, and under
-/// `deps/` each package the world names, by path in the folder.
+/// A component, and the text of the world that types it.
 pub struct Component {
     pub bytes: Vec<u8>,
-    pub wit: Vec<(String, Cow<'static, str>)>,
     pub world: String,
-    /// The WIT folders the build reads ([`Interfaces::wit`]), which the
-    /// component's own is never written into ([`write_wit`]).
-    pub inputs: Vec<std::path::PathBuf>,
 }
 
 /// A function the module imports from a plain module, typed in WIT from
@@ -193,26 +191,24 @@ fn wit_folders(db: &dyn db::WorkspaceDataBase) -> Vec<std::path::PathBuf> {
         .collect()
 }
 
-/// A package's files by name, `.wit` files and a license: each one's text,
-/// and the folder it is read from.
+/// A package's `.wit` files by name: each one's text, and the folder it is
+/// read from.
 type Files = BTreeMap<String, (String, std::path::PathBuf)>;
 
 /// A WIT package a folder ships: its name and version as its files declare
-/// them, its folder under `deps/` beside a component, and its files.
+/// them, and its files.
 struct Shipped {
     id: String,
-    dir: String,
     files: Files,
     group: wit_parser::UnresolvedPackageGroup,
 }
 
 impl Shipped {
-    /// The package `files` write, its `.wit` files parsed as one package in
-    /// the order of their names, each named by its folder where the parser
-    /// reports.
+    /// The package `files` write, parsed as one package in the order of
+    /// their names, each named by its folder where the parser reports.
     fn parsed(files: Files) -> Result<Self, String> {
         let mut map = wit_parser::SourceMap::new();
-        for (name, (text, from)) in files.iter().filter(|(name, _)| name.ends_with(".wit")) {
+        for (name, (text, from)) in &files {
             map.push_str(&from.join(name).display().to_string(), text.clone());
         }
         let folders: BTreeSet<String> = files
@@ -223,14 +219,8 @@ impl Shipped {
             let folders: Vec<String> = folders.into_iter().collect();
             format!("parsing the WIT in {}: {e}", folders.join(" and "))
         })?;
-        let id = group.main.name.to_string();
-        let dir = match id.split_once('@') {
-            Some((name, _)) => name.replace(':', "-"),
-            None => id.replace(':', "-"),
-        };
         Ok(Shipped {
-            id,
-            dir,
+            id: group.main.name.to_string(),
             files,
             group,
         })
@@ -340,8 +330,8 @@ fn shipped(folders: &[std::path::PathBuf]) -> Result<Vec<Shipped>, String> {
             let read = read_package(&package)?;
             if wit::packages().any(|own| own.id == read.id) {
                 return Err(format!(
-                    "`{}` holds `{}`, which rk declares itself: the WIT an earlier build \
-                     wrote beside its component? A library's `wit/` holds what it ships",
+                    "`{}` holds `{}`, which rk declares itself: a library's `wit/` holds \
+                     the packages it calls",
                     package.display(),
                     read.id
                 ));
@@ -352,19 +342,11 @@ fn shipped(folders: &[std::path::PathBuf]) -> Result<Vec<Shipped>, String> {
             }
         }
     }
-    // Two versions of a package are two folders.
-    let names: Vec<String> = found.iter().map(|package| package.dir.clone()).collect();
-    for package in &mut found {
-        if names.iter().filter(|name| **name == package.dir).count() > 1 {
-            package.dir = package.id.replace(':', "-");
-        }
-    }
     Ok(found)
 }
 
-/// The package, or the part of one, written in the folder `from`: its
-/// `.wit` files, and its license, a `LICENSE` file of any extension. A
-/// checkout's line endings do not count.
+/// The package, or the part of one, written in the `.wit` files of the
+/// folder `from`. A checkout's line endings do not count.
 fn read_package(from: &std::path::Path) -> Result<Shipped, String> {
     let mut files = Files::new();
     for entry in
@@ -376,7 +358,7 @@ fn read_package(from: &std::path::Path) -> Result<Shipped, String> {
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        if path.is_file() && (name.ends_with(".wit") || name.starts_with("LICENSE")) {
+        if path.is_file() && name.ends_with(".wit") {
             let text = std::fs::read_to_string(&path)
                 .map_err(|e| format!("reading `{}`: {e}", path.display()))?;
             files.insert(
@@ -610,12 +592,7 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
     let mut deps = wit::packages()
         .map(|package| parse(package.dir, package.files))
         .collect::<Result<Vec<_>, _>>()?;
-    // What a folder ships is written beside the component as it is.
-    let mut written = Vec::new();
-    for package in shipped {
-        deps.push(package.group);
-        written.push((package.id, package.dir, package.files));
-    }
+    deps.extend(shipped.into_iter().map(|package| package.group));
     let main = parse(".", &[("world.wit", world.as_str())])?;
     let package = resolve
         .push_groups(main, deps)
@@ -646,112 +623,7 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
         .and_then(|encoder| encoder.encode())
         .map_err(|e| format!("wrapping the module into a component: {e:#}"))?;
 
-    let named = named_packages(&resolve, package);
-    let mut files = Vec::new();
-    for package in wit::packages().filter(|package| named.contains(package.id)) {
-        for (file, text) in package.files {
-            files.push((format!("deps/{}/{file}", package.dir), Cow::Borrowed(*text)));
-        }
-    }
-    for (id, dir, shipped_files) in written {
-        if named.contains(&id) {
-            for (file, (text, _)) in shipped_files {
-                files.push((format!("deps/{dir}/{file}"), Cow::Owned(text)));
-            }
-        }
-    }
-    Ok(Component {
-        bytes,
-        wit: files,
-        world,
-        inputs: interfaces.wit.clone(),
-    })
-}
-
-/// The folder the component's WIT goes into, `wit/` beside `output`, which
-/// must be no WIT folder the build reads: the next build would read the
-/// component's WIT back as a library's or the workspace's own.
-pub fn wit_beside(
-    output: &std::path::Path,
-    component: &Component,
-) -> Result<std::path::PathBuf, String> {
-    let beside = output
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| std::path::Path::new("."));
-    let dir = beside.join("wit");
-    let root = |folder: &std::path::Path| folder.parent()?.canonicalize().ok();
-    if let Ok(beside) = beside.canonicalize()
-        && component
-            .inputs
-            .iter()
-            .any(|input| root(input).as_ref() == Some(&beside))
-    {
-        return Err(format!(
-            "the component's WIT would be written into `{}`, the WIT folder the build \
-             reads: write the component into another folder",
-            dir.display()
-        ));
-    }
-    if !rk_s_own(&dir) {
-        return Err(format!(
-            "the component's WIT would be written into `{}`, which holds WIT rk did not \
-             write: write the component into another folder",
-            dir.display()
-        ));
-    }
-    Ok(dir)
-}
-
-/// The first line of a `world.wit` rk writes ([`world_text`]): `// The
-/// world of`, the project between backquotes, then [`WORLD_WRITTEN`].
-const WORLD_OF: &str = "// The world of `";
-const WORLD_WRITTEN: &str = "`, written by rk at each build.";
-
-/// Whether rk may write a component's WIT into the folder `dir`: it is
-/// missing or empty, or its `world.wit` is one rk wrote, which says so on
-/// its first line. Anything else is someone's own WIT.
-fn rk_s_own(dir: &std::path::Path) -> bool {
-    let Ok(mut entries) = std::fs::read_dir(dir) else {
-        return true;
-    };
-    entries.next().is_none()
-        || std::fs::read_to_string(dir.join("world.wit")).is_ok_and(|world| {
-            world
-                .lines()
-                .next()
-                .is_some_and(|line| line.starts_with(WORLD_OF) && line.ends_with(WORLD_WRITTEN))
-        })
-}
-
-/// The component's WIT folder, `wit/` beside `output`: `world.wit`, and
-/// each package it names under `deps/`. The folder is rk's own
-/// ([`wit_beside`]), and its `deps/` is written whole: a package an earlier
-/// build wrote that this world does not name goes.
-pub fn write_wit(output: &std::path::Path, component: &Component) -> Result<(), String> {
-    let dir = wit_beside(output, component)?;
-    let deps = dir.join("deps");
-    match std::fs::remove_dir_all(&deps) {
-        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-            return Err(format!("removing {}: {e}", deps.display()));
-        }
-        _ => {}
-    }
-    let files = std::iter::once(("world.wit".to_string(), component.world.as_str())).chain(
-        component
-            .wit
-            .iter()
-            .map(|(path, text)| (path.clone(), text.as_ref())),
-    );
-    for (path, text) in files {
-        let path = dir.join(path);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("creating directory {}: {e}", parent.display()))?;
-        }
-        std::fs::write(&path, text).map_err(|e| format!("writing {}: {e}", path.display()))?;
-    }
-    Ok(())
+    Ok(Component { bytes, world })
 }
 
 /// What `core` imports, by module: each function's name.
@@ -990,24 +862,6 @@ fn carried(resolve: &wit_parser::Resolve, payload: Option<wit_parser::Type>) -> 
     }
 }
 
-/// The packages `package` names, and those they name in turn, by name and
-/// version (`wasi:clocks@0.3.0`): what a tool reading the world needs.
-fn named_packages(
-    resolve: &wit_parser::Resolve,
-    package: wit_parser::PackageId,
-) -> BTreeSet<String> {
-    let mut named = BTreeSet::new();
-    let mut next = vec![package];
-    while let Some(id) = next.pop() {
-        for dep in resolve.package_direct_deps(id) {
-            if named.insert(resolve.packages[dep].name.to_string()) {
-                next.push(dep);
-            }
-        }
-    }
-    named
-}
-
 /// One level of the world's layout: two spaces, as WASI's own files and
 /// wasm-tools' printers indent WIT.
 const INDENT: &str = "  ";
@@ -1021,10 +875,7 @@ fn world_text(
     interfaces: &Interfaces,
 ) -> String {
     let (one, two) = (INDENT, INDENT.repeat(2));
-    let mut text = format!(
-        "{WORLD_OF}{project}{WORLD_WRITTEN}\npackage local:{};\n\nworld {WORLD} {{\n",
-        wit_name(project)
-    );
+    let mut text = format!("package local:{};\n\nworld {WORLD} {{\n", wit_name(project));
     // A package's name may be spelled like a keyword too.
     for interface in carried {
         text.push_str(&format!("{one}import {};\n", interface_path(interface)));
