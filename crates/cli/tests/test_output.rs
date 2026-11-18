@@ -48,8 +48,21 @@ END_FUNCTION
     let component = std::fs::read(built.join("Plant_A.wasm")).expect("the component");
     assert!(wasmparser::Parser::is_component(&component));
     assert!(!built.join("core.wasm").exists(), "and no core module");
-    let world = std::fs::read_to_string(built.join("wit").join("world.wit")).unwrap();
-    assert!(world.contains("import rk:test/raise@0.1.0;"), "{world}");
+    assert!(!built.join("wit").exists(), "and no WIT beside it");
+    let wit_parser::decoding::DecodedWasm::Component(resolve, world) =
+        wit_parser::decoding::decode(&component).expect("the binary's types")
+    else {
+        panic!("a component, not a WIT package");
+    };
+    let imports: Vec<String> = resolve.worlds[world]
+        .imports
+        .keys()
+        .map(|key| resolve.name_world_key(key))
+        .collect();
+    assert!(
+        imports.iter().any(|name| name == "rk:test/raise@0.1.0"),
+        "{imports:?}"
+    );
     assert!(
         !ws.path().join("rk_build").join("debug").exists(),
         "what `rk compile` writes is left alone"

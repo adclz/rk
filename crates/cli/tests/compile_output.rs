@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! What `rk compile` writes: one component named after the project, and
-//! the WIT that types it in `wit/` beside it.
+//! What `rk compile` writes: one component named after the project, which
+//! carries the types of what it imports and exports.
 
 use std::process::Command;
 
@@ -48,11 +48,25 @@ END_CONFIGURATION
     ws
 }
 
-/// The build is one component, `<project>.wasm`, and no core module: the
-/// world names the project's package and exports the control interface,
-/// and the package it exports is copied under `deps/`.
+/// The world a host's tools read from a component's binary, as WIT text,
+/// which is all the WIT a build gives: rk writes none beside it.
+fn world_of(component: &[u8]) -> String {
+    let wit_parser::decoding::DecodedWasm::Component(resolve, world) =
+        wit_parser::decoding::decode(component).expect("the binary's types")
+    else {
+        panic!("a component, not a WIT package");
+    };
+    let package = resolve.worlds[world].package.expect("the world's package");
+    let mut printer = wit_component::WitPrinter::default();
+    printer.print(&resolve, package, &[]).expect("printed");
+    printer.output.to_string()
+}
+
+/// The build is one component, `<project>.wasm`, with no core module and
+/// no WIT beside it: the binary carries the world, which exports the
+/// control interface.
 #[test]
-fn a_build_is_one_component_and_its_wit() {
+fn a_build_is_one_component() {
     let ws = workspace();
     let out = rk(&["compile"], ws.path());
     assert!(
@@ -67,54 +81,14 @@ fn a_build_is_one_component_and_its_wit() {
         "the build is a component"
     );
     assert!(!built.join("core.wasm").exists(), "and no core module");
-
-    let world = std::fs::read_to_string(built.join("wit").join("world.wit")).unwrap();
-    assert!(world.contains("package local:plant-a;"), "{world}");
+    assert!(!built.join("wit").exists(), "and no WIT beside it");
+    let world = world_of(&component);
     assert!(world.contains("export rk:plc/control@0.1.0;"), "{world}");
-    let control = std::fs::read_to_string(
-        built
-            .join("wit")
-            .join("deps")
-            .join("rk-plc")
-            .join("control.wit"),
-    )
-    .unwrap();
-    assert!(control.contains("interface control {"), "{control}");
 }
 
-/// A rebuild writes the WIT folder's `deps/` whole: it is the build's own,
-/// so a file an earlier build left in a package folder goes, and so does
-/// any other folder found there.
+/// `--output` places the component, and nothing beside it.
 #[test]
-fn a_rebuild_writes_the_wit_folder_s_deps_whole() {
-    let ws = workspace();
-    assert!(rk(&["compile"], ws.path()).status.success());
-    let deps = ws
-        .path()
-        .join("rk_build")
-        .join("debug")
-        .join("wit")
-        .join("deps");
-    let stale = deps.join("rk-plc").join("stale.wit");
-    std::fs::write(&stale, "package rk:plc@0.0.1;\n").unwrap();
-    let own = deps.join("mine").join("mine.wit");
-    std::fs::create_dir_all(own.parent().unwrap()).unwrap();
-    std::fs::write(&own, "package my:own;\n").unwrap();
-
-    let out = rk(&["compile"], ws.path());
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    assert!(!stale.exists(), "the stale file went with its folder");
-    assert!(deps.join("rk-plc").join("control.wit").exists());
-    assert!(!own.exists(), "the build's deps/ is written whole");
-}
-
-/// `--output` places the component, and its WIT beside it.
-#[test]
-fn the_wit_goes_beside_an_output_given() {
+fn an_output_given_holds_the_component() {
     let ws = workspace();
     let output = ws.path().join("out").join("plc.wasm");
     let out = rk(
@@ -129,14 +103,14 @@ fn the_wit_goes_beside_an_output_given() {
     assert!(wasmparser::Parser::is_component(
         &std::fs::read(&output).unwrap()
     ));
-    assert!(ws.path().join("out").join("wit").join("world.wit").exists());
+    assert!(!ws.path().join("out").join("wit").exists());
 }
 
 /// An interface of a package is typed by the package's WIT, which rk does
 /// not write: the build is refused until the workspace ships it in its
-/// `wit/`, and then the package goes beside the component as it is shipped.
+/// `wit/`, and then the component imports it.
 #[test]
-fn the_workspace_s_package_goes_beside_the_component() {
+fn the_workspace_s_package_types_its_import() {
     let ws = workspace();
     std::fs::write(
         ws.path().join("display.st"),
@@ -169,16 +143,19 @@ END_FUNCTION
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let wit = ws.path().join("rk_build").join("debug").join("wit");
-    let world = std::fs::read_to_string(wit.join("world.wit")).unwrap();
+    let component = std::fs::read(
+        ws.path()
+            .join("rk_build")
+            .join("debug")
+            .join("Plant_A.wasm"),
+    )
+    .unwrap();
+    let world = world_of(&component);
     assert!(world.contains("import acme:display/text@1.0.0;"), "{world}");
-    let package =
-        std::fs::read_to_string(wit.join("deps").join("acme-display").join("display.wit")).unwrap();
-    assert_eq!(package, shipped);
 }
 
 /// The `{export}` FUNCTIONs are in an interface named after the project,
-/// in the world `rk compile` writes.
+/// in the component's world.
 #[test]
 fn the_exported_functions_are_in_the_project_s_interface() {
     let ws = workspace();
@@ -204,13 +181,17 @@ END_NAMESPACE
         );
     }
     for profile in ["debug", "release"] {
-        let wit = ws.path().join("rk_build").join(profile).join("wit");
-        let world = std::fs::read_to_string(wit.join("world.wit")).unwrap();
+        let component = std::fs::read(
+            ws.path()
+                .join("rk_build")
+                .join(profile)
+                .join("Plant_A.wasm"),
+        )
+        .unwrap();
+        let world = world_of(&component);
         assert!(
-            world.contains(
-                "  export plant-a: interface {\n    \
-                 recipe-set-name: func(name: string) -> result<bool, string>;\n  }\n"
-            ),
+            world.contains("export plant-a: interface {")
+                && world.contains("recipe-set-name: func(name: string) -> result<bool, string>;"),
             "{profile}: {world}"
         );
     }
