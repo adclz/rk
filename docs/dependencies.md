@@ -179,7 +179,7 @@ With `--public` they are written for every program.
 Running it again after the WIT changes rewrites them, and leaves the library's own files alone.
 
 The build reads the `wit/` of every library and of the workspace, and types each import of a package's interface with it, see [WASM ABI](wasm-abi.md).
-An interface that no `wit/` ships stops the build, and so does one shipped at another version.
+An interface the program calls that no `wit/` ships stops the build, and so does one shipped at another version. A declaration nothing calls is neither imported nor checked.
 
 Several libraries can ship parts of one package, the files that declare what each one calls, and the build reads them as one package:
 

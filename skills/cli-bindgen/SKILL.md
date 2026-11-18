@@ -33,7 +33,7 @@ When the host's package declares a world, what that world imports is written ins
 The declarations are under the package's namespace, `Acme.Drive.Axis` for `acme:drive/axis`, and `INTERNAL`: only the library's own blocks call them, the way the standard library's blocks call WASI.
 
 The build reads the same `wit/` folder, and types each import of a package's interface with it, so the folder ships with the library.
-An interface that no `wit/` ships stops the build.
+An interface the program calls that no `wit/` ships stops the build; a declaration nothing calls costs nothing.
 
 ## Usage
 

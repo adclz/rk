@@ -190,7 +190,7 @@ Its module and its name are written as WIT writes them, and rk converts neither 
 The module says where the import's types come from:
 
 - **A plain module**, a WIT name like `modbus`, is the host's own. rk types it in WIT from the declaration, as an interface the world declares itself.
-- **An interface of a package**, like `wasi:clocks/monotonic-clock@0.3.0` or `acme:modbus/rtu@1.0.0`, keeps the types the package's WIT gives it. rk writes no WIT for it: a library ships the package's WIT, see [Dependencies](dependencies.md). The build refuses an interface that no library ships.
+- **An interface of a package**, like `wasi:clocks/monotonic-clock@0.3.0` or `acme:modbus/rtu@1.0.0`, keeps the types the package's WIT gives it. rk writes no WIT for it: a library ships the package's WIT, see [Dependencies](dependencies.md). The build refuses an interface the program calls that no library ships.
 
 A plain module's import takes each `VAR_INPUT` as a parameter, and the return type is the result, or the record of the `VAR_OUTPUT` and the return type, named and typed as an export's are, except that an import returns no `STRING`.
 
@@ -337,7 +337,7 @@ The clocks a module imports are WASI 0.3's, in their core forms, and the host pr
 | `wasi:clocks/timezone@0.3.0` `utc-offset` | `(i64, i32, i32)` | takes an instant as its seconds and nanoseconds, and writes at the address whether the host has a zone, in one byte, and if it has, 8 bytes on, the nanoseconds the zone is east of UTC at that instant |
 
 The time zone is still unstable in WASI 0.3, `@unstable(feature = clocks-timezone)`: a host has it only with that feature on, and its signature can change in a 0.3 release.
-A release build imports the ones the program reads; a debug build imports every function the standard library declares from these interfaces, `get-resolution`, `wait-until` and `wait-for` included, so a host provides the clocks whole, as wasmtime-wasi does, and a host that has no zone still defines `utc-offset`, answering that it has none, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.
+A build imports the functions the program calls, in debug as in release: a host provides those, and a host that has no zone still defines `utc-offset` for a program that reads it, answering that it has none, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.
 
 [`Std.Console`](console.md) writes to WASI 0.3's standard output and error, `wasi:cli/stdout@0.3.0` and `wasi:cli/stderr@0.3.0`, through the declarations `rk bindgen` writes for them.
 Each is one function, `write-via-stream`, which takes a stream of bytes.
