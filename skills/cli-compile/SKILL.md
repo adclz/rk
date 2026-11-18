@@ -25,7 +25,7 @@ The component is written to `rk_build/debug/<project>.wasm`, or to `rk_build/rel
 `-O, --opt-level <OPT_LEVEL>` The optimization level of a release build: `0` to `4`, `s` (size) or `z` (aggressive size).
 Defaults to `2`, or to `opt_level` in `config.toml`; the flag wins.
 
-`-o, --output <OUTPUT>` Where to write the component; its WIT goes in `wit/` beside it. A folder whose `wit/` the build reads, the workspace's root or a library's, is refused before anything is written.
+`-o, --output <OUTPUT>` Where to write the component; its WIT goes in `wit/` beside it. A folder whose `wit/` the build reads, the workspace's root or a library's, is refused before anything is written, and so is one whose `wit/` rk did not write. Each build writes that `wit/` whole.
 
 `-w, --watch` Re-compile on every file change.
 

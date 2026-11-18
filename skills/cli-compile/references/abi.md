@@ -1,7 +1,7 @@
 ## The module
 
-A workspace compiles to one core WebAssembly module.
-It does not depend on the WASI Component model.
+A workspace compiles to one component, named after the project, with the WIT that types it in the `wit/` folder beside it.
+The component wraps one core WebAssembly module, which this page describes: it exports the control interface, `rk:plc/control`, through which a host runs the program, and imports what the module imports.
 
 It defines its own linear memory, and imports nothing unless the program reads a clock of `Std.Timers`, writes through `Std.Console` or declares an `{extern}` FUNCTION.
 `Std.Console` writes to WASI 0.3's `wasi:cli/stdout` and `wasi:cli/stderr`, each a stream of bytes the module keeps open, with the component model's stream built-ins.

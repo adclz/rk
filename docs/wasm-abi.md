@@ -2,7 +2,9 @@
 
 A workspace compiles to one component, named after the project: `rk compile` writes `rk_build/debug/plant.wasm` for the project `plant`, and `rk_build/release/plant.wasm` with `--release`.
 The WIT that types it is written in `wit/` beside it: `world.wit`, which rk writes from the program, and under `deps/` each package the world names, as the libraries ship it.
+Each build writes the folder whole, so a package an earlier build named and this one does not is gone.
 rk never writes it into a `wit/` folder the build reads: `rk compile -o plant.wasm` at the workspace's root is refused, since that `wit/` is the workspace's own.
+Nor does it write into a `wit/` folder it did not write itself, someone's own WIT, which the build would overwrite.
 
 The component imports what its `{extern}` FUNCTIONs name: interfaces of packages, WASI's among them, and the host's own plain modules.
 It exports the workspace's `{export}` FUNCTIONs, in an interface named after the project, and the control interface every component has, `rk:plc/control@0.1.0`, through which a host runs the PLC:
