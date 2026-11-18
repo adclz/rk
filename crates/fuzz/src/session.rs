@@ -101,7 +101,7 @@ pub(crate) fn load(source: &str) -> Option<(RootDatabase, File)> {
 }
 
 /// The module of `file` and the library, as `rk compile` lowers a workspace
-/// with its libraries.
+/// with its libraries, keeping what its exports reach.
 pub(crate) fn lower(
     db: &RootDatabase,
     file: File,
@@ -112,7 +112,9 @@ pub(crate) fn lower(
         .map(|file| semantic_index(db, *file))
         .collect();
     indices.push(semantic_index(db, file));
-    mir::lower::lower_module::lower_modules(db, &indices)
+    let mut module = mir::lower::lower_module::lower_modules(db, &indices)?;
+    module.keep_reached();
+    Ok(module)
 }
 
 /// As `rk check` counts: an unset severity is an error by convention.

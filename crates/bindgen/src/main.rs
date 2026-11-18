@@ -8,8 +8,9 @@
 //! library; this binary is the repository's, for Std.
 //!
 //! `cargo run -p rk-bindgen` writes `stdlib/generated/`, for Std's WIT
-//! folder, `stdlib/wit/`, whose world names the WASI interfaces Std's
-//! blocks call; a folder given as an argument is written instead.
+//! folder, `stdlib/wit/`, which holds in its `deps/` the files of WASI's
+//! packages that declare what Std's blocks call: every interface they
+//! declare is written. A folder given as an argument is written instead.
 //! `--wit <dir>` reads another WIT folder, the packages it uses in its
 //! `deps/`, as WIT's tools lay them out (`rk_bindgen::resolve_folder`: a
 //! package with no world is written whole), and then takes the folder to
@@ -26,7 +27,7 @@ use rk_bindgen::Reach;
 /// What the command line asks for.
 #[derive(Debug, PartialEq)]
 struct Args {
-    /// The WIT folder to read, or `None` for Std's world.
+    /// The WIT folder to read, or `None` for Std's, `stdlib/wit/`.
     wit: Option<PathBuf>,
     /// The world of the folder's package, when it has several.
     world: Option<String>,
@@ -75,7 +76,9 @@ fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Args, String> {
         }
     }
     if wit.is_none() && (world.is_some() || reach == Reach::Everyone) {
-        return Err("`--world` and `--public` go with `--wit`: Std's world is its own".to_string());
+        return Err(
+            "`--world` and `--public` go with `--wit`: Std's folder is written whole".to_string(),
+        );
     }
     let folder = match (folder, &wit) {
         (Some(folder), _) => folder,
@@ -98,8 +101,8 @@ fn repository_s(folder: &str) -> PathBuf {
         .join(folder)
 }
 
-/// The world `args` asks for: the one of the WIT folder it names, or Std's,
-/// in `stdlib/wit/`.
+/// The world rk-bindgen generates for `args`: the WIT folder it names, or
+/// Std's, `stdlib/wit/`.
 fn resolved(args: &Args) -> Result<(wit_parser::Resolve, wit_parser::WorldId), String> {
     match &args.wit {
         Some(dir) => rk_bindgen::resolve_folder(dir, args.world.as_deref()),
@@ -137,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn std_s_world_into_its_folder_or_another() {
+    fn std_s_declarations_into_their_folder_or_another() {
         let std = parsed(&[]).unwrap();
         assert_eq!(
             (std.wit, std.world, std.reach),
@@ -147,13 +150,30 @@ mod tests {
         assert_eq!(parsed(&["out"]).unwrap().folder, PathBuf::from("out"));
     }
 
-    /// Std's world is read from Std's own WIT folder, `stdlib/wit/`.
+    /// Std's declarations are those of every interface its WIT folder,
+    /// `stdlib/wit/`, holds in its `deps/`: no world names them.
     #[test]
-    fn std_s_world_is_read_from_std_s_folder() {
+    fn std_s_interfaces_are_all_its_folder_holds() {
         let (resolve, world) = resolved(&parsed(&[]).unwrap()).unwrap();
-        let package = resolve.worlds[world].package.expect("a package");
-        assert_eq!(resolve.packages[package].name.to_string(), "rk:std");
-        assert_eq!(resolve.worlds[world].name, "std");
+        let mut imports: Vec<String> = resolve.worlds[world]
+            .imports
+            .keys()
+            .map(|key| resolve.name_world_key(key))
+            .collect();
+        imports.sort();
+        assert_eq!(
+            imports,
+            [
+                "wasi:cli/stderr@0.3.0",
+                "wasi:cli/stdin@0.3.0",
+                "wasi:cli/stdout@0.3.0",
+                "wasi:cli/types@0.3.0",
+                "wasi:clocks/monotonic-clock@0.3.0",
+                "wasi:clocks/system-clock@0.3.0",
+                "wasi:clocks/timezone@0.3.0",
+                "wasi:clocks/types@0.3.0",
+            ]
+        );
     }
 
     #[test]
@@ -187,11 +207,11 @@ mod tests {
             ),
             (
                 &["--world", "plc", "out"],
-                "`--world` and `--public` go with `--wit`: Std's world is its own",
+                "`--world` and `--public` go with `--wit`: Std's folder is written whole",
             ),
             (
                 &["--public"],
-                "`--world` and `--public` go with `--wit`: Std's world is its own",
+                "`--world` and `--public` go with `--wit`: Std's folder is written whole",
             ),
             (&["--all", "out"], "`--all` is no option of rk-bindgen"),
             (&["one", "two"], "one folder to write, at most"),

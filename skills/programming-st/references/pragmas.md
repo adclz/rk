@@ -71,7 +71,7 @@ The function's name is the FUNCTION's namespaces' names and its own, in lowercas
 E1513 refuses a name that gives no WIT name (`_Reset`, a letter outside ASCII), a given name that is not one, and two exports with one name; the component model compares names without their `-`, so `ab-c` and `a-bc` are one.
 
 Nothing else a workspace declares is exported, apart from `__init`, the bodies the schedule runs (a PROGRAM's, a program instance's `Inst$__scan__`, a FUNCTION_BLOCK's a task runs on its own) and, in a debug build, the `{test}` functions.
-An export is a root for the optimizer, so a release build drops every FUNCTION that is neither exported nor called, the standard library's included.
+The exports are the roots of every build: a FUNCTION that is neither exported nor called is dropped, the standard library's included, in a debug build as in a release one, and so is an `{extern}` nothing calls, which is then neither imported nor checked against its WIT.
 
 ```iecst
 {export}

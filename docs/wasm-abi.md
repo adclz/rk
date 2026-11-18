@@ -25,9 +25,11 @@ interface control {
 }
 ```
 
-- `init` writes the starting value of every variable. A host calls it once, before anything else. Its error is the message of an exception a starting value raised.
+- `init` writes the starting value of every variable. A host calls it once, before anything else. It never returns its error in this version: every starting value is a constant or a `REF()`.
 - `save-retain` gives the retain area, to keep across a power cycle, and `restore-retain` gives it back after `init` on a warm start.
-- `run-task` runs the task at that place in the `rk.schedule` section: `inputs` is copied into the input area, each program instance of the task runs, and the output area comes back. A host calls it for each task the section says is due, in the order the section lists them. The `located-map` section says where each address is in the two lists.
+  After a trap, `save-retain` is refused like every call. The memory the trap left holds the retained values at the moment of the trap, the scan that trapped partly done, where `save-retain` gives them as a scan ended: a host reads them where its runtime keeps that memory (a core dump), each range of the `retain-map` section at its address, and chooses between them and its last save, or saves after every scan it cannot lose.
+- `run-task` runs the task at that place in the `rk.schedule` section: `inputs` is copied into the input area, each program instance of the task runs, and the output area comes back.
+  Every list a host passes, the inputs and the retain image included, lands in the module's scratch area first, below: one longer than that area traps, and a component that trapped takes no other call. A host calls it for each task the section says is due, in the order the section lists them. The `located-map` section says where each address is in the two lists.
 - `read-memory` reads ranges of the memory between two scans, and `write-memory` forces bytes into the variables, at the addresses the `debug-symbols` section gives. Writing anywhere but the variables is refused. A read larger than the module's scratch area, below, is `too-large`: a host reads the ranges in parts.
 - `run-test` runs the test at that place in the `test-manifest` section: a test FUNCTION whole, `passed` when it returns, or one cycle of a test FUNCTION_BLOCK, `running` until a cycle leaves its `DONE` TRUE. The block keeps its instance from one call to the next, and a host calls it again for its next cycle. A release build has no test.
 
@@ -190,7 +192,7 @@ Its module and its name are written as WIT writes them, and rk converts neither 
 The module says where the import's types come from:
 
 - **A plain module**, a WIT name like `modbus`, is the host's own. rk types it in WIT from the declaration, as an interface the world declares itself.
-- **An interface of a package**, like `wasi:clocks/monotonic-clock@0.3.0` or `acme:modbus/rtu@1.0.0`, keeps the types the package's WIT gives it. rk writes no WIT for it: a library ships the package's WIT, see [Dependencies](dependencies.md). The build refuses an interface that no library ships.
+- **An interface of a package**, like `wasi:clocks/monotonic-clock@0.3.0` or `acme:modbus/rtu@1.0.0`, keeps the types the package's WIT gives it. rk writes no WIT for it: a library ships the package's WIT, see [Dependencies](dependencies.md). The build refuses an interface the program calls that no library ships.
 
 A plain module's import takes each `VAR_INPUT` as a parameter, and the return type is the result, or the record of the `VAR_OUTPUT` and the return type, named and typed as an export's are, except that an import returns no `STRING`.
 
@@ -337,7 +339,7 @@ The clocks a module imports are WASI 0.3's, in their core forms, and the host pr
 | `wasi:clocks/timezone@0.3.0` `utc-offset` | `(i64, i32, i32)` | takes an instant as its seconds and nanoseconds, and writes at the address whether the host has a zone, in one byte, and if it has, 8 bytes on, the nanoseconds the zone is east of UTC at that instant |
 
 The time zone is still unstable in WASI 0.3, `@unstable(feature = clocks-timezone)`: a host has it only with that feature on, and its signature can change in a 0.3 release.
-A release build imports the ones the program reads; a debug build imports every function the standard library declares from these interfaces, `get-resolution`, `wait-until` and `wait-for` included, so a host provides the clocks whole, as wasmtime-wasi does, and a host that has no zone still defines `utc-offset`, answering that it has none, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.
+A build imports the functions the program calls, in debug as in release: a host provides those, and a host that has no zone still defines `utc-offset` for a program that reads it, answering that it has none, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.
 
 [`Std.Console`](console.md) writes to WASI 0.3's standard output and error, `wasi:cli/stdout@0.3.0` and `wasi:cli/stderr@0.3.0`, through the declarations `rk bindgen` writes for them.
 Each is one function, `write-via-stream`, which takes a stream of bytes.

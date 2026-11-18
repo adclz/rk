@@ -223,6 +223,9 @@ fn build(
             };
         }
     };
+    // A build keeps what its exports reach: a debug one imports what its
+    // code calls, as a release one does after Binaryen.
+    mir_module.keep_reached();
 
     if let Err(message) = size_stack(db, &mut mir_module) {
         ui::failure("compilation failed:", &message);
@@ -289,6 +292,7 @@ pub fn build_core_quiet(
                     format!("internal compiler error: {e} (report it at {ISSUES_URL})")
                 })
         })?;
+    mir_module.keep_reached();
     size_stack(db, &mut mir_module)
         .map_err(|message| format!("compilation failed: {message}\n"))?;
     let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);

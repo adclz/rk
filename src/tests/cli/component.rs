@@ -496,6 +496,41 @@ fn a_read_larger_than_the_scratch_area_is_too_large(mut with_db: db::RootDatabas
     assert_eq!(plc.read_memory(&[count]), Ok(2i32.to_le_bytes().to_vec()));
 }
 
+/// A list a host passes lands in the scratch area first, which holds the
+/// input area, the retain area, and a page more at least. Inputs a page
+/// longer than their sixteen bytes are copied as far as the area holds, and
+/// the scan runs. Inputs, or a retain image, longer than the scratch trap:
+/// the memory never grows, and the component takes no call after a trap.
+#[rstest]
+fn a_list_past_the_scratch_area_traps(mut with_db: db::RootDatabase) {
+    const PAGE: usize = 65536;
+    let component = wrap(&compile_to_wasm_as_built(&mut with_db, COUNTER));
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+    plc.run_task(0, &vec![0u8; 16 + PAGE])
+        .expect("a page past the input area");
+
+    let run = plc.func::<(u32, &[u8]), (Result<Vec<u8>, ScanError>,)>("run-task");
+    let too_long = vec![0u8; 64 * PAGE];
+    assert!(
+        run.call(&mut plc.store, (0, &too_long)).is_err(),
+        "inputs past the scratch trap"
+    );
+    let init = plc.func::<(), (Result<(), String>,)>("init");
+    assert!(
+        init.call(&mut plc.store, ()).is_err(),
+        "the component takes no call after a trap"
+    );
+
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+    let restore = plc.func::<(&[u8],), ()>("restore-retain");
+    assert!(
+        restore.call(&mut plc.store, (&too_long,)).is_err(),
+        "a retain image past the scratch traps"
+    );
+}
+
 /// A release build reads and writes its memory too: a production host
 /// watches its variables. Its addresses are the debug build's.
 #[rstest]
@@ -979,6 +1014,55 @@ const CALLS_EVERY_KIND: &str = r#"
     END_CONFIGURATION
 "#;
 
+/// A program that writes to the console through the standard library.
+const WRITES_STDOUT: &str = r#"
+    USING Std.Console;
+
+    PROGRAM P
+    VAR out : STDOUT; END_VAR
+        out(REQ := TRUE, IN := 'hello$N');
+    END_PROGRAM
+
+    CONFIGURATION Cfg
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM Main WITH T : P;
+        END_RESOURCE
+    END_CONFIGURATION
+"#;
+
+/// A debug build imports what its code calls, as a release build does: a
+/// program that calls nothing of the standard library's imports nothing,
+/// though Std declares WASI's console and clocks, and one that writes to
+/// the console imports the console's output alone.
+#[test]
+fn a_build_imports_what_its_code_calls() {
+    super::unset_stdlib();
+    for (source, imports) in [
+        (COUNTER, &[][..]),
+        (
+            WRITES_STDOUT,
+            &["wasi:cli/stdout@0.3.0", "wasi:cli/types@0.3.0"][..],
+        ),
+    ] {
+        let (_ws, root) = super::temp_workspace(&[("main.st", source)]);
+        compiled(&root, root.join("out/plc.wasm")).expect("it builds");
+        let bytes = std::fs::read(root.join("out/plc.wasm")).expect("the component");
+        let wit_parser::decoding::DecodedWasm::Component(resolve, world) =
+            wit_parser::decoding::decode(&bytes).expect("the binary's types")
+        else {
+            panic!("a component, not a WIT package");
+        };
+        let mut imported: Vec<String> = resolve.worlds[world]
+            .imports
+            .keys()
+            .map(|key| resolve.name_world_key(key))
+            .collect();
+        imported.sort();
+        assert_eq!(imported, imports);
+    }
+}
+
 /// The component carries its world: the WIT a host's tools read from the
 /// binary, as `wasm-tools component wit` does, names what the component
 /// imports and exports: the standard library's WASI, the workspace's
@@ -1263,6 +1347,14 @@ fn one_function_imported_with_two_signatures_is_refused(mut with_db: db::RootDat
         FUNCTION WriteAgain : BOOL
         VAR_INPUT register : UINT; END_VAR
         END_FUNCTION
+
+        PROGRAM P
+        VAR i : INT; w : WORD; ok : BOOL; END_VAR
+            i := ReadInt(address := 1);
+            w := ReadWord(address := 1);
+            ok := WriteOne(address := 1);
+            ok := WriteAgain(register := 1);
+        END_PROGRAM
     "#;
     assert_eq!(
         build(&mut with_db, source).err(),
@@ -1288,6 +1380,11 @@ fn a_name_spelled_like_a_wit_keyword_is_escaped(mut with_db: db::RootDatabase) {
         {extern 'record' 'use'}
         FUNCTION UseIt : INT
         END_FUNCTION
+
+        PROGRAM P
+        VAR n : INT; END_VAR
+            n := Kind(list := 1) + UseIt();
+        END_PROGRAM
     "#;
     let component = build(&mut with_db, source).expect("the module wraps");
     assert!(
@@ -2538,6 +2635,29 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
     );
 }
 
+/// An `{extern}` nothing calls is not imported, so the build does not check
+/// it against its package's WIT either, as a linker checks only what it
+/// links: a misspelled function of WASI's builds until something calls it.
+#[rstest]
+fn an_extern_nothing_calls_is_not_checked(mut with_db: db::RootDatabase) {
+    let source = r#"
+        {extern 'wasi:clocks/monotonic-clock@0.3.0' 'nwo'}
+        FUNCTION NOW : ULINT
+        END_FUNCTION
+
+        PROGRAM P
+        VAR n : ULINT; END_VAR
+            n := n + 1;
+        END_PROGRAM
+    "#;
+    let component = build(&mut with_db, source).expect("nothing calls it");
+    assert!(
+        !component.world.contains("wasi:clocks"),
+        "{}",
+        component.world
+    );
+}
+
 /// The build checks each WASI import against WASI's WIT, and names the
 /// declaration: a function the interface has, and for a stream's or a
 /// future's built-in, a number that names one of the function's streams and
@@ -2548,7 +2668,11 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
     "{extern 'wasi:cli/stdout@0.3.0' '[future-drop-readable-2]write-via-stream'}
      FUNCTION DROP_FUTURE
      VAR_INPUT future : UDINT; END_VAR
-     END_FUNCTION",
+     END_FUNCTION
+
+     PROGRAM P
+         DROP_FUTURE(future := 1);
+     END_PROGRAM",
     "`DROP_FUTURE` imports `[future-drop-readable-2]write-via-stream` of \
      `wasi:cli/stdout@0.3.0`, and the type of `write-via-stream` numbers its streams and \
      futures from 0 to 1"
@@ -2557,7 +2681,11 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
     "{extern 'wasi:cli/stdout@0.3.0' '[stream-drop-readable-1]write-via-stream'}
      FUNCTION DROP_READER
      VAR_INPUT stream : UDINT; END_VAR
-     END_FUNCTION",
+     END_FUNCTION
+
+     PROGRAM P
+         DROP_READER(stream := 1);
+     END_PROGRAM",
     "`DROP_READER` imports `[stream-drop-readable-1]write-via-stream` of \
      `wasi:cli/stdout@0.3.0`, and number 1 of the streams and futures of \
      `write-via-stream`'s type is a future"
@@ -2566,14 +2694,24 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
     "{extern 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-to-stream'}
      FUNCTION NEW_STREAM
      VAR_OUTPUT readable : UDINT; writable : UDINT; END_VAR
-     END_FUNCTION",
+     END_FUNCTION
+
+     PROGRAM P
+     VAR r : UDINT; w : UDINT; END_VAR
+         NEW_STREAM(readable => r, writable => w);
+     END_PROGRAM",
     "`NEW_STREAM` imports `[stream-new-0]write-to-stream` of `wasi:cli/stdout@0.3.0`, and \
      its package's WIT declares no function `write-to-stream` there"
 )]
 #[case::misspelled(
     "{extern 'wasi:clocks/monotonic-clock@0.3.0' 'nwo'}
      FUNCTION NOW : ULINT
-     END_FUNCTION",
+     END_FUNCTION
+
+     PROGRAM P
+     VAR n : ULINT; END_VAR
+         n := NOW();
+     END_PROGRAM",
     "`NOW` imports `nwo` of `wasi:clocks/monotonic-clock@0.3.0`, and its package's WIT declares no \
      function `nwo` there"
 )]
@@ -2582,7 +2720,12 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
      FUNCTION READ_VIA_PIPE
      VAR_INPUT dir : UDINT; offset : ULINT; END_VAR
      VAR_OUTPUT stream : UDINT; finished : UDINT; END_VAR
-     END_FUNCTION",
+     END_FUNCTION
+
+     PROGRAM P
+     VAR s : UDINT; f : UDINT; END_VAR
+         READ_VIA_PIPE(dir := 1, offset := 0, stream => s, finished => f);
+     END_PROGRAM",
     "`READ_VIA_PIPE` imports `[method]descriptor.read-via-pipe` of \
      `wasi:filesystem/types@0.3.0`, and its package's WIT declares no function \
      `[method]descriptor.read-via-pipe` there"
@@ -2591,7 +2734,11 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
     "{extern 'wasi:filesystem/types@0.3.0' '[resource-drop]directory'}
      FUNCTION DROP_DIRECTORY
      VAR_INPUT handle : UDINT; END_VAR
-     END_FUNCTION",
+     END_FUNCTION
+
+     PROGRAM P
+         DROP_DIRECTORY(handle := 1);
+     END_PROGRAM",
     "`DROP_DIRECTORY` imports `[resource-drop]directory` of `wasi:filesystem/types@0.3.0`, \
      and its package's WIT declares no resource `directory` there"
 )]
@@ -2599,7 +2746,12 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
     "{extern 'wasi:filesystem/types@0.3.0' '[method]descriptor.open-at'}
      FUNCTION OPEN_AT : UDINT
      VAR_INPUT dir : UDINT; END_VAR
-     END_FUNCTION",
+     END_FUNCTION
+
+     PROGRAM P
+     VAR o : UDINT; END_VAR
+         o := OPEN_AT(dir := 1);
+     END_PROGRAM",
     "`OPEN_AT` imports `[method]descriptor.open-at` of `wasi:filesystem/types@0.3.0` with \
      {extern}, and its package's WIT declares it an `async func`: import it with {extern async} on \
      a FUNCTION_BLOCK"
@@ -2608,7 +2760,11 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
     "{extern 'wasi:filesystem/types@0.3.0' '[future-drop-readable-2][method]descriptor.read-via-stream'}
      FUNCTION DROP_FUTURE
      VAR_INPUT future : UDINT; END_VAR
-     END_FUNCTION",
+     END_FUNCTION
+
+     PROGRAM P
+         DROP_FUTURE(future := 1);
+     END_PROGRAM",
     "`DROP_FUTURE` imports `[future-drop-readable-2][method]descriptor.read-via-stream` of \
      `wasi:filesystem/types@0.3.0`, and the type of `[method]descriptor.read-via-stream` \
      numbers its streams and futures from 0 to 1"

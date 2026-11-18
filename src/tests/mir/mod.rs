@@ -10,6 +10,7 @@ mod function_blocks;
 mod host_buffers;
 mod library_scope;
 mod namespaces;
+mod reach;
 mod references;
 mod symbols;
 mod test_discovery;
