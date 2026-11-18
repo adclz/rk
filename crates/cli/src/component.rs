@@ -693,28 +693,49 @@ pub fn wit_beside(
             dir.display()
         ));
     }
+    if !rk_s_own(&dir) {
+        return Err(format!(
+            "the component's WIT would be written into `{}`, which holds WIT rk did not \
+             write: write the component into another folder",
+            dir.display()
+        ));
+    }
     Ok(dir)
 }
 
+/// The first line of a `world.wit` rk writes ([`world_text`]): `// The
+/// world of`, the project between backquotes, then [`WORLD_WRITTEN`].
+const WORLD_OF: &str = "// The world of `";
+const WORLD_WRITTEN: &str = "`, written by rk at each build.";
+
+/// Whether rk may write a component's WIT into the folder `dir`: it is
+/// missing or empty, or its `world.wit` is one rk wrote, which says so on
+/// its first line. Anything else is someone's own WIT.
+fn rk_s_own(dir: &std::path::Path) -> bool {
+    let Ok(mut entries) = std::fs::read_dir(dir) else {
+        return true;
+    };
+    entries.next().is_none()
+        || std::fs::read_to_string(dir.join("world.wit")).is_ok_and(|world| {
+            world
+                .lines()
+                .next()
+                .is_some_and(|line| line.starts_with(WORLD_OF) && line.ends_with(WORLD_WRITTEN))
+        })
+}
+
 /// The component's WIT folder, `wit/` beside `output`: `world.wit`, and
-/// each package it names under `deps/`. A package's folder is written
-/// whole, so a file an earlier build left in it goes; nothing else in the
-/// folder is touched.
+/// each package it names under `deps/`. The folder is rk's own
+/// ([`wit_beside`]), and its `deps/` is written whole: a package an earlier
+/// build wrote that this world does not name goes.
 pub fn write_wit(output: &std::path::Path, component: &Component) -> Result<(), String> {
     let dir = wit_beside(output, component)?;
-    let packages: BTreeSet<_> = component
-        .wit
-        .iter()
-        .filter_map(|(path, _)| std::path::Path::new(path).parent())
-        .collect();
-    for package in packages {
-        let package = dir.join(package);
-        match std::fs::remove_dir_all(&package) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-                return Err(format!("removing {}: {e}", package.display()));
-            }
-            _ => {}
+    let deps = dir.join("deps");
+    match std::fs::remove_dir_all(&deps) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            return Err(format!("removing {}: {e}", deps.display()));
         }
+        _ => {}
     }
     let files = std::iter::once(("world.wit".to_string(), component.world.as_str())).chain(
         component
@@ -1001,7 +1022,7 @@ fn world_text(
 ) -> String {
     let (one, two) = (INDENT, INDENT.repeat(2));
     let mut text = format!(
-        "// The world of `{project}`, written by rk at each build.\npackage local:{};\n\nworld {WORLD} {{\n",
+        "{WORLD_OF}{project}{WORLD_WRITTEN}\npackage local:{};\n\nworld {WORLD} {{\n",
         wit_name(project)
     );
     // A package's name may be spelled like a keyword too.
