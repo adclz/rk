@@ -326,10 +326,10 @@ fn the_world_imports_the_outputs_std_console_writes_to(mut with_db: db::RootData
     assert!(
         component
             .world
-            .contains("    import wasi:cli/stdout@0.3.0;\n")
+            .contains("  import wasi:cli/stdout@0.3.0;\n")
             && component
                 .world
-                .contains("    import wasi:cli/stderr@0.3.0;\n"),
+                .contains("  import wasi:cli/stderr@0.3.0;\n"),
         "{}",
         component.world
     );

@@ -1054,11 +1054,11 @@ fn the_host_s_interfaces_are_typed_by_their_declarations_or_their_wit(
 package local:plant;
 
 world plc {
-    import acme:display/text@1.0.0;
-    import modbus: interface {
-        read-coils: func(start-address: u16, count: u16) -> u32;
-    }
-    export rk:plc/control@0.1.0;
+  import acme:display/text@1.0.0;
+  import modbus: interface {
+    read-coils: func(start-address: u16, count: u16) -> u32;
+  }
+  export rk:plc/control@0.1.0;
 }
 "
     );
@@ -1406,23 +1406,23 @@ fn the_world_exports_the_functions_a_host_calls(mut with_db: db::RootDatabase) {
 package local:plant;
 
 world plc {
-    export rk:plc/control@0.1.0;
-    export plc: interface {
-        scale: func(raw: s16, gain: f32) -> result<f32, string>;
-        divide: func(a: s64, b: s64) -> result<s64, string>;
-        greet: func(who: string, times: u8) -> result<string, string>;
-        pick: func(left: string, right: string) -> result<string, string>;
-        latin: func() -> result<string, string>;
-        half: func(level: s16) -> result<s16, string>;
-        next-mode: func(mode: s32) -> result<s32, string>;
-        is-even: func(n: u32) -> result<bool, string>;
-        upper: func(c: char) -> result<char, string>;
-        wide: func(x: f64, small: s8, count: u16) -> result<f64, string>;
-        mask: func(bits: u16) -> result<u16, string>;
-        bump: func(start-value: s16) -> result<s16, string>;
-        motion-axis-stop: func() -> result<_, string>;
-        motion-axis-halt: func(why: string) -> result<_, string>;
-    }
+  export rk:plc/control@0.1.0;
+  export plc: interface {
+    scale: func(raw: s16, gain: f32) -> result<f32, string>;
+    divide: func(a: s64, b: s64) -> result<s64, string>;
+    greet: func(who: string, times: u8) -> result<string, string>;
+    pick: func(left: string, right: string) -> result<string, string>;
+    latin: func() -> result<string, string>;
+    half: func(level: s16) -> result<s16, string>;
+    next-mode: func(mode: s32) -> result<s32, string>;
+    is-even: func(n: u32) -> result<bool, string>;
+    upper: func(c: char) -> result<char, string>;
+    wide: func(x: f64, small: s8, count: u16) -> result<f64, string>;
+    mask: func(bits: u16) -> result<u16, string>;
+    bump: func(start-value: s16) -> result<s16, string>;
+    motion-axis-stop: func() -> result<_, string>;
+    motion-axis-halt: func(why: string) -> result<_, string>;
+  }
 }
 "
     );
@@ -1764,38 +1764,38 @@ fn a_function_with_outputs_returns_a_record(mut with_db: db::RootDatabase) {
 package local:plant;
 
 world plc {
-    import acme:drive/axis@1.0.0;
-    import modbus: interface {
-        record read-register-outputs {
-            quality: s8,
-            value: s64,
-            read-register: bool,
-        }
-        read-register: func(address: u16) -> read-register-outputs;
+  import acme:drive/axis@1.0.0;
+  import modbus: interface {
+    record read-register-outputs {
+      quality: s8,
+      value: s64,
+      read-register: bool,
     }
-    export rk:plc/control@0.1.0;
-    export plc: interface {
-        record measure-outputs {
-            unit: string,
-            clamped: bool,
-            peak: s64,
-            mark: char,
-            measure: f32,
-        }
-        measure: func(raw: s16) -> result<measure-outputs, string>;
-        record twice-outputs {
-            doubled: u16,
-        }
-        twice: func(n: u8) -> result<twice-outputs, string>;
-        record label-outputs {
-            text: string,
-        }
-        label: func() -> result<label-outputs, string>;
-        record echo-outputs {
-            copy: string,
-        }
-        echo: func(text: string) -> result<echo-outputs, string>;
+    read-register: func(address: u16) -> read-register-outputs;
+  }
+  export rk:plc/control@0.1.0;
+  export plc: interface {
+    record measure-outputs {
+      unit: string,
+      clamped: bool,
+      peak: s64,
+      mark: char,
+      measure: f32,
     }
+    measure: func(raw: s16) -> result<measure-outputs, string>;
+    record twice-outputs {
+      doubled: u16,
+    }
+    twice: func(n: u8) -> result<twice-outputs, string>;
+    record label-outputs {
+      text: string,
+    }
+    label: func() -> result<label-outputs, string>;
+    record echo-outputs {
+      copy: string,
+    }
+    echo: func(text: string) -> result<echo-outputs, string>;
+  }
 }
 "
     );
@@ -2438,13 +2438,13 @@ fn a_host_s_async_function_is_an_async_func(mut with_db: db::RootDatabase) {
     let component = build(&mut with_db, FETCHING).expect("the module wraps");
     assert!(
         component.world.contains(
-            "    import probe: interface {
-        record fetch-outputs {
-            value: u32,
-            ok: bool,
-        }
-        fetch: async func(a: s32, b: s32, c: s32, label: string) -> fetch-outputs;
-    }"
+            "  import probe: interface {
+    record fetch-outputs {
+      value: u32,
+      ok: bool,
+    }
+    fetch: async func(a: s32, b: s32, c: s32, label: string) -> fetch-outputs;
+  }"
         ),
         "{}",
         component.world

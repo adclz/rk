@@ -207,8 +207,8 @@ END_NAMESPACE
         let world = std::fs::read_to_string(wit.join("world.wit")).unwrap();
         assert!(
             world.contains(
-                "    export plant-a: interface {\n        \
-                 recipe-set-name: func(name: string) -> result<bool, string>;\n    }\n"
+                "  export plant-a: interface {\n    \
+                 recipe-set-name: func(name: string) -> result<bool, string>;\n  }\n"
             ),
             "{profile}: {world}"
         );
