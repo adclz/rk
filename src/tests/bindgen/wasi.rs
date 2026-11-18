@@ -236,6 +236,10 @@ fn what_every_wasi_interface_declares() {
 fn std_s_interfaces() {
     assert_snapshot!(summary(&generated_std().files), @r"
     wasi-cli-types.st: ERROR_CODE
+    wasi-cli-stdin.st: READ_VIA_STREAM, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_WRITE_ARRAY, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_READ, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE
+        left out `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan
+        left out `RESULT_FUTURE_WRITE`: no function of the interface takes a future of `result<_, error-code>` from the program
+        left out `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
     wasi-cli-stdout.st: WRITE_VIA_STREAM, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_WRITE_ARRAY, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_READ, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE
         left out `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan
         left out `RESULT_FUTURE_WRITE`: no function of the interface takes a future of `result<_, error-code>` from the program
@@ -276,9 +280,9 @@ fn std_s_interfaces_build_into_a_component(mut with_db: RootDatabase) {
     }
 }
 
-/// `stdlib/generated/` is what rk-bindgen writes for Std's world, file for
-/// file, and holds nothing else: after a change to the generator or to its
-/// world, `cargo run -p rk-bindgen` writes it again. A checkout's line
+/// `stdlib/generated/` is what rk-bindgen writes for Std's WIT folder, file
+/// for file, and holds nothing else: after a change to the generator or to
+/// that folder, `cargo run -p rk-bindgen` writes it again. A checkout's line
 /// endings do not count.
 #[test]
 fn std_s_generated_folder_is_what_rk_bindgen_writes() {
