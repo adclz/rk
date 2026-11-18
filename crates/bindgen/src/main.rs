@@ -3,7 +3,9 @@
 
 //! Writes the ST declarations of the interfaces a WIT world imports, one
 //! file per interface, then the built-ins of their streams and futures. A
-//! `.st` file of the folder that is no longer generated is removed.
+//! `.st` file of the folder that rk-bindgen wrote and no longer generates
+//! is removed; any other is left as it is. `rk bindgen` does the same for a
+//! library; this binary is the repository's, for Std.
 //!
 //! `cargo run -p rk-bindgen` writes `stdlib/generated/`, for Std's WIT
 //! folder, `stdlib/wit/`, whose world names the WASI interfaces Std's
@@ -108,31 +110,17 @@ fn write(args: &Args) -> Result<(), String> {
     let (resolve, world) = resolved(args)?;
     let files = rk_bindgen::generate_reaching(&resolve, world, args.reach)?;
     let folder = &args.folder;
-    std::fs::create_dir_all(folder).map_err(|e| format!("making `{}`: {e}", folder.display()))?;
-    let entries =
-        std::fs::read_dir(folder).map_err(|e| format!("reading `{}`: {e}", folder.display()))?;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let stale = path.extension().is_some_and(|extension| extension == "st")
-            && !files.iter().any(|file| {
-                path.file_name()
-                    .is_some_and(|name| name == file.name.as_str())
-            });
-        if stale {
-            std::fs::remove_file(&path)
-                .map_err(|e| format!("removing `{}`: {e}", path.display()))?;
-        }
-    }
+    let removed = rk_bindgen::write(folder, &files)?;
     for file in &files {
-        let path = folder.join(&file.name);
-        std::fs::write(&path, &file.text)
-            .map_err(|e| format!("writing `{}`: {e}", path.display()))?;
         for skipped in &file.skipped {
             println!(
                 "{}: left out {}: {}",
                 file.name, skipped.item, skipped.reason
             );
         }
+    }
+    for name in &removed {
+        println!("{name}: removed, no longer generated");
     }
     let shown = folder.canonicalize().unwrap_or_else(|_| folder.clone());
     println!("{} files in {}", files.len(), shown.display());

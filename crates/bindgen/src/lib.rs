@@ -90,6 +90,52 @@ pub struct Skipped {
     pub reason: String,
 }
 
+/// How every file rk-bindgen writes starts: the comment that says what it
+/// is generated from ([`header`]).
+const GENERATED: &str = "/* Generated from the WIT of ";
+
+/// Whether `text` is a file rk-bindgen wrote: it starts as every one does.
+pub fn is_generated(text: &str) -> bool {
+    text.starts_with(GENERATED)
+}
+
+/// The files [`write`] removed from a folder: the `.st` files rk-bindgen
+/// wrote there before that it no longer generates, by name.
+pub type Removed = Vec<String>;
+
+/// Writes `files` into `folder`, making it when it is missing, and removes
+/// the `.st` files it holds that rk-bindgen wrote before and no longer
+/// generates. A file it did not write, one that does not start as
+/// [`is_generated`] says, is left as it is, whatever its name: the folder
+/// may be a library's own.
+pub fn write(folder: &Path, files: &[File]) -> Result<Removed, String> {
+    std::fs::create_dir_all(folder).map_err(|e| format!("making `{}`: {e}", folder.display()))?;
+    let entries =
+        std::fs::read_dir(folder).map_err(|e| format!("reading `{}`: {e}", folder.display()))?;
+    let mut removed = Removed::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let stale = path.extension().is_some_and(|extension| extension == "st")
+            && !files.iter().any(|file| file.name == name)
+            && std::fs::read_to_string(&path).is_ok_and(|text| is_generated(&text));
+        if stale {
+            std::fs::remove_file(&path)
+                .map_err(|e| format!("removing `{}`: {e}", path.display()))?;
+            removed.push(name.to_string());
+        }
+    }
+    removed.sort();
+    for file in files {
+        let path = folder.join(&file.name);
+        std::fs::write(&path, &file.text)
+            .map_err(|e| format!("writing `{}`: {e}", path.display()))?;
+    }
+    Ok(removed)
+}
+
 /// The world in `world`, a WIT package with one world, resolved against the
 /// packages written in `packages`, a folder each, whose interfaces the world
 /// may import: the folders of a WIT folder's `deps/`, or those a package's
@@ -1404,7 +1450,7 @@ fn wrap(text: &str, width: usize, hang: &str) -> String {
     lines.join("\n")
 }
 
-/// The comment each generated file starts with.
+/// The comment each generated file starts with, as [`GENERATED`] says.
 fn header(packages: &[String]) -> String {
     let mut out = Out::default();
     out.prose(&format!(
