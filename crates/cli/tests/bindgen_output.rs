@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! What `rk bindgen` writes: the ST declarations of the interfaces the world
-//! of a library's `wit/` folder imports, in its `generated/` folder.
+//! What `rk bindgen` writes: the ST declarations of the interfaces a
+//! library's `wit/` folder declares, in its `generated/` folder.
 
 use std::path::Path;
 use std::process::Command;
@@ -23,8 +23,8 @@ fn write(path: &Path, text: &str) {
     std::fs::write(path, text).unwrap();
 }
 
-/// A library that calls a host's drive: its world imports the axis, and
-/// the drive's package is in `wit/deps/`, as its authors wrote it.
+/// A library that calls a host's drive: the drive's package is in its
+/// `wit/`, as the host ships it, with no world written for it.
 fn library() -> tempfile::TempDir {
     let library = tempfile::tempdir().unwrap();
     let root = library.path();
@@ -33,11 +33,7 @@ fn library() -> tempfile::TempDir {
         "[project]\nname = \"drives\"\nversion = \"0.1.0\"\n",
     );
     write(
-        &root.join("wit/world.wit"),
-        "package drives:host;\n\nworld host {\n  import acme:drive/axis@1.0.0;\n}\n",
-    );
-    write(
-        &root.join("wit/deps/acme-drive/axis.wit"),
+        &root.join("wit/axis.wit"),
         "package acme:drive@1.0.0;\n\ninterface axis {\n  position: func() -> u32;\n}\n",
     );
     library
@@ -52,8 +48,8 @@ fn succeeded(out: &std::process::Output) -> String {
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
-/// By default the world of the workspace's `wit/` goes into its
-/// `generated/`, INTERNAL; `--public` writes it for every program, and
+/// By default the interfaces of the workspace's `wit/` go into its
+/// `generated/`, INTERNAL; `--public` writes them for every program, and
 /// `--wit` and `--output` name other folders.
 #[test]
 fn rk_bindgen_writes_a_library_s_declarations() {

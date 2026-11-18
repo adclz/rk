@@ -157,3 +157,110 @@ fn a_wit_folder_and_the_packages_in_its_deps(mut with_db: RootDatabase) {
         .unwrap_err();
     assert!(error.starts_with("selecting the world: "), "{error}");
 }
+
+/// `files`, each a path under `folder` and its text, written there.
+fn written(folder: &std::path::Path, files: &[(&str, &str)]) {
+    for (path, text) in files {
+        let path = folder.join(path);
+        std::fs::create_dir_all(path.parent().expect("a folder")).expect("the folders");
+        std::fs::write(path, text).expect("the file");
+    }
+}
+
+/// A host's package dropped into a WIT folder needs no world: every
+/// interface it declares is written, and the types they take from a package
+/// in `deps/`, whose other interfaces are not.
+#[test]
+fn a_package_without_a_world_is_written_whole() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let wit = folder.path().join("wit");
+    written(
+        &wit,
+        &[
+            (
+                "drive.wit",
+                "package example:drive@0.1.0;\n\ninterface axis {\n  use example:units/lengths@0.1.0.{meters};\n  position: func() -> meters;\n}\n\ninterface motor {\n  start: func(speed: u16);\n}\n",
+            ),
+            (
+                "deps/units/lengths.wit",
+                "package example:units@0.1.0;\n\ninterface lengths {\n  type meters = u32;\n}\n\ninterface areas {\n  type square-meters = u32;\n}\n",
+            ),
+        ],
+    );
+    let (resolve, world) = rk_bindgen::resolve_folder(&wit, None).expect("the folder resolves");
+    let files = rk_bindgen::generate(&resolve, world).expect("it generates");
+    assert_snapshot!(summary(&files), @r"
+    example-units-lengths.st: METERS
+    example-drive-axis.st: POSITION
+    example-drive-motor.st: START
+    ");
+}
+
+/// A WIT folder of `deps/` alone: every interface of each package in it is
+/// written, a package in a single `.wit` file too, and a name spelled like a
+/// keyword with them.
+#[test]
+fn a_folder_of_deps_alone_writes_each_package() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let wit = folder.path().join("wit");
+    written(
+        &wit,
+        &[
+            (
+                "deps/drive/axis.wit",
+                "package example:drive@0.1.0;\n\ninterface axis {\n  position: func() -> u32;\n}\n",
+            ),
+            (
+                "deps/list.wit",
+                "package example:%list@0.1.0;\n\ninterface %stream {\n  next: func() -> u8;\n}\n",
+            ),
+        ],
+    );
+    let (resolve, world) = rk_bindgen::resolve_folder(&wit, None).expect("the folder resolves");
+    let files = rk_bindgen::generate(&resolve, world).expect("it generates");
+    assert_snapshot!(summary(&files), @r"
+    example-drive-axis.st: POSITION
+    example-list-stream.st: NEXT
+    ");
+}
+
+/// A world named for a package that declares none is refused, not left
+/// aside for every interface of the package.
+#[test]
+fn a_world_named_for_a_package_without_one_is_refused() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let wit = folder.path().join("wit");
+    written(
+        &wit,
+        &[(
+            "drive.wit",
+            "package example:drive@0.1.0;\n\ninterface axis {\n  position: func() -> u32;\n}\n",
+        )],
+    );
+    let error = rk_bindgen::resolve_folder(&wit, Some("plc"))
+        .map(|_| ())
+        .unwrap_err();
+    assert!(
+        error.starts_with("selecting the world: ") && error.contains("`plc`"),
+        "{error}"
+    );
+}
+
+/// A folder whose packages declare no interface has nothing to write, and
+/// says so.
+#[test]
+fn a_folder_with_no_interface_is_refused() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let wit = folder.path().join("wit");
+    written(&wit, &[("empty.wit", "package example:empty@0.1.0;\n")]);
+    let error = rk_bindgen::resolve_folder(&wit, None)
+        .map(|_| ())
+        .unwrap_err();
+    assert_eq!(
+        error,
+        format!(
+            "`{}` holds no interface to generate: no package with one, at its top or in its deps/",
+            wit.display()
+        )
+    );
+}
