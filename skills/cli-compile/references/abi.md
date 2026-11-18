@@ -1,6 +1,6 @@
 ## The module
 
-A workspace compiles to one component, named after the project, with the WIT that types it in the `wit/` folder beside it.
+A workspace compiles to one component, named after the project, which carries the types of what it imports and exports: no WIT is written beside it.
 The component wraps one core WebAssembly module, which this page describes: it exports the control interface, `rk:plc/control`, through which a host runs the program, and imports what the module imports.
 
 It defines its own linear memory, and imports nothing unless the program reads a clock of `Std.Timers`, writes through `Std.Console` or declares an `{extern}` FUNCTION.
@@ -80,7 +80,7 @@ A namespaced POU is exported under its path, `Ns.Name`, and a FUNCTION_BLOCK bod
 
 A host import declared with `{extern 'module' 'name'}` takes its `VAR_INPUT` as the parameters and returns its return type, or the record of its `VAR_OUTPUT` and its return type, as an export does.
 Its module and name are written as WIT writes them (`'modbus' 'read-coils'`, `'acme:modbus/rtu@1.0.0'`), never converted (`E1512`).
-An import from a plain module (`'modbus'`) is typed in WIT from its declaration, in the world written beside the component: scalars and `STRING` inputs only, 16 values at most, scalar outputs, and no `REF_TO` (`E1502`). An import from an interface of a package (`'acme:modbus/rtu@1.0.0'`, WASI's too) keeps the types the package's WIT gives it, which a library ships in its `wit/` folder; the build refuses an interface no library ships.
+An import from a plain module (`'modbus'`) is typed in WIT from its declaration, in the component's world: scalars and `STRING` inputs only, 16 values at most, scalar outputs, and no `REF_TO` (`E1502`). An import from an interface of a package (`'acme:modbus/rtu@1.0.0'`, WASI's too) keeps the types the package's WIT gives it, which a library ships in its `wit/` folder; the build refuses an interface no library ships.
 In the core module, a record of two fields or more is written by the host at an address the call passes last, laid out by the canonical ABI; a record of one field is that field.
 A FUNCTION_BLOCK declared `{extern async 'module' 'name'}` imports an `async func`: each call of the block starts the call or checks it, never waiting, and its `DONE : BOOL` output, no part of the signature, is TRUE in the call that saw it finish (`E1514`). The import is lowered async (`[async-lower]name`) and checked with the component model's built-ins from `$root`; a host implementing it asynchronously uses wasmtime's async API.
 Each call checks a `STRING` for UTF-8 and a `CHAR` for a character before the host is called, and raises when one is not.
