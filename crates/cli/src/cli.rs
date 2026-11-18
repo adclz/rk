@@ -97,16 +97,17 @@ pub enum Command {
         /// The code to explain, as diagnostics print it: E0301, L0002, ...
         code: String,
     },
-    /// Write the ST declarations of the interfaces a WIT world imports
+    /// Write the ST declarations of a host's WIT interfaces
     ///
-    /// By default the world of the workspace's `wit/` folder, into its
-    /// `generated/` folder, one file per interface. A `.st` file this command
-    /// wrote there before and no longer writes is removed; any other is left
-    /// as it is.
+    /// By default every interface of the package in the workspace's `wit/`
+    /// folder, or of each package in its `deps/` when there is none at its
+    /// top, into its `generated/` folder, one file per interface. A `.st`
+    /// file this command wrote there before and no longer writes is removed;
+    /// any other is left as it is.
     #[command(display_order = 8)]
     Bindgen {
-        /// The WIT folder: a package with a world, and in `deps/` the
-        /// packages its imports come from (default: <workspace>/wit)
+        /// The WIT folder: a host's package at its top, and in `deps/` the
+        /// packages it uses (default: <workspace>/wit)
         #[arg(long, value_name = "FOLDER")]
         wit: Option<PathBuf>,
 
@@ -114,7 +115,8 @@ pub enum Command {
         #[arg(short, long, value_name = "FOLDER")]
         output: Option<PathBuf>,
 
-        /// The world, when the folder's package has several
+        /// The world whose imports are written, when the folder's package
+        /// declares several
         #[arg(long)]
         world: Option<String>,
 

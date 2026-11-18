@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! `rk bindgen`: the ST declarations of the interfaces a WIT world imports,
-//! as rk-bindgen writes them, for a library that calls a host's interfaces.
-//! By default it reads the world of the workspace's `wit/` folder and
-//! writes into its `generated/` folder.
+//! `rk bindgen`: the ST declarations of a host's WIT interfaces, as
+//! rk-bindgen writes them, for a library that calls them. By default it
+//! reads the workspace's `wit/` folder, the host's package as the host
+//! ships it (`rk_bindgen::resolve_folder`), and writes into its
+//! `generated/` folder.
 
 use std::path::{Path, PathBuf};
 
@@ -20,7 +21,8 @@ pub struct BindgenOptions {
     /// Where the declarations go, `generated/` of the workspace when none
     /// is given.
     pub output: Option<PathBuf>,
-    /// The world, when the folder's package has several.
+    /// The world whose imports are written, when the folder's package
+    /// declares several.
     pub world: Option<String>,
     /// Declarations every program reaches, where by default only the
     /// library that holds them does.
