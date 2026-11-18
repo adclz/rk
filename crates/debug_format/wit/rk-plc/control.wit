@@ -33,7 +33,14 @@ interface control {
     /// Inputs longer than the scratch area trap, see above.
     run-task: func(task: u32, inputs: list<u8>) -> result<list<u8>, scan-error>;
 
-    /// The retain area, to keep across a power cycle.
+    /// The retain area, to keep across a power cycle, as the last scan left
+    /// it: it runs between calls. Refused after a trap, as every call is.
+    /// The memory the trap left holds the retained values at the moment of
+    /// the trap, the scan that trapped partly done, which a host reads where
+    /// its runtime keeps that memory (a core dump), each range of the
+    /// `retain-map` section at its address, and weighs against its last
+    /// save; a host that cannot read it, and cannot lose a scan, saves after
+    /// every scan.
     save-retain: func() -> list<u8>;
 
     /// Gives the retain area back, as many bytes as it holds. A list longer
@@ -51,8 +58,8 @@ interface control {
     variant memory-error {
         /// The range at that place in the list is outside the memory.
         outside-memory(u32),
-        /// The ranges together are more than the module holds for an
-        /// answer, a fixed area: read them in parts.
+        /// The bytes asked for are more than the scratch area holds after
+        /// the ranges themselves: read them in parts.
         too-large,
         /// The bytes would not all land in the variables.
         outside-variables,
