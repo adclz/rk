@@ -987,6 +987,10 @@ fn named_packages(
     named
 }
 
+/// One level of the world's layout: two spaces, as WASI's own files and
+/// wasm-tools' printers indent WIT.
+const INDENT: &str = "  ";
+
 /// The world: what the component imports, and the control interface. An
 /// interface named by a plain name is declared in the world itself.
 fn world_text(
@@ -995,27 +999,28 @@ fn world_text(
     own: &BTreeMap<&str, Vec<&HostFunction>>,
     interfaces: &Interfaces,
 ) -> String {
+    let (one, two) = (INDENT, INDENT.repeat(2));
     let mut text = format!(
         "// The world of `{project}`, written by rk at each build.\npackage local:{};\n\nworld {WORLD} {{\n",
         wit_name(project)
     );
     // A package's name may be spelled like a keyword too.
     for interface in carried {
-        text.push_str(&format!("    import {};\n", interface_path(interface)));
+        text.push_str(&format!("{one}import {};\n", interface_path(interface)));
     }
     // Every other import is a plain module's, its interface written from
     // the FUNCTIONs that import it.
     for (module, functions) in own {
         text.push_str(&format!(
-            "    import {}: interface {{\n{}    }}\n",
+            "{one}import {}: interface {{\n{}{one}}}\n",
             wit_id(module),
-            functions_text(functions, "        ")
+            functions_text(functions, &two)
         ));
     }
-    text.push_str(&format!("    export {};\n", wit::CONTROL_INTERFACE));
+    text.push_str(&format!("{one}export {};\n", wit::CONTROL_INTERFACE));
     if !interfaces.exports.is_empty() {
         text.push_str(&format!(
-            "    export {}: interface {{\n",
+            "{one}export {}: interface {{\n",
             wit_id(&interfaces.export_interface)
         ));
         for function in &interfaces.exports {
@@ -1026,18 +1031,18 @@ fn world_text(
                         &function.name,
                         &function.outputs,
                         function.result,
-                        "        ",
+                        &two,
                     ));
                     record_name(&function.name)
                 }
             };
             text.push_str(&format!(
-                "        {}: func({}) -> result<{result}, string>;\n",
+                "{two}{}: func({}) -> result<{result}, string>;\n",
                 wit_id(&function.name),
                 params_text(&function.params),
             ));
         }
-        text.push_str("    }\n");
+        text.push_str(&format!("{one}}}\n"));
     }
     text.push_str("}\n");
     text
@@ -1066,7 +1071,7 @@ fn record_text(
         .map(|(field, ty)| (field.as_str(), *ty))
         .chain(result.map(|ty| (name, ty)));
     for (field, ty) in fields {
-        text.push_str(&format!("{indent}    {}: {ty},\n", wit_id(field)));
+        text.push_str(&format!("{indent}{INDENT}{}: {ty},\n", wit_id(field)));
     }
     text.push_str(&format!("{indent}}}\n"));
     text
@@ -1123,7 +1128,9 @@ fn interface_path(module: &str) -> String {
     }
 }
 
-/// WIT's keywords: a name spelled like one is written after a `%`.
+/// WIT's keywords, as the wit-parser rk builds with lexes them: a name
+/// spelled like one is written after a `%`. A test reads that parser's
+/// keyword table, so a version that adds one fails until it is here.
 const KEYWORDS: &[&str] = &[
     "as",
     "async",
@@ -1220,5 +1227,103 @@ mod tests {
             parse("k", &[("k.wit", &escaped)]).unwrap_or_else(|e| panic!("{keyword}: {e}"));
         }
         assert_eq!(wit_id("read-coils"), "read-coils");
+    }
+
+    /// The source of the wit-parser this crate builds with, as cargo
+    /// resolved it: its lexer. Cargo is asked for the packages of its own
+    /// platform only, whose sources the build has already, so it needs no
+    /// network.
+    fn wit_parser_lexer() -> String {
+        let cargo = |args: &[&str]| {
+            let out = std::process::Command::new(env!("CARGO"))
+                .args(args)
+                .current_dir(env!("CARGO_MANIFEST_DIR"))
+                .output()
+                .expect("cargo runs");
+            assert!(
+                out.status.success(),
+                "cargo {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8(out.stdout).expect("cargo writes UTF-8")
+        };
+        let version = cargo(&["-vV"]);
+        let host = version
+            .lines()
+            .find_map(|line| line.strip_prefix("host: "))
+            .expect("cargo's host");
+        let metadata: serde_json::Value = serde_json::from_str(&cargo(&[
+            "metadata",
+            "--format-version",
+            "1",
+            "--offline",
+            "--filter-platform",
+            host,
+        ]))
+        .expect("cargo's metadata");
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+        let packages = metadata["packages"].as_array().expect("the packages");
+        let this = packages
+            .iter()
+            .find(|package| {
+                package["manifest_path"]
+                    .as_str()
+                    .is_some_and(|path| std::path::Path::new(path) == manifest)
+            })
+            .expect("this crate");
+        let node = metadata["resolve"]["nodes"]
+            .as_array()
+            .expect("the resolved graph")
+            .iter()
+            .find(|node| node["id"] == this["id"])
+            .expect("this crate's node");
+        let parser = node["deps"]
+            .as_array()
+            .expect("its dependencies")
+            .iter()
+            .find(|dep| dep["name"] == "wit_parser")
+            .expect("wit-parser among them");
+        let package = packages
+            .iter()
+            .find(|package| package["id"] == parser["pkg"])
+            .expect("wit-parser's package");
+        let root = std::path::Path::new(package["manifest_path"].as_str().expect("a path"))
+            .parent()
+            .expect("its folder")
+            .to_path_buf();
+        std::fs::read_to_string(root.join("src/ast/lex.rs"))
+            .unwrap_or_else(|e| panic!("wit-parser's lexer in {}: {e}", root.display()))
+    }
+
+    /// The keywords are all of wit-parser's: those of the `match` its lexer
+    /// tells a keyword from a name with, the arms before `_ => Id`, that a
+    /// name can be spelled as. A keyword missing here would be written bare
+    /// and refused; `_`, which stands for no type, is no name.
+    #[test]
+    fn the_keywords_are_all_of_wit_parser_s() {
+        let lexer = wit_parser_lexer();
+        let end = lexer
+            .find("_ => Id,")
+            .expect("the lexer's keyword table, which ends with `_ => Id,`");
+        let mut table: Vec<&str> = lexer[..end]
+            .lines()
+            .rev()
+            .map(str::trim)
+            .skip_while(|line| line.is_empty())
+            .map_while(|line| {
+                let word = line.strip_prefix('"')?;
+                let (word, rest) = word.split_once('"')?;
+                rest.trim_start().starts_with("=>").then_some(word)
+            })
+            .filter(|word| word.starts_with(|c: char| c.is_ascii_lowercase()))
+            .collect();
+        table.sort_unstable();
+        let mut ours = KEYWORDS.to_vec();
+        ours.sort_unstable();
+        assert!(!table.is_empty(), "the lexer's keyword table is empty");
+        assert_eq!(
+            ours, table,
+            "KEYWORDS must be the keywords of wit-parser's lexer, src/ast/lex.rs"
+        );
     }
 }
