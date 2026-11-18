@@ -6,11 +6,17 @@ package rk:plc@0.1.0;
 /// A host reads the component's `rk.schedule` section to know which tasks
 /// are due, and calls `run-task` for each of them, in the order the section
 /// lists them.
+///
+/// Every list a host passes lands first in the module's scratch area, which
+/// holds the input area, the retain area, and a page (64 KiB) more, at
+/// least. A longer list traps, since the memory never grows, and a
+/// component that trapped takes no other call: a host instantiates it
+/// again.
 interface control {
     /// Writes the starting value of every variable. Called once, before
     /// anything else; a warm start then gives the retained values back with
-    /// `restore-retain`. The error is the message of an exception a starting
-    /// value raised.
+    /// `restore-retain`. Never returns its error in this version: every
+    /// starting value is a constant or a `REF()`.
     init: func() -> result<_, string>;
 
     /// Why a scan did not run to its end.
@@ -24,12 +30,14 @@ interface control {
     /// Runs the task at that place in the `rk.schedule` section. `inputs` is
     /// copied into the input area, as much of it as the area holds, then each
     /// program instance of the task runs, in order. Returns the output area.
+    /// Inputs longer than the scratch area trap, see above.
     run-task: func(task: u32, inputs: list<u8>) -> result<list<u8>, scan-error>;
 
     /// The retain area, to keep across a power cycle.
     save-retain: func() -> list<u8>;
 
-    /// Gives the retain area back, as many bytes as it holds.
+    /// Gives the retain area back, as many bytes as it holds. A list longer
+    /// than the scratch area traps, see above.
     restore-retain: func(retained: list<u8>);
 
     /// A run of bytes in the module's memory: a variable's address and size,
