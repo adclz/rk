@@ -19,6 +19,8 @@ ast = { workspace = true }
 wasm_codegen = { workspace = true }
 mir = { workspace = true }
 debug_format = { workspace = true }
+# `rk bindgen`: the declarations of the interfaces a WIT world imports.
+rk-bindgen = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 notify = { workspace = true }
 auto-lsp = { workspace = true }

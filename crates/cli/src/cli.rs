@@ -97,6 +97,32 @@ pub enum Command {
         /// The code to explain, as diagnostics print it: E0301, L0002, ...
         code: String,
     },
+    /// Write the ST declarations of the interfaces a WIT world imports
+    ///
+    /// By default the world of the workspace's `wit/` folder, into its
+    /// `generated/` folder, one file per interface. A `.st` file this command
+    /// wrote there before and no longer writes is removed; any other is left
+    /// as it is.
+    #[command(display_order = 8)]
+    Bindgen {
+        /// The WIT folder: a package with a world, and in `deps/` the
+        /// packages its imports come from (default: <workspace>/wit)
+        #[arg(long, value_name = "FOLDER")]
+        wit: Option<PathBuf>,
+
+        /// Where the declarations go (default: <workspace>/generated)
+        #[arg(short, long, value_name = "FOLDER")]
+        output: Option<PathBuf>,
+
+        /// The world, when the folder's package has several
+        #[arg(long)]
+        world: Option<String>,
+
+        /// Declarations every program reaches; by default they are
+        /// INTERNAL, reached by the library that holds them only
+        #[arg(long)]
+        public: bool,
+    },
     /// Fetch the libraries the workspace depends on
     #[command(display_order = 7)]
     Fetch {

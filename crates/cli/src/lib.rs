@@ -98,13 +98,28 @@ pub fn run(
     format: OutputFormat,
     command: Command,
 ) -> CliResult<()> {
-    use commands::{check, compile, env, explain, fetch, fmt, test};
+    use commands::{bindgen, check, compile, env, explain, fetch, fmt, test};
     // The pool the commands check and lint on, with the stack the queries
     // need; once per process, so a second run keeps the first's.
     let _ = rayon::ThreadPoolBuilder::new()
         .stack_size(db::STACK_SIZE)
         .build_global();
     match command {
+        Command::Bindgen {
+            wit,
+            output,
+            world,
+            public,
+        } => bindgen::run_bindgen(
+            workspace,
+            bindgen::BindgenOptions {
+                wit,
+                output,
+                world,
+                public,
+            },
+            format,
+        ),
         Command::Check { watch } => check::run_check(workspace, watch, verbose, format),
         Command::Env { keys } => env::run_env(workspace, &keys, format),
         Command::Explain { code } => explain::run_explain(&code, format),

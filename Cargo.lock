@@ -2906,6 +2906,7 @@ dependencies = [
  "mir",
  "notify",
  "rayon",
+ "rk-bindgen",
  "serde",
  "serde_json",
  "sha2",
