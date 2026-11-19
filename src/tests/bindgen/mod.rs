@@ -21,6 +21,7 @@
 mod aliases;
 mod async_calls;
 mod built_ins;
+mod components;
 mod enums;
 mod flags;
 mod lists;
