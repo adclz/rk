@@ -38,6 +38,7 @@ type = "library"
 
 A folder without `type = "library"` is a program, and a program is not a dependency: it is refused.
 In its own folder, `rk check` and `rk test` hold a library to the rules every program that lists it holds it to, and `rk compile` refuses it: a library is built into the programs that list it, never alone.
+In your program, `rk check` reports a library's errors after your own diagnostics, as `rk compile` does.
 
 ```st
 // drives/Axis.st
