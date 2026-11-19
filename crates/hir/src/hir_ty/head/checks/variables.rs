@@ -668,8 +668,7 @@ impl<'db> InitInference<'db> {
             {
                 let address = compact_str::CompactString::from(dv.to_address(db));
                 // A library names no address: it is code for any machine.
-                let in_library =
-                    crate::check::check_duplicates::is_library_file(db, self.scope.file(db));
+                let in_library = crate::hir_ty::library::is_library_code(db, self.scope.file(db));
                 let banded = dv.area(db).filter(|_| {
                     !in_library
                         && ((var.kind(db) == crate::hir_def::pous::variable::VariableKind::Global

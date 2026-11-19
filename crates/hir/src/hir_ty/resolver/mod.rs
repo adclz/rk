@@ -233,7 +233,7 @@ impl<'db> Resolver<'db> {
                     } else {
                         UnlocatableAddress::Malformed
                     })
-                } else if crate::check::check_duplicates::is_library_file(db, ctx.scope.file(db)) {
+                } else if crate::hir_ty::library::is_library_code(db, ctx.scope.file(db)) {
                     Some(UnlocatableAddress::InLibrary)
                 } else {
                     None

@@ -74,6 +74,26 @@ pub fn library_root(db: &dyn WorkspaceDataBase, file: File) -> Option<Root> {
     library_roots(db).get(id as usize).copied()
 }
 
+/// Whether `file` is a library's code: a file of a library the workspace
+/// reads, or any file of a workspace that is itself a library
+/// (`type = "library"`), checked in its own folder. A library's rules hold
+/// in both. [`library_root`] tells the first only: in its own folder, a
+/// library's files are read at the top level, as a workspace's are.
+pub fn is_library_code(db: &dyn WorkspaceDataBase, file: File) -> bool {
+    if db.library_of(file).is_some() {
+        return true;
+    }
+    match Workspace::try_get(db) {
+        Some(workspace) => workspace.is_library(db),
+        None => {
+            // As in `library_roots`: the singleton's existence is no read
+            // salsa records.
+            db.report_untracked_read();
+            false
+        }
+    }
+}
+
 /// A namespace path of `file`, `written` as paths are matched and
 /// `written_with_case` as the author spelled it, as the indexes key it and
 /// as it is shown: with the file's root before it, unless it is written
