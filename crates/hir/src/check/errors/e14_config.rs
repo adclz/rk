@@ -38,6 +38,12 @@ pub enum ConfigError<'db> {
         /// Every OTHER configuration, so they can be reached from here.
         others: Vec<ConfigDecl<'db>>,
     },
+    /// A CONFIGURATION in a library's code (E1433). A library is code for
+    /// any machine: the configuration, its globals and its tasks are the
+    /// program's that lists it.
+    ConfigurationInLibrary {
+        config: ConfigDecl<'db>,
+    },
     /// The configuration declares more than one RESOURCE. A resource is its
     /// own execution unit and a runtime drives one, so a second resource
     /// compiled into the module was refused at DEPLOY, from a compile that
@@ -900,6 +906,7 @@ impl<'db> ErrorCode for ConfigError<'db> {
         match self {
             Self::NoConfigFileFound { .. } => "E1401",
             Self::MultipleConfigurations { .. } => "E1402",
+            Self::ConfigurationInLibrary { .. } => "E1433",
             Self::MultipleResources { .. } => "E1403",
             Self::TaskOrProgramOutsideResource(_) => "E1404",
             Self::MissingPriority(_) => "E1405",
@@ -989,6 +996,25 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 }
                 diag.with_note("a workspace has one CONFIGURATION".to_string());
                 diag.with_help("describe another PLC in its own workspace".to_string());
+                diag
+            }
+            Self::ConfigurationInLibrary { config } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is a CONFIGURATION in a library",
+                        config.name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &config.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "a library is code for any machine: the program that lists it declares the configuration"
+                        .to_string(),
+                );
+                diag.with_help("move it to a program that lists the library".to_string());
                 diag
             }
             Self::MultipleResources {

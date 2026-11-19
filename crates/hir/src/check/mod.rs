@@ -148,6 +148,17 @@ impl<'db> SemanticIndex<'db> {
 
         // Configurations — validate program type references and task references.
         self.configs.iter().for_each(|config| {
+            // A library declares none (E1433): what this one holds is not
+            // checked further, it is refused whole.
+            if crate::hir_ty::library::is_library_code(db, config.get_scope_id(db).file(db)) {
+                errors.push(
+                    crate::check::errors::e14_config::ConfigError::ConfigurationInLibrary {
+                        config: *config,
+                    }
+                    .to_diagnostic(db, config.get_scope_id(db).file(db)),
+                );
+                return;
+            }
             check_config_fragment_collisions(db, *config, errors);
             check_single_configuration(db, *config, errors);
             check_single_resource(db, *config, errors);

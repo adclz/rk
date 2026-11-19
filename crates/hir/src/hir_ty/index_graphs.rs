@@ -674,11 +674,15 @@ pub fn config_fragments<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Vec
 ///
 /// Used to validate VAR_EXTERNAL declarations: any VAR_EXTERNAL must reference a name
 /// that exists in at least one VAR_GLOBAL across all configs/resources.
+///
+/// The workspace's files only, as every configuration lookup here: a
+/// library declares no configuration (E1433), and the globals of one it
+/// declares anyway get no storage.
 pub fn external_var_lookup<'db>(
     db: &'db dyn WorkspaceDataBase,
     var_name: Ident,
 ) -> Option<VariableDecl<'db>> {
-    for file in all_files(db) {
+    for file in workspace_files(db) {
         for config in file_configs(db, file).iter() {
             for v in config.variables(db).iter() {
                 if v.get_name_ident(db) == var_name {
