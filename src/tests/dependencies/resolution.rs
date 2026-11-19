@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! How the `[dependencies]` of a workspace, and those of each library it
-//! names, are read: read-only, from folders and from the cache.
+//! How the `[dependencies]` of a workspace are read: read-only, from
+//! folders and from the cache. A library has none of its own.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use db::config_file::{CONFIG_FILE, parse_config};
+use db::config_file::{CONFIG_FILE, Config, parse_config};
 use db::dependencies::{
     ContentHash, Library, Remote, Resolution, cached_urls, packages_dir, resolve,
 };
@@ -25,13 +25,24 @@ fn library(root: &Path, dir: &str, name: &str, dependencies: &str) -> PathBuf {
     dir.canonicalize().unwrap()
 }
 
-/// The resolution of the workspace `root/ws`, whose `[dependencies]`
-/// are `dependencies`.
-fn resolved(root: &Path, dependencies: &str) -> Resolution {
+/// The workspace `root/ws`, whose `[dependencies]` are `dependencies`, and
+/// its configuration.
+fn workspace_of(root: &Path, dependencies: &str) -> (PathBuf, Config) {
     let workspace = library(root, "ws", "ws", dependencies);
     let source = fs::read_to_string(workspace.join(CONFIG_FILE)).unwrap();
-    let config = parse_config(&source).unwrap();
+    (workspace, parse_config(&source).unwrap())
+}
+
+/// The resolution of the workspace `root/ws`, whose `[dependencies]`
+/// are `dependencies`, with no standard library and no cache.
+fn resolved(root: &Path, dependencies: &str) -> Resolution {
+    let (workspace, config) = workspace_of(root, dependencies);
     resolve(&workspace, &config, None, None, None)
+}
+
+/// The hash of `byte` written 32 times, as a dependency writes it.
+fn a_hash(byte: &str) -> ContentHash {
+    ContentHash::parse(&format!("sha256:{}", byte.repeat(32))).unwrap()
 }
 
 fn names(resolution: &Resolution) -> Vec<&str> {
@@ -50,28 +61,25 @@ fn messages(resolution: &Resolution) -> Vec<&str> {
         .collect()
 }
 
-/// A library names its own dependencies, and each is read once, in the
-/// order they are met: one that two libraries share, and one that leads
-/// back to the library that names it.
+/// A library has no dependencies of its own: one whose `config.toml` names
+/// some is refused, and what it names is not read. An empty
+/// `[dependencies]` table names none.
 #[test]
-fn a_library_brings_its_own_dependencies() {
+fn a_library_with_dependencies_is_refused() {
     let t = tempfile::tempdir().unwrap();
-    library(
-        t.path(),
-        "a",
-        "a",
-        "shared = { path = \"../shared\" }\nb = { path = \"../b\" }\n",
-    );
-    library(
-        t.path(),
-        "b",
-        "b",
-        "shared = { path = \"../shared\" }\na = { path = \"../a\" }\n",
-    );
+    library(t.path(), "a", "a", "shared = { path = \"../shared\" }\n");
+    library(t.path(), "b", "b", "");
     library(t.path(), "shared", "shared", "");
-    let resolution = resolved(t.path(), "a = { path = \"../a\" }\n");
-    assert_eq!(messages(&resolution), [] as [&str; 0]);
-    assert_eq!(names(&resolution), ["a", "b", "shared"]);
+    let resolution = resolved(
+        t.path(),
+        "a = { path = \"../a\" }\nb = { path = \"../b\" }\n",
+    );
+    assert_eq!(names(&resolution), ["b"]);
+    assert_eq!(messages(&resolution), ["'a' has dependencies of its own"]);
+    assert_eq!(
+        resolution.problems[0].notes,
+        ["a library has no `[dependencies]`: the workspace lists every library it reads"]
+    );
 }
 
 /// The standard library comes first, and a dependency of its name from
@@ -81,9 +89,7 @@ fn the_standard_library_is_not_replaced() {
     let t = tempfile::tempdir().unwrap();
     let std = library(t.path(), "std", "stdlib", "");
     library(t.path(), "mine", "stdlib", "");
-    let workspace = library(t.path(), "ws", "ws", "stdlib = { path = \"../mine\" }\n");
-    let source = fs::read_to_string(workspace.join(CONFIG_FILE)).unwrap();
-    let config = parse_config(&source).unwrap();
+    let (workspace, config) = workspace_of(t.path(), "stdlib = { path = \"../mine\" }\n");
     let resolution = resolve(
         &workspace,
         &config,
@@ -97,29 +103,32 @@ fn the_standard_library_is_not_replaced() {
         messages(&resolution),
         ["'stdlib' is required from two places"]
     );
-    assert!(resolution.problems[0].notes[0].starts_with("the compiler uses"));
+    let problem = &resolution.problems[0];
+    assert!(problem.notes[0].starts_with("the compiler uses"));
+    assert!(problem.notes[0].contains("and the workspace uses"));
+    assert_eq!(
+        problem.help.as_deref(),
+        Some("remove this entry, or name its folder in RK_STDLIB_PATH")
+    );
 }
 
-/// The same library from two folders is an error: its names would be
-/// declared twice.
+/// The workspace may name the standard library's own folder: it is read
+/// once, as the standard library.
 #[test]
-fn a_library_from_two_places_is_refused() {
+fn the_standard_library_s_own_folder_is_read_once() {
     let t = tempfile::tempdir().unwrap();
-    library(t.path(), "a", "a", "shared = { path = \"../old\" }\n");
-    library(t.path(), "old", "shared", "");
-    library(t.path(), "new", "shared", "");
-    let resolution = resolved(
-        t.path(),
-        "a = { path = \"../a\" }\nshared = { path = \"../new\" }\n",
+    let std = library(t.path(), "std", "stdlib", "");
+    let (workspace, config) = workspace_of(t.path(), "stdlib = { path = \"../std\" }\n");
+    let resolution = resolve(
+        &workspace,
+        &config,
+        Some(Library::standard(std)),
+        None,
+        None,
     );
-    assert_eq!(names(&resolution), ["a", "shared"]);
-    assert_eq!(
-        messages(&resolution),
-        ["'shared' is required from two places"]
-    );
-    let note = resolution.problems[0].notes[0].as_str();
-    assert!(note.starts_with("'a' uses"), "{note}");
-    assert!(note.contains("and the workspace uses"), "{note}");
+    assert_eq!(messages(&resolution), [] as [&str; 0]);
+    assert_eq!(names(&resolution), ["stdlib"]);
+    assert!(resolution.libraries[0].standard);
 }
 
 /// Each way an entry can be written wrong, in its own words.
@@ -172,30 +181,23 @@ fn an_entry_written_wrong_is_reported() {
 }
 
 /// A fetched library is looked up by its hash and its URL. With no one
-/// to fetch it, one the cache lacks is a problem; one that names a
-/// folder outside itself is too.
+/// to fetch it, one the cache lacks is a problem.
 #[test]
 fn a_fetched_library_is_read_from_the_cache() {
     let t = tempfile::tempdir().unwrap();
     let cache = t.path().join("cache");
-    let hash = ContentHash::parse(&format!("sha256:{}", "ab".repeat(32))).unwrap();
+    let hash = a_hash("ab");
     let url = "https://example.org/drives-1.tar.gz";
-    let dependency = format!("drives = {{ url = \"{url}\", hash = \"{hash}\" }}\n");
-    let workspace = library(t.path(), "ws", "ws", &dependency);
-    let config = parse_config(&fs::read_to_string(workspace.join(CONFIG_FILE)).unwrap()).unwrap();
+    let (workspace, config) = workspace_of(
+        t.path(),
+        &format!("drives = {{ url = \"{url}\", hash = \"{hash}\" }}\n"),
+    );
 
     let absent = resolve(&workspace, &config, None, Some(&cache), None);
     assert_eq!(messages(&absent), ["'drives' is not in the cache"]);
 
     // In the cache, as another URL gave it: not this pair.
-    let drives = library(
-        &packages_dir(&cache),
-        hash.hex(),
-        "drives",
-        "inner = { path = \"inner\" }\nouter = { path = \"../../../outside\" }\n",
-    );
-    library(&drives, "inner", "inner", "");
-    library(t.path(), "outside", "outer", "");
+    library(&packages_dir(&cache), hash.hex(), "drives", "");
     fs::write(
         cached_urls(&cache, &hash),
         "https://example.org/other.tar.gz\n",
@@ -217,15 +219,53 @@ fn a_fetched_library_is_read_from_the_cache() {
     };
     let fetched = resolve(&workspace, &config, None, Some(&cache), Some(&mut fetch));
     assert_eq!(asked, [format!("drives {url} {hash}")]);
-    assert_eq!(names(&fetched), ["drives", "inner"]);
-    assert_eq!(
-        messages(&fetched),
-        ["'outer' (required by 'drives') has a `path` that leaves its library"]
-    );
+    assert_eq!(messages(&fetched), [] as [&str; 0]);
+    assert_eq!(names(&fetched), ["drives"]);
 
     // And read with no one to ask, now that the cache has the pair.
     let cached = resolve(&workspace, &config, None, Some(&cache), None);
-    assert_eq!(names(&cached), ["drives", "inner"]);
+    assert_eq!(names(&cached), ["drives"]);
+}
+
+/// What a fetched library names is never fetched: the library is fetched,
+/// since its `config.toml` is in what it holds, and refused.
+#[test]
+fn what_a_library_names_is_not_fetched() {
+    let t = tempfile::tempdir().unwrap();
+    let cache = t.path().join("cache");
+    let hash = a_hash("ab");
+    let url = "https://example.org/drives-1.tar.gz";
+    let (workspace, config) = workspace_of(
+        t.path(),
+        &format!("drives = {{ url = \"{url}\", hash = \"{hash}\" }}\n"),
+    );
+    library(
+        &packages_dir(&cache),
+        hash.hex(),
+        "drives",
+        &format!(
+            "units = {{ url = \"https://example.org/units-1.tar.gz\", hash = \"{}\" }}\n",
+            a_hash("cd")
+        ),
+    );
+
+    let mut asked = Vec::new();
+    let mut fetch = |remote: &Remote<'_>| {
+        asked.push(remote.name.to_string());
+        fs::write(
+            cached_urls(&cache, remote.hash),
+            format!("{}\n", remote.url),
+        )
+        .unwrap();
+        Ok(())
+    };
+    let resolution = resolve(&workspace, &config, None, Some(&cache), Some(&mut fetch));
+    assert_eq!(asked, ["drives"]);
+    assert_eq!(names(&resolution), [] as [&str; 0]);
+    assert_eq!(
+        messages(&resolution),
+        ["'drives' has dependencies of its own"]
+    );
 }
 
 #[test]

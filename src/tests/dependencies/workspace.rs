@@ -129,8 +129,7 @@ END_NAMESPACE
 ";
 
 /// A `path` names a folder beside the workspace, or inside it. Its files
-/// are the library's and not the workspace's, and what the library itself
-/// depends on is read with it.
+/// are the library's and not the workspace's.
 #[test]
 fn a_workspace_reads_the_libraries_it_names() {
     let (_dir, root) = sandbox();
@@ -146,12 +145,47 @@ fn a_workspace_reads_the_libraries_it_names() {
             ),
             (
                 "ws/main.st",
-                "USING Motion;\nFUNCTION Run : INT\n    Run := Twice(2) + Thrice(Seven());\nEND_FUNCTION\n",
+                "USING Motion;\nFUNCTION Run : INT\n    Run := Twice(Seven());\nEND_FUNCTION\n",
             ),
             ("ws/libs/local/config.toml", &config("local", "")),
             (
                 "ws/libs/local/Local.st",
                 "FUNCTION Seven : INT\n    Seven := 7;\nEND_FUNCTION\n",
+            ),
+            ("motion/config.toml", &config("motion", "")),
+            ("motion/Motion.st", MOTION),
+        ],
+    );
+    let ws = root.join("ws");
+    let (db, reported) = open(&ws);
+    assert_eq!(reported, "");
+    assert_eq!(errors(&db, &ws), "");
+    let of = |library: &str| Some(library.to_string());
+    assert_eq!(
+        origins(&db),
+        [
+            ("Local.st".to_string(), of("local")),
+            ("Motion.st".to_string(), of("motion")),
+            ("main.st".to_string(), None),
+        ]
+    );
+}
+
+/// A library with dependencies of its own is refused on its line of the
+/// workspace's `config.toml`, and neither it nor what it names is read.
+#[test]
+fn a_library_with_dependencies_is_refused_on_its_line() {
+    let (_dir, root) = sandbox();
+    write(
+        &root,
+        &[
+            (
+                "ws/config.toml",
+                &config("ws", "motion = { path = \"../motion\" }\n"),
+            ),
+            (
+                "ws/main.st",
+                "FUNCTION Run : INT\n    Run := 1;\nEND_FUNCTION\n",
             ),
             (
                 "motion/config.toml",
@@ -167,18 +201,18 @@ fn a_workspace_reads_the_libraries_it_names() {
     );
     let ws = root.join("ws");
     let (db, reported) = open(&ws);
-    assert_eq!(reported, "");
-    assert_eq!(errors(&db, &ws), "");
-    let of = |library: &str| Some(library.to_string());
-    assert_eq!(
-        origins(&db),
-        [
-            ("Local.st".to_string(), of("local")),
-            ("Motion.st".to_string(), of("motion")),
-            ("Units.st".to_string(), of("units")),
-            ("main.st".to_string(), None),
-        ]
-    );
+    assert_eq!(origins(&db), [("main.st".to_string(), None)]);
+    assert_snapshot!(reported, @r#"
+    Error: 'motion' has dependencies of its own
+       ╭─[ config.toml:6:1 ]
+       │
+     6 │ motion = { path = "../motion" }
+       │ ───┬──  
+       │    ╰──── 'motion' has dependencies of its own
+       │ 
+       │ Note: a library has no `[dependencies]`: the workspace lists every library it reads
+    ───╯
+    "#);
 }
 
 /// A file is the workspace's where the loader reads it: under the folder,
@@ -252,10 +286,7 @@ fn a_library_is_closed_to_another_library() {
             ("ws/main.st", &uses("FromTheWorkspace")),
             ("motion/config.toml", &config("motion", "")),
             ("motion/Motion.st", MOTION),
-            (
-                "other/config.toml",
-                &config("other", "motion = { path = \"../motion\" }\n"),
-            ),
+            ("other/config.toml", &config("other", "")),
             ("other/Other.st", &uses("FromAnotherLibrary")),
         ],
     );
