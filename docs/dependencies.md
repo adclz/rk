@@ -154,6 +154,7 @@ Your workspace cannot use it, and another library cannot either.
 A library names no address: it is code for any machine.
 Its blocks declare `AT %I*`, `%Q*` or `%M*`, and your configuration gives each instance its address in `VAR_CONFIG`.
 A complete address in a library is `E1432`, in a `path` as in a `url`.
+A library declares no `CONFIGURATION` either (`E1433`): the configuration, its globals and its tasks are your program's.
 
 See [VAR_CONFIG](var-config.md).
 
