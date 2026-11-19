@@ -12,6 +12,11 @@
 //! reads, and a library whose `config.toml` names some is refused, nothing
 //! it names read.
 //!
+//! A library's name is its namespace, and names are case-insensitive: two
+//! entries whose names differ only in case are one name, and both are
+//! refused, as is an entry whose name differs from the standard library's
+//! only in case.
+//!
 //! This module only reads. A fetched library is looked up in the cache, and
 //! fetching it is the caller's ([`Fetch`]): `rk` does it, the editor does
 //! not.
@@ -294,10 +299,15 @@ pub fn resolve(
         fetch,
         resolution: Resolution::default(),
     };
+    let mut clashes = case_clashes(&config.dependencies, standard.as_ref());
     resolver.resolution.libraries.extend(standard);
     for (name, dependency) in &config.dependencies {
         let span = name.span();
         let name = name.get_ref();
+        if let Some(problem) = clashes.remove(name.as_str()) {
+            resolver.resolution.problems.push(problem);
+            continue;
+        }
         let read = resolver
             .locate(name, dependency, &span)
             .and_then(|dir| resolver.read(name, dir, &span));
@@ -312,6 +322,50 @@ pub fn resolve(
         .problems
         .sort_by_key(|problem| problem.span.start);
     resolver.resolution
+}
+
+/// The rule the problems about two names that are one rest on.
+const CASE_INSENSITIVE: &str = "a library's name is its namespace, and names are case-insensitive";
+
+/// The entries of `dependencies` whose name is another's in another case:
+/// another entry's, or the standard library's. The two would be one
+/// namespace, so each such entry is refused before anything is read or
+/// fetched for it, and the standard library is kept.
+///
+/// Folded with `to_lowercase`, as names are matched: what the compiler
+/// takes for one name is one name here.
+fn case_clashes<'a>(
+    dependencies: &'a BTreeMap<toml::Spanned<String>, Dependency>,
+    standard: Option<&Library>,
+) -> BTreeMap<&'a str, Problem> {
+    let mut clashes = BTreeMap::new();
+    for entry in dependencies.keys() {
+        let name = entry.get_ref().as_str();
+        let folded = name.to_lowercase();
+        let one_name = |other: &str| other != name && other.to_lowercase() == folded;
+        let span = entry.span();
+        let problem = if let Some(standard) = standard.filter(|standard| one_name(&standard.name)) {
+            Problem::new(
+                &span,
+                format!(
+                    "'{name}' and '{}', the standard library, are one name",
+                    standard.name
+                ),
+            )
+            .help("remove this entry")
+        } else if let Some(other) = dependencies
+            .keys()
+            .map(|other| other.get_ref().as_str())
+            .find(|other| one_name(other))
+        {
+            Problem::new(&span, format!("'{name}' and '{other}' are one name"))
+                .help("keep one of them")
+        } else {
+            continue;
+        };
+        clashes.insert(name, problem.note(CASE_INSENSITIVE));
+    }
+    clashes
 }
 
 struct Resolver<'c, 'f> {
@@ -455,7 +509,9 @@ impl Resolver<'_, '_> {
             );
         }
         // Only the standard library can have the name already: it is read
-        // first, and each entry of the workspace is a name of its own.
+        // first, and each entry of the workspace is a name of its own, one
+        // that is another's in another case refused before it is read
+        // ([`case_clashes`]).
         if let Some(standard) = self
             .resolution
             .libraries
