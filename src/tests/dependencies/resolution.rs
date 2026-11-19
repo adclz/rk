@@ -12,23 +12,31 @@ use db::dependencies::{
     ContentHash, Library, Remote, Resolution, cached_urls, packages_dir, resolve,
 };
 
-/// A folder under `root` with a `config.toml` that names it `name`, and
-/// the `[dependencies]` given.
-fn library(root: &Path, dir: &str, name: &str, dependencies: &str) -> PathBuf {
+/// A folder under `root` with a `config.toml` that names it `name`, the
+/// `[project]` lines `kind` gives (a `type`, or none), and the
+/// `[dependencies]` given.
+fn folder(root: &Path, dir: &str, name: &str, kind: &str, dependencies: &str) -> PathBuf {
     let dir = root.join(dir);
     fs::create_dir_all(&dir).unwrap();
     fs::write(
         dir.join(CONFIG_FILE),
-        format!("[project]\nname = \"{name}\"\nversion = \"1\"\n\n[dependencies]\n{dependencies}"),
+        format!(
+            "[project]\nname = \"{name}\"\nversion = \"1\"\n{kind}\n[dependencies]\n{dependencies}"
+        ),
     )
     .unwrap();
     dir.canonicalize().unwrap()
 }
 
-/// The workspace `root/ws`, whose `[dependencies]` are `dependencies`, and
-/// its configuration.
+/// A library under `root`, named `name`, with the `[dependencies]` given.
+fn library(root: &Path, dir: &str, name: &str, dependencies: &str) -> PathBuf {
+    folder(root, dir, name, "type = \"library\"\n", dependencies)
+}
+
+/// The workspace `root/ws`, a program whose `[dependencies]` are
+/// `dependencies`, and its configuration.
 fn workspace_of(root: &Path, dependencies: &str) -> (PathBuf, Config) {
-    let workspace = library(root, "ws", "ws", dependencies);
+    let workspace = folder(root, "ws", "ws", "", dependencies);
     let source = fs::read_to_string(workspace.join(CONFIG_FILE)).unwrap();
     (workspace, parse_config(&source).unwrap())
 }
@@ -80,6 +88,99 @@ fn a_library_with_dependencies_is_refused() {
         resolution.problems[0].notes,
         ["a library has no `[dependencies]`: the workspace lists every library it reads"]
     );
+}
+
+/// A folder is a program unless its `[project]` says `type = "library"`;
+/// another `type` is no configuration.
+#[test]
+fn a_project_says_what_it_is() {
+    use db::config_file::ProjectKind;
+    let kind = |line: &str| {
+        parse_config(&format!(
+            "[project]\nname = \"x\"\nversion = \"1\"\n{line}\n"
+        ))
+        .map(|config| config.project.kind)
+        .map_err(|error| error.message().to_string())
+    };
+    assert_eq!(kind(""), Ok(ProjectKind::Program));
+    assert_eq!(kind("type = \"program\""), Ok(ProjectKind::Program));
+    assert_eq!(kind("type = \"library\""), Ok(ProjectKind::Library));
+    let refused = kind("type = \"lib\"").unwrap_err();
+    assert!(
+        refused.contains("unknown variant `lib`, expected `program` or `library`"),
+        "{refused}"
+    );
+}
+
+/// A dependency is a library, and says so: a folder whose `config.toml`
+/// has no `type = "library"`, or says `type = "program"`, is refused.
+#[test]
+fn a_folder_that_is_no_library_is_refused() {
+    let t = tempfile::tempdir().unwrap();
+    folder(t.path(), "plant", "plant", "", "");
+    folder(t.path(), "line", "line", "type = \"program\"\n", "");
+    library(t.path(), "drives", "drives", "");
+    let resolution = resolved(
+        t.path(),
+        "drives = { path = \"../drives\" }\n\
+         line = { path = \"../line\" }\n\
+         plant = { path = \"../plant\" }\n",
+    );
+    assert_eq!(names(&resolution), ["drives"]);
+    assert_eq!(
+        messages(&resolution),
+        ["'line' is not a library", "'plant' is not a library"]
+    );
+    let problem = &resolution.problems[0];
+    assert_eq!(
+        problem.notes,
+        ["a library's config.toml says so: `type = \"library\"` in its `[project]`"]
+    );
+    assert_eq!(
+        problem.help.as_deref(),
+        Some("add `type = \"library\"` to its `[project]`")
+    );
+}
+
+/// A library checked in its own folder lists no dependencies: each entry
+/// is refused there, nothing read or fetched for it.
+#[test]
+fn a_library_lists_no_dependencies_in_its_own_folder() {
+    let t = tempfile::tempdir().unwrap();
+    library(t.path(), "units", "units", "");
+    let workspace = library(
+        t.path(),
+        "drives",
+        "drives",
+        &format!(
+            "units = {{ path = \"../units\" }}\n\
+             motion = {{ url = \"https://example.org/motion.tar.gz\", hash = \"{}\" }}\n",
+            a_hash("ab")
+        ),
+    );
+    let config = parse_config(&fs::read_to_string(workspace.join(CONFIG_FILE)).unwrap()).unwrap();
+    let cache = t.path().join("cache");
+    let mut asked = Vec::new();
+    let mut fetch = |remote: &Remote<'_>| {
+        asked.push(remote.name.to_string());
+        Ok(())
+    };
+    let resolution = resolve(&workspace, &config, None, Some(&cache), Some(&mut fetch));
+    assert_eq!(asked, [] as [&str; 0]);
+    assert_eq!(names(&resolution), [] as [&str; 0]);
+    assert_eq!(
+        messages(&resolution),
+        [
+            "'units' is a dependency of a library",
+            "'motion' is a dependency of a library"
+        ]
+    );
+    let problem = &resolution.problems[0];
+    assert_eq!(
+        problem.notes,
+        ["a library has no `[dependencies]`: a program lists every library it reads"]
+    );
+    assert_eq!(problem.help.as_deref(), Some("remove this entry"));
 }
 
 /// Names are case-insensitive: two entries whose names differ only in case

@@ -238,6 +238,7 @@ pub fn add_library_sources(db: &mut RootDatabase, sources: &[&str]) {
                 None,
                 vec![library],
                 Some(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("stdlib/config.toml")),
+                db::config_file::ProjectKind::Program,
                 auto_lsp::lsp_types::PositionEncodingKind::UTF8,
             );
         }

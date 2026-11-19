@@ -95,7 +95,8 @@ pub(super) fn archive(entries: &[(&str, &str)]) -> Vec<u8> {
     tar.into_inner().unwrap().finish().unwrap()
 }
 
-pub(super) const CONFIG: &str = "[project]\nname = \"drives\"\nversion = \"2.1.0\"\n";
+pub(super) const CONFIG: &str =
+    "[project]\nname = \"drives\"\nversion = \"2.1.0\"\ntype = \"library\"\n";
 
 /// One answer to one HTTP request.
 pub(super) struct Answer {

@@ -86,6 +86,46 @@ fn a_build_is_one_component() {
     assert!(world.contains("export rk:plc/control@0.1.0;"), "{world}");
 }
 
+/// A library is built into the programs that list it, never alone: `rk
+/// compile` refuses its folder and writes nothing, where `rk check` and `rk
+/// test` take it.
+#[test]
+fn a_library_is_not_compiled_alone() {
+    let ws = tempfile::tempdir().unwrap();
+    std::fs::write(
+        ws.path().join("config.toml"),
+        "[project]\nname = \"drives\"\nversion = \"0.1.0\"\ntype = \"library\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        ws.path().join("Axis.st"),
+        "FUNCTION Twice : INT\nVAR_INPUT n : INT; END_VAR\n    Twice := n * 2;\nEND_FUNCTION\n\n\
+         {test}\nFUNCTION test_twice\n    IF Twice(2) <> 4 THEN __RAISE('twice'); END_IF;\nEND_FUNCTION\n",
+    )
+    .unwrap();
+    let out = rk(&["compile"], ws.path());
+    assert!(!out.status.success(), "a library compiled alone");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(
+            "this workspace is a library (`type = \"library\"`): `rk check` and `rk test` take it, and a program that lists it in its `[dependencies]` builds it"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        !ws.path().join("rk_build").join("debug").exists(),
+        "nothing written"
+    );
+    for command in ["check", "test"] {
+        let out = rk(&[command], ws.path());
+        assert!(
+            out.status.success(),
+            "rk {command}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
 /// `--output` places the component, and nothing beside it.
 #[test]
 fn an_output_given_holds_the_component() {

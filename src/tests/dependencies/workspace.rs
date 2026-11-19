@@ -22,8 +22,16 @@ fn write(root: &Path, files: &[(&str, &str)]) {
     }
 }
 
+/// A program's `config.toml`, with the `[dependencies]` given.
 fn config(name: &str, dependencies: &str) -> String {
     format!("[project]\nname = \"{name}\"\nversion = \"1.0.0\"\n\n[dependencies]\n{dependencies}")
+}
+
+/// A library's `config.toml`, with the `[dependencies]` given.
+fn library_config(name: &str, dependencies: &str) -> String {
+    format!(
+        "[project]\nname = \"{name}\"\nversion = \"1.0.0\"\ntype = \"library\"\n\n[dependencies]\n{dependencies}"
+    )
 }
 
 /// No standard library, so that a test does not read the developer's.
@@ -48,13 +56,21 @@ fn sandbox() -> (tempfile::TempDir, PathBuf) {
 /// The workspace at `root`, opened as `rk` opens it, and what it reports on
 /// its `config.toml`.
 fn open(root: &Path) -> (RootDatabase, String) {
+    let mut db = RootDatabase::default();
+    let reported = open_in(&mut db, root);
+    (db, reported)
+}
+
+/// The workspace at `root` opened in `db`, which may hold it already, as
+/// the language server opens it again when its `config.toml` changes, and
+/// what it reports on its `config.toml`.
+fn open_in(db: &mut RootDatabase, root: &Path) -> String {
     // No color: the tests' stderr is not a terminal.
     rk::ui::init_output(OutputFormat::Full);
-    let mut db = RootDatabase::default();
     let mut errors = vec![];
     let mut fetcher = rk::workspace::fetcher(db::cache::may_download());
     db::loader::open_workspace(
-        &mut db,
+        db,
         Some(root),
         PositionEncodingKind::UTF8,
         hir::front_end::parser_of,
@@ -66,13 +82,13 @@ fn open(root: &Path) -> (RootDatabase, String) {
     );
     let config_file = root.join("config.toml");
     let mut out = Vec::new();
-    DiagnosticReporter::new(&db, root).report_external(
+    DiagnosticReporter::new(db, root).report_external(
         &Url::from_file_path(&config_file).unwrap(),
         &std::fs::read_to_string(&config_file).unwrap(),
         &errors,
         &mut out,
     );
-    (db, String::from_utf8(out).unwrap())
+    String::from_utf8(out).unwrap()
 }
 
 /// The errors of the workspace's files and of the libraries', one line
@@ -80,6 +96,17 @@ fn open(root: &Path) -> (RootDatabase, String) {
 fn errors(db: &RootDatabase, root: &Path) -> String {
     let mut per_file = rk::diagnostics::collect_diagnostics(db, false);
     per_file.extend(rk::diagnostics::collect_library_errors(db));
+    let mut out = Vec::new();
+    DiagnosticReporter::new(db, root)
+        .with_format(OutputFormat::Concise)
+        .report_files(&per_file, &mut out);
+    String::from_utf8(out).unwrap()
+}
+
+/// What `rk check` reports on the workspace's files, the linter's warnings
+/// included, one line each.
+fn checked(db: &RootDatabase, root: &Path) -> String {
+    let per_file = rk::diagnostics::collect_diagnostics(db, true);
     let mut out = Vec::new();
     DiagnosticReporter::new(db, root)
         .with_format(OutputFormat::Concise)
@@ -147,12 +174,12 @@ fn a_workspace_reads_the_libraries_it_names() {
                 "ws/main.st",
                 "USING Motion;\nFUNCTION Run : INT\n    Run := Twice(Seven());\nEND_FUNCTION\n",
             ),
-            ("ws/libs/local/config.toml", &config("local", "")),
+            ("ws/libs/local/config.toml", &library_config("local", "")),
             (
                 "ws/libs/local/Local.st",
                 "FUNCTION Seven : INT\n    Seven := 7;\nEND_FUNCTION\n",
             ),
-            ("motion/config.toml", &config("motion", "")),
+            ("motion/config.toml", &library_config("motion", "")),
             ("motion/Motion.st", MOTION),
         ],
     );
@@ -189,10 +216,13 @@ fn a_library_with_dependencies_is_refused_on_its_line() {
             ),
             (
                 "motion/config.toml",
-                &config("motion", "units = { path = \"vendor/units\" }\n"),
+                &library_config("motion", "units = { path = \"vendor/units\" }\n"),
             ),
             ("motion/Motion.st", MOTION),
-            ("motion/vendor/units/config.toml", &config("units", "")),
+            (
+                "motion/vendor/units/config.toml",
+                &library_config("units", ""),
+            ),
             (
                 "motion/vendor/units/Units.st",
                 "FUNCTION Thrice : INT\nVAR_INPUT n : INT; END_VAR\n    Thrice := n * 3;\nEND_FUNCTION\n",
@@ -215,6 +245,62 @@ fn a_library_with_dependencies_is_refused_on_its_line() {
     "#);
 }
 
+/// A library checked in its own folder keeps a library's rules: an entry of
+/// its `[dependencies]` is refused on its line and nothing is read for it,
+/// and an address in its code is E1432, as when a program builds with it,
+/// where the linter's warning steps aside. The same folder said to be a
+/// program, opened again as the language server opens a changed
+/// configuration, has neither rule, and the warning is back.
+#[test]
+fn a_library_keeps_its_rules_in_its_own_folder() {
+    let (_dir, root) = sandbox();
+    let axis =
+        "FUNCTION_BLOCK Axis\nVAR_OUTPUT q : BOOL; END_VAR\n    q := %IX0.0;\nEND_FUNCTION_BLOCK\n";
+    write(
+        &root,
+        &[
+            (
+                "drives/config.toml",
+                &library_config("drives", "units = { path = \"../units\" }\n"),
+            ),
+            ("drives/Axis.st", axis),
+            ("units/config.toml", &library_config("units", "")),
+            (
+                "units/Units.st",
+                "FUNCTION Thrice : INT\nVAR_INPUT n : INT; END_VAR\n    Thrice := n * 3;\nEND_FUNCTION\n",
+            ),
+        ],
+    );
+    let drives = root.join("drives");
+    let (db, reported) = open(&drives);
+    assert_eq!(origins(&db), [("Axis.st".to_string(), None)]);
+    assert_snapshot!(reported, @r#"
+    Error: 'units' is a dependency of a library
+       ╭─[ config.toml:7:1 ]
+       │
+     7 │ units = { path = "../units" }
+       │ ──┬──  
+       │   ╰──── 'units' is a dependency of a library
+       │ 
+       │ Help: remove this entry
+       │ 
+       │ Note: a library has no `[dependencies]`: a program lists every library it reads
+    ───╯
+    "#);
+    assert_snapshot!(errors(&db, &drives), @"Axis.st:3:10: error[E1432]: '%IX0.0' is an address in a library");
+    // The error says it all: the linter's warning about the same address
+    // steps aside.
+    assert_snapshot!(checked(&db, &drives), @"Axis.st:3:10: error[E1432]: '%IX0.0' is an address in a library");
+
+    // Opened again, as the language server does when `config.toml` changes.
+    write(&root, &[("drives/config.toml", &config("drives", ""))]);
+    let mut db = db;
+    let reported = open_in(&mut db, &drives);
+    assert_eq!(reported, "");
+    assert_eq!(errors(&db, &drives), "");
+    assert_snapshot!(checked(&db, &drives), @"Axis.st:3:10: warning[L0132]: the address '%IX0.0' is used directly");
+}
+
 /// Two entries whose names differ only in case are one name: each is
 /// refused on its own line, and neither library is read.
 #[test]
@@ -232,9 +318,9 @@ fn two_names_that_differ_only_in_case_are_refused_on_their_lines() {
                 ),
             ),
             ("ws/main.st", &pou("Run")),
-            ("a/config.toml", &config("Drives", "")),
+            ("a/config.toml", &library_config("Drives", "")),
             ("a/A.st", &pou("F")),
-            ("b/config.toml", &config("drives", "")),
+            ("b/config.toml", &library_config("drives", "")),
             ("b/B.st", &pou("G")),
         ],
     );
@@ -284,7 +370,7 @@ fn a_file_is_the_workspace_s_where_the_loader_reads_it() {
             ),
             ("ws/main.st", &pou("Run")),
             ("ws/src/More.st", &pou("More")),
-            ("ws/libs/local/config.toml", &config("local", "")),
+            ("ws/libs/local/config.toml", &library_config("local", "")),
             ("ws/libs/local/Local.st", &pou("Seven")),
             ("ws/other/config.toml", &config("other", "")),
             ("ws/other/Other.st", &pou("Other")),
@@ -336,9 +422,9 @@ fn a_library_is_closed_to_another_library() {
                 ),
             ),
             ("ws/main.st", &uses("FromTheWorkspace")),
-            ("motion/config.toml", &config("motion", "")),
+            ("motion/config.toml", &library_config("motion", "")),
             ("motion/Motion.st", MOTION),
-            ("other/config.toml", &config("other", "")),
+            ("other/config.toml", &library_config("other", "")),
             ("other/Other.st", &uses("FromAnotherLibrary")),
         ],
     );
@@ -378,9 +464,9 @@ fn a_name_two_libraries_declare_is_ambiguous_until_qualified() {
                 "FUNCTION Run : INT\n    Run := Clash();\nEND_FUNCTION\n\
                  FUNCTION Sure : INT\n    Sure := A.Clash() + B.Clash();\nEND_FUNCTION\n",
             ),
-            ("a/config.toml", &config("a", "")),
+            ("a/config.toml", &library_config("a", "")),
             ("a/A.st", clash),
-            ("b/config.toml", &config("b", "")),
+            ("b/config.toml", &library_config("b", "")),
             ("b/B.st", clash),
         ],
     );
@@ -422,9 +508,9 @@ END_NAMESPACE
                 "USING Motion;\nFUNCTION Run : INT\n    Run := Motion.Twice();\nEND_FUNCTION\n\
                  FUNCTION Sure : INT\n    Sure := A.Motion.Twice() + B.Motion.Twice();\nEND_FUNCTION\n",
             ),
-            ("a/config.toml", &config("a", "")),
+            ("a/config.toml", &library_config("a", "")),
             ("a/A.st", &motion(1)),
-            ("b/config.toml", &config("b", "")),
+            ("b/config.toml", &library_config("b", "")),
             ("b/B.st", &motion(2)),
         ],
     );
@@ -452,7 +538,7 @@ fn a_library_name_that_is_no_namespace_name_is_refused() {
                 "ws/main.st",
                 "FUNCTION Run : INT\n    Run := 1;\nEND_FUNCTION\n",
             ),
-            ("press-line/config.toml", &config("press-line", "")),
+            ("press-line/config.toml", &library_config("press-line", "")),
             (
                 "press-line/Line.st",
                 "FUNCTION Go : INT\n    Go := 1;\nEND_FUNCTION\n",
@@ -496,7 +582,7 @@ itself = { path = \".\" }
                 "ws/main.st",
                 "FUNCTION Run : INT\n    Run := One();\nEND_FUNCTION\n",
             ),
-            ("good/config.toml", &config("good", "")),
+            ("good/config.toml", &library_config("good", "")),
             (
                 "good/Good.st",
                 "FUNCTION One : INT\n    One := 1;\nEND_FUNCTION\n",
@@ -586,7 +672,9 @@ fn drives(version: &str, result: &str) -> Vec<u8> {
         &[
             (
                 "config.toml",
-                &format!("[project]\nname = \"drives\"\nversion = \"{version}\"\n"),
+                &format!(
+                    "[project]\nname = \"drives\"\nversion = \"{version}\"\ntype = \"library\"\n"
+                ),
             ),
             (
                 "Drives.st",
