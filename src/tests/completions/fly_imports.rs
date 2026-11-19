@@ -60,6 +60,41 @@ pub fn a_librarys_names_complete_under_its_root(mut with_db: RootDatabase) {
     assert!(shown.contains(r#""USING Std.Motion;\n\n""#), "{shown}");
 }
 
+/// A library's code sees its own declarations and the standard library's:
+/// completing in it offers nothing of the program, neither a namespace nor
+/// a POU, as a name or as an import. The program's code is offered both
+/// its own and the library's.
+#[rstest]
+pub fn a_librarys_code_is_offered_nothing_of_the_program(mut with_db: RootDatabase) {
+    use db::WorkspaceDataBase;
+    add_library_sources(&mut with_db, &["FUNCTION Own : INT\n\nEND_FUNCTION\n"]);
+    let program = add_source(
+        &mut with_db,
+        "NAMESPACE Plant\n    FUNCTION Secret : INT\n        Secret := 1;\n    END_FUNCTION\nEND_NAMESPACE\n\
+         FUNCTION Run : INT\n\nEND_FUNCTION\n",
+    );
+    let library = with_db
+        .get_library_file(&auto_lsp::lsp_types::Url::parse("file:///lib0.st").unwrap())
+        .unwrap();
+    let offered = |file, pou: &str, at: usize| {
+        let pou = find_pou_with_name(&with_db, file, pou).unwrap();
+        let mut ctx = CompletionCtx::new(at, QueryMode::Body);
+        ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
+        format!("{:?}", ctx.take_items())
+    };
+
+    let in_library = offered(library, "Own", 19);
+    assert!(in_library.contains("Own"), "{in_library}");
+    for program_s in ["Secret", "Plant", "Run"] {
+        assert!(!in_library.contains(program_s), "{program_s}: {in_library}");
+    }
+
+    let in_program = offered(program, "Run", 113);
+    for name in ["Secret", "Plant", "Run", "Own"] {
+        assert!(in_program.contains(name), "{name}: {in_program}");
+    }
+}
+
 #[rstest]
 pub fn using_already_in_scope(mut with_db: RootDatabase) {
     let source = r#"USING ns;

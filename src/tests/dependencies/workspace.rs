@@ -302,10 +302,11 @@ fn a_library_keeps_its_rules_in_its_own_folder() {
 }
 
 /// A library declares no CONFIGURATION (E1433), whose globals would be no
-/// program's: the program's VAR_EXTERNAL does not find them, and neither
-/// does the library's own block when a program reads it. The configuration
-/// is refused whole: the unknown program its resource runs is not reported
-/// beside it. In the library's own folder the error is the same.
+/// program's: the program's VAR_EXTERNAL does not find them (E0206), and
+/// the library's own block takes no global at all (E1008). The
+/// configuration is refused whole: the unknown program its resource runs is
+/// not reported beside it. In the library's own folder the errors are the
+/// same.
 #[test]
 fn a_library_declares_no_configuration() {
     let (_dir, root) = sandbox();
@@ -340,13 +341,16 @@ fn a_library_declares_no_configuration() {
     assert_snapshot!(errors(&db, &ws).replace(&under_root, ""), @r"
     main.st:2:14: error[E0206]: no VAR_GLOBAL is named 'libg'
     lib/L.st:1:15: error[E1433]: 'LibCell' is a CONFIGURATION in a library
-    lib/L.st:10:14: error[E0206]: no VAR_GLOBAL is named 'libg'
+    lib/L.st:10:14: error[E1008]: 'libg' is a global
     ");
 
     let lib = root.join("lib");
     let (db, reported) = open(&lib);
     assert_eq!(reported, "");
-    assert_snapshot!(errors(&db, &lib), @"L.st:1:15: error[E1433]: 'LibCell' is a CONFIGURATION in a library");
+    assert_snapshot!(errors(&db, &lib), @r"
+    L.st:1:15: error[E1433]: 'LibCell' is a CONFIGURATION in a library
+    L.st:10:14: error[E1008]: 'libg' is a global
+    ");
 }
 
 /// Two entries whose names differ only in case are one name: each is
@@ -448,9 +452,9 @@ fn a_file_is_the_workspace_s_where_the_loader_reads_it() {
     assert!(!is_workspace_file("ws/missing.st"));
 }
 
-/// `INTERNAL` stops at the library: what one library keeps to itself is
-/// closed to another library as it is to the workspace, and open to its
-/// own files.
+/// `INTERNAL` stops at the library: what a library keeps to itself is
+/// closed to the workspace, and open to its own files. Another library sees
+/// none of it, public or not: it is another library's (E1008).
 #[test]
 fn a_library_is_closed_to_another_library() {
     let (_dir, root) = sandbox();
@@ -479,18 +483,100 @@ fn a_library_is_closed_to_another_library() {
     let ws = root.join("ws");
     let (db, reported) = open(&ws);
     assert_eq!(reported, "");
-    let errors = errors(&db, &ws);
-    let lines: Vec<&str> = errors.lines().collect();
-    assert_eq!(lines.len(), 2, "{errors}");
-    assert!(lines.iter().all(|line| line.contains("E1004")), "{errors}");
-    assert!(
-        lines.iter().any(|line| line.contains("main.st")),
-        "{errors}"
+    let under_root = format!("{}/", Url::from_file_path(&root).unwrap());
+    assert_snapshot!(errors(&db, &ws).replace(&under_root, ""), @r"
+    main.st:2:40: error[E1004]: cannot access INTERNAL namespace 'Motion.Helpers'
+    other/Other.st:2:42: error[E1008]: 'Double' is declared by the library 'motion'
+    other/Other.st:2:61: error[E1008]: 'Twice' is declared by the library 'motion'
+    ");
+}
+
+/// A library sees its own declarations and the standard library's, and
+/// nothing else, whatever the program that reads it lists or declares
+/// (E1008): another library's, by its name or bare; the program's
+/// namespace, and a block the program opens under the library's own name;
+/// a global, by a VAR_EXTERNAL or bare; another library by a USING, an
+/// EXTENDS, an IMPLEMENTS or a variable's type. What
+/// the program names the same does not stand in front of the standard
+/// library's: `Timers.TON` is the standard library's for the library, the
+/// program's for the program. An overload the program adds under the
+/// library's name is not one the library's call picks from: `Pick` takes
+/// the library's INT, and a REAL is refused.
+#[test]
+fn a_library_sees_only_itself_and_the_standard_library() {
+    let (_dir, root) = sandbox();
+    let timers = |inputs: &str| {
+        format!(
+            "NAMESPACE Timers\nFUNCTION_BLOCK TON\nVAR_INPUT {inputs} END_VAR\nEND_FUNCTION_BLOCK\nEND_NAMESPACE\n"
+        )
+    };
+    write(
+        &root,
+        &[
+            // A standard library of the test's own, read in place of the
+            // one built in.
+            (
+                "std/config.toml",
+                "[project]\nname = \"Std\"\nversion = \"1\"\ntype = \"library\"\n",
+            ),
+            ("std/Timers.st", &timers("IN : BOOL; PT : TIME;")),
+            (
+                "ws/config.toml",
+                &config(
+                    "ws",
+                    "lib = { path = \"../lib\" }\nother = { path = \"../other\" }\n",
+                ),
+            ),
+            (
+                "ws/main.st",
+                "NAMESPACE Plant\nFUNCTION Secret : INT\n    Secret := 42;\nEND_FUNCTION\nEND_NAMESPACE\n\n\
+                 NAMESPACE Lib.Sub\nFUNCTION Slipped : INT\n    Slipped := 1;\nEND_FUNCTION\nEND_NAMESPACE\n\n\
+                 FUNCTION_BLOCK Uses\nVAR t : Timers.TON; END_VAR\n    t(IN := TRUE);\nEND_FUNCTION_BLOCK\n\n\
+                 CONFIGURATION Cell\nVAR_GLOBAL progg : INT; END_VAR\nEND_CONFIGURATION\n\n\
+                 NAMESPACE Lib\nFUNCTION Pick : INT\nVAR_INPUT x : REAL; END_VAR\n    Pick := 2;\nEND_FUNCTION\nEND_NAMESPACE\n",
+            ),
+            ("ws/timers.st", &timers("IN : BOOL;")),
+            ("other/config.toml", &library_config("other", "")),
+            (
+                "other/O.st",
+                "FUNCTION Helper : INT\n    Helper := 7;\nEND_FUNCTION\n\n\
+                 FUNCTION_BLOCK Base\nEND_FUNCTION_BLOCK\n\nINTERFACE IRun\nEND_INTERFACE\n\n\
+                 TYPE Level : INT; END_TYPE\n",
+            ),
+            ("lib/config.toml", &library_config("lib", "")),
+            (
+                "lib/L.st",
+                "NAMESPACE Sub\nFUNCTION Own : INT\n    Own := Slipped();\nEND_FUNCTION\nEND_NAMESPACE\n\n\
+                 FUNCTION Reaches : INT\n    Reaches := Helper() + Other.Helper() + Plant.Secret();\nEND_FUNCTION\n\n\
+                 FUNCTION_BLOCK Globals\nVAR_EXTERNAL progg : DINT; END_VAR\nVAR_OUTPUT q : DINT; END_VAR\n    q := progg;\nEND_FUNCTION_BLOCK\n\n\
+                 FUNCTION Bare : INT\n    Bare := progg;\nEND_FUNCTION\n\n\
+                 FUNCTION_BLOCK Blink\nVAR t : Timers.TON; END_VAR\n    t(IN := TRUE, PT := T#1s);\nEND_FUNCTION_BLOCK\n\n\
+                 FUNCTION Pick : INT\nVAR_INPUT x : INT; END_VAR\n    Pick := 1;\nEND_FUNCTION\n\n\
+                 FUNCTION Picks : INT\n    Picks := Pick(x := REAL#1.5);\nEND_FUNCTION\n\n\
+                 NAMESPACE Imports\nUSING Other;\nEND_NAMESPACE\n\n\
+                 FUNCTION_BLOCK Derived EXTENDS Other.Base IMPLEMENTS Other.IRun\nVAR x : Other.Level; END_VAR\nEND_FUNCTION_BLOCK\n",
+            ),
+        ],
     );
-    assert!(
-        lines.iter().any(|line| line.contains("Other.st")),
-        "{errors}"
-    );
+    // SAFETY: nextest runs each test in a process of its own.
+    unsafe { std::env::set_var(db::stdlib::PATH_ENV, root.join("std")) };
+    let ws = root.join("ws");
+    let (db, reported) = open(&ws);
+    assert_eq!(reported, "");
+    let under_root = format!("{}/", Url::from_file_path(&root).unwrap());
+    assert_snapshot!(errors(&db, &ws).replace(&under_root, ""), @r"
+    lib/L.st:3:12: error[E1008]: 'Slipped' is declared by the program
+    lib/L.st:8:16: error[E1008]: 'Helper' is declared by the library 'other'
+    lib/L.st:8:33: error[E1008]: 'Helper' is declared by the library 'other'
+    lib/L.st:8:50: error[E1008]: 'Secret' is declared by the program
+    lib/L.st:12:14: error[E1008]: 'progg' is a global
+    lib/L.st:18:13: error[E1008]: 'progg' is a global
+    lib/L.st:32:24: error[E0301]: expected 'INT', got 'REAL': help: insert explicit cast 'REAL_TO_INT(REAL#1.5)'
+    lib/L.st:36:7: error[E1008]: 'Other' is declared by the library 'other'
+    lib/L.st:39:32: error[E1008]: 'Other.Base' is declared by the library 'other'
+    lib/L.st:39:54: error[E1008]: 'Other.IRun' is declared by the library 'other'
+    lib/L.st:40:9: error[E1008]: 'Other.Level' is declared by the library 'other'
+    ");
 }
 
 /// Two libraries that declare the same name do not clash: each library's
