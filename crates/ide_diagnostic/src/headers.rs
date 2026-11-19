@@ -153,6 +153,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E1005", "call of a PRIVATE function"),
     ("E1006", "specifier not applicable to a FUNCTION"),
     ("E1007", "access to a test-only item"),
+    ("E1008", "access outside the library"),
     ("E1101", "more than one EXTENDS clause"),
     ("E1102", "more than one IMPLEMENTS clause"),
     ("E1103", "IMPLEMENTS before EXTENDS"),
