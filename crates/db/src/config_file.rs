@@ -18,10 +18,10 @@ pub struct Config {
     pub project: ProjectInfo,
     pub settings: Option<SettingsConfig>,
     pub linter: Option<LinterConfig>,
-    /// The libraries this workspace, or this library, reads beside its own
-    /// files, each under the name of its own `config.toml`
-    /// (see [`crate::dependencies`]). A name keeps its place in the file,
-    /// for the diagnostics that are about it.
+    /// The libraries this workspace reads beside its own files, each under
+    /// the name of its own `config.toml` (see [`crate::dependencies`]). A
+    /// library has none. A name keeps its place in the file, for the
+    /// diagnostics that are about it.
     #[serde(default)]
     pub dependencies: BTreeMap<toml::Spanned<String>, Dependency>,
 }

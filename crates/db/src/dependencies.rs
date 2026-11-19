@@ -8,8 +8,9 @@
 //! A dependency is a folder (`path`), or an archive (`url`) and the hash of
 //! what it holds (`hash`). There is no registry and nothing to solve: the
 //! hash names one content, and the URL is a place that serves it. A library
-//! names its own dependencies the same way, and the same library asked for
-//! from two places is an error.
+//! has no dependencies of its own: the workspace names every library it
+//! reads, and a library whose `config.toml` names some is refused, nothing
+//! it names read.
 //!
 //! This module only reads. A fetched library is looked up in the cache, and
 //! fetching it is the caller's ([`Fetch`]): `rk` does it, the editor does
@@ -272,7 +273,7 @@ fn is_absolute_anywhere(path: &str) -> bool {
 }
 
 /// Resolves the `[dependencies]` of `config`, the configuration of the
-/// workspace at `workspace`, and those of each library it names.
+/// workspace at `workspace`.
 ///
 /// `standard` is the standard library, when there is one: it comes first
 /// and no dependency replaces it. With no `fetch`, a library the cache
@@ -291,18 +292,19 @@ pub fn resolve(
         workspace,
         cache,
         fetch,
-        required: BTreeMap::new(),
         resolution: Resolution::default(),
     };
-    if let Some(standard) = standard {
-        resolver.required.insert(
-            standard.name.clone(),
-            (standard.dir.clone(), "the compiler".to_string()),
-        );
-        resolver.resolution.libraries.push(standard);
+    resolver.resolution.libraries.extend(standard);
+    for (name, dependency) in &config.dependencies {
+        let span = name.span();
+        let name = name.get_ref();
+        let read = resolver
+            .locate(name, dependency, &span)
+            .and_then(|dir| resolver.read(name, dir, &span));
+        if let Err(problem) = read {
+            resolver.resolution.problems.push(problem);
+        }
     }
-    let workspace = resolver.workspace.clone();
-    resolver.walk(&workspace, None, &config.dependencies, None, None);
     // In the order of the file: the entries are read in the order of their
     // names.
     resolver
@@ -316,70 +318,31 @@ struct Resolver<'c, 'f> {
     workspace: PathBuf,
     cache: Option<&'c Path>,
     fetch: Option<Fetch<'f>>,
-    /// Each library read so far: its folder, and who asked for it first.
-    required: BTreeMap<String, (PathBuf, String)>,
     resolution: Resolution,
 }
 
 impl Resolver<'_, '_> {
-    /// Reads the `dependencies` the `config.toml` in `declared_in` names.
-    /// `by` is the library that file is of, and `span` the entry of the
-    /// workspace that led to it. `hashed` is the fetched library this one
-    /// is part of: a `path` does not leave it.
-    fn walk(
-        &mut self,
-        declared_in: &Path,
-        by: Option<&str>,
-        dependencies: &BTreeMap<toml::Spanned<String>, Dependency>,
-        span: Option<&Range<usize>>,
-        hashed: Option<&Path>,
-    ) {
-        for (name, dependency) in dependencies {
-            let span = span.cloned().unwrap_or_else(|| name.span());
-            let name = name.get_ref();
-            let subject = match by {
-                Some(by) => format!("'{name}' (required by '{by}')"),
-                None => format!("'{name}'"),
-            };
-            let located = self.locate(name, &subject, dependency, declared_in, hashed, &span);
-            let (dir, hashed) = match located {
-                Ok(located) => located,
-                Err(problem) => {
-                    self.resolution.problems.push(problem);
-                    continue;
-                }
-            };
-            if let Err(problem) = self.read(name, &subject, dir, hashed.as_deref(), by, &span) {
-                self.resolution.problems.push(problem);
-            }
-        }
-    }
-
-    /// The folder a dependency names, and the fetched library a `path` of
-    /// its own may not leave.
+    /// The folder the dependency `name` names. `span` is its entry.
     fn locate(
         &mut self,
         name: &str,
-        subject: &str,
         dependency: &Dependency,
-        declared_in: &Path,
-        hashed: Option<&Path>,
         span: &Range<usize>,
-    ) -> Result<(PathBuf, Option<PathBuf>), Problem> {
+    ) -> Result<PathBuf, Problem> {
         match (&dependency.path, &dependency.url) {
             (None, None) => {
-                Err(Problem::new(span, format!("{subject} has no `path` and no `url`")).note(SHAPE))
+                Err(Problem::new(span, format!("'{name}' has no `path` and no `url`")).note(SHAPE))
             }
             (Some(_), Some(_)) => Err(Problem::new(
                 span,
-                format!("{subject} has a `path` and a `url`"),
+                format!("'{name}' has a `path` and a `url`"),
             )
             .note(SHAPE)
             .help("keep one of the two")),
             (Some(path), None) => {
                 if dependency.hash.is_some() {
                     return Err(
-                        Problem::new(span, format!("{subject} has a `path` and a `hash`"))
+                        Problem::new(span, format!("'{name}' has a `path` and a `hash`"))
                             .note("a `hash` goes with a `url`")
                             .help("remove the `hash`"),
                     );
@@ -396,31 +359,19 @@ impl Resolver<'_, '_> {
                     .note("a `path` is written with `/`, the same on every system")
                     .help(format!("write '{}'", path.replace('\\', "/"))));
                 }
-                let dir = declared_in.join(path);
-                let dir = match dir.canonicalize() {
-                    Ok(dir) if dir.is_dir() => dir,
-                    _ => {
-                        return Err(Problem::new(
-                            span,
-                            format!("'{}' is not a folder", dir.display()),
-                        ));
-                    }
-                };
-                if let Some(hashed) = hashed
-                    && !dir.starts_with(hashed)
-                {
-                    return Err(Problem::new(
+                let dir = self.workspace.join(path);
+                match dir.canonicalize() {
+                    Ok(dir) if dir.is_dir() => Ok(dir),
+                    _ => Err(Problem::new(
                         span,
-                        format!("{subject} has a `path` that leaves its library"),
-                    )
-                    .note("a fetched library can only use folders inside itself"));
+                        format!("'{}' is not a folder", dir.display()),
+                    )),
                 }
-                Ok((dir, hashed.map(Path::to_path_buf)))
             }
             (None, Some(url)) => {
                 let fetch_and_save = format!("run `rk fetch --save {url}`");
                 let Some(hash) = &dependency.hash else {
-                    return Err(Problem::new(span, format!("{subject} has no `hash`"))
+                    return Err(Problem::new(span, format!("'{name}' has no `hash`"))
                         .note("a `url` goes with the `hash` of what it serves")
                         .help(fetch_and_save));
                 };
@@ -432,13 +383,13 @@ impl Resolver<'_, '_> {
                 let Some(cache) = self.cache else {
                     return Err(Problem::new(
                         span,
-                        format!("there is no cache directory for {subject}"),
+                        format!("there is no cache directory for '{name}'"),
                     )
                     .help(format!("set {}", crate::cache::CACHE_DIR_ENV)));
                 };
                 if !is_cached(cache, &hash, url) {
                     let Some(fetch) = self.fetch.as_mut() else {
-                        return Err(Problem::new(span, format!("{subject} is not in the cache"))
+                        return Err(Problem::new(span, format!("'{name}' is not in the cache"))
                             .help("run `rk fetch`"));
                     };
                     let remote = Remote {
@@ -448,33 +399,24 @@ impl Resolver<'_, '_> {
                     };
                     if let Err(error) = fetch(&remote) {
                         let mut problem =
-                            Problem::new(span, format!("{subject} could not be fetched"))
+                            Problem::new(span, format!("'{name}' could not be fetched"))
                                 .note(error.message);
                         problem.notes.extend(error.notes);
                         return Err(problem);
                     }
                 }
                 let dir = cached_dir(cache, &hash);
-                let dir = dir.canonicalize().unwrap_or(dir);
-                Ok((dir.clone(), Some(dir)))
+                Ok(dir.canonicalize().unwrap_or(dir))
             }
         }
     }
 
-    /// Reads the library at `dir` and the libraries it depends on.
-    fn read(
-        &mut self,
-        name: &str,
-        subject: &str,
-        dir: PathBuf,
-        hashed: Option<&Path>,
-        by: Option<&str>,
-        span: &Range<usize>,
-    ) -> Result<(), Problem> {
+    /// Reads the library `name` at `dir`, which `span`, its entry, names.
+    fn read(&mut self, name: &str, dir: PathBuf, span: &Range<usize>) -> Result<(), Problem> {
         if dir == self.workspace {
             return Err(Problem::new(
                 span,
-                format!("{subject} is the workspace itself"),
+                format!("'{name}' is the workspace itself"),
             ));
         }
         let config_file = dir.join(CONFIG_FILE);
@@ -488,7 +430,7 @@ impl Resolver<'_, '_> {
             Problem::new(
                 span,
                 format!(
-                    "the config.toml of {subject} is not valid: {}",
+                    "the config.toml of '{name}' is not valid: {}",
                     error.message()
                 ),
             )
@@ -512,30 +454,43 @@ impl Resolver<'_, '_> {
                     .help(format!("name it '{}'", as_namespace_name(name))),
             );
         }
-        let by = by.map_or_else(|| "the workspace".to_string(), |by| format!("'{by}'"));
-        if let Some((first, first_by)) = self.required.get(name) {
-            if *first == dir {
-                // Read already: a library two others share, or one that
-                // leads back to itself.
+        // Only the standard library can have the name already: it is read
+        // first, and each entry of the workspace is a name of its own.
+        if let Some(standard) = self
+            .resolution
+            .libraries
+            .iter()
+            .find(|library| library.name == name)
+        {
+            if standard.dir == dir {
+                // Its own folder: read already.
                 return Ok(());
             }
             return Err(
                 Problem::new(span, format!("'{name}' is required from two places"))
                     .note(format!(
-                        "{first_by} uses '{}' and {by} uses '{}'",
-                        first.display(),
+                        "the compiler uses '{}' and the workspace uses '{}'",
+                        standard.dir.display(),
                         dir.display()
                     ))
-                    .help("use the same `url` and `hash` in both, or the same `path`"),
+                    .help(format!(
+                        "remove this entry, or name its folder in {}",
+                        crate::stdlib::PATH_ENV
+                    )),
             );
         }
-        self.required.insert(name.to_string(), (dir.clone(), by));
+        if !config.dependencies.is_empty() {
+            return Err(
+                Problem::new(span, format!("'{name}' has dependencies of its own")).note(
+                    "a library has no `[dependencies]`: the workspace lists every library it reads",
+                ),
+            );
+        }
         self.resolution.libraries.push(Library {
             name: name.to_string(),
-            dir: dir.clone(),
+            dir,
             standard: false,
         });
-        self.walk(&dir, Some(name), &config.dependencies, Some(span), hashed);
         Ok(())
     }
 }
