@@ -52,8 +52,8 @@ USING Drives;
 The library's name is its namespace: everything `drives` declares is in `Drives`, and a `NAMESPACE Motion` of its files is `Drives.Motion`.
 A name only one library has resolves bare; a name two libraries have takes the library's name before it.
 
-A library can have a `[dependencies]` table of its own.
-Those libraries are read too.
+A library has no `[dependencies]` of its own: your workspace lists every library the build reads.
+One whose `config.toml` lists some is refused, with an error on the line of your `config.toml` that names it.
 
 A library can also list the files it is made of:
 
@@ -190,16 +190,11 @@ Several libraries can ship parts of one package, the files that declare what eac
 The standard library ships the WASI files its blocks call this way, in `stdlib/wit/`.
 A library that calls more of WASI ships the files it needs, as WASI's repository writes them.
 
-## The same library twice
-
-All the libraries share the same namespaces, so a library is only read once.
-
-If two of your dependencies need the same library, they must take it from the same place: the same `url` and `hash`, or the same `path`.
-
-Two libraries cannot declare the same name either (`E0102`).
-
 ## The standard library
 
 The standard library is not a dependency, it comes with the compiler.
 It is kept in the cache like a fetched library, under the hash of its files.
 See [StdLib](stdlib.md).
+
+Your `[dependencies]` cannot replace it.
+To read another standard library, set `RK_STDLIB_PATH`, see [Environment variables](environment-variables.md).

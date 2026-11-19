@@ -365,7 +365,7 @@ The `url` is a `.tar.gz` or `.tar` archive over `https`, `http` or `file`, or a 
 Never write a `hash` by hand: `rk fetch --save <url>` downloads the archive and writes the entry.
 There is no registry and no version range: a new version is another URL, saved the same way.
 `rk check`, `rk compile` and `rk test` download a library that is missing from the cache, and `rk fetch` downloads them all.
-A library can have `[dependencies]` of its own, and the same library taken from two places is an error.
+A library has no `[dependencies]` of its own: the workspace lists every library the build reads, and a library that lists some is refused.
 The standard library is not listed: it comes with the compiler.
 The repository's `docs/dependencies.md` has the details.
 
