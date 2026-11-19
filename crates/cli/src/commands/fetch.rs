@@ -57,9 +57,9 @@ fn save_dependency(config_file: &Path, url: &str) -> CliResult<()> {
     Ok(())
 }
 
-/// Fetches each library the workspace depends on that the cache lacks, and
-/// those they depend on. What cannot be resolved is reported on the entry
-/// of `config.toml` it comes from.
+/// Fetches each library the workspace depends on that the cache lacks.
+/// What cannot be resolved is reported on the entry of `config.toml` it
+/// comes from.
 fn fetch_dependencies(workspace: &Path, config_file: &Path, format: OutputFormat) -> CliResult<()> {
     let source = std::fs::read_to_string(config_file)
         .map_err(|e| CliError::msg(format!("reading {}: {e}", config_file.display())))?;
