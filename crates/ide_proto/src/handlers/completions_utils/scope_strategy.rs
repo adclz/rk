@@ -62,7 +62,8 @@ impl CompletionCtx {
 
         // 1. Get all POUs inside this namespace, those the scope may name:
         //    a library's root included, whose blocks are its files' top level.
-        for block in hir::hir_ty::index_graphs::namespace_scopes(db, path) {
+        let seen = hir::hir_ty::library::Seen::From(scope.file(db));
+        for block in hir::hir_ty::index_graphs::namespace_scopes_seen(db, path, seen) {
             for pou in block.pous(db).into_iter().flatten() {
                 if pou_visible_from(db, scope, *pou) {
                     builder.build_pou(db, pou, None, &mut self.items);
@@ -78,11 +79,15 @@ impl CompletionCtx {
             .only_namespaces()
             .search(db);
 
+        let sees = hir::hir_ty::library::Seen::From(scope.file(db));
         let mut seen = FxHashSet::default();
         for ns_decl in results.namespaces() {
             // An INTERNAL namespace closed to the scope is not a fragment
-            // worth completing towards.
-            if first_closed_internal(db, scope, ns_decl.scope_id(db)).is_some() {
+            // worth completing towards, nor one a library's code does not
+            // see.
+            if first_closed_internal(db, scope, ns_decl.scope_id(db)).is_some()
+                || !sees.sees(db, ns_decl.scope_id(db).file(db))
+            {
                 continue;
             }
             let ns_fragments = ns_decl.path(db).fragments(db);
@@ -199,8 +204,14 @@ impl<'db> ScopeCompletionCtx<'db> {
             .only_namespaces()
             .search(db);
 
+        // A library's code sees its own namespaces and the standard
+        // library's, none of the program's.
+        let sees = hir::hir_ty::library::Seen::From(self.scope.file(db));
         let mut seen = FxHashSet::default();
         for ns_decl in ns_results.namespaces() {
+            if !sees.sees(db, ns_decl.scope_id(db).file(db)) {
+                continue;
+            }
             let ns_fragments = ns_decl.path(db).fragments(db);
             if let Some(frag) = ns_fragments.first() {
                 // One namespace in any case, labelled as first found.
