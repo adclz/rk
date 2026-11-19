@@ -222,6 +222,83 @@ pub fn resolve_folder(dir: &Path, world: Option<&str>) -> Result<(Resolve, World
     Ok((resolve, world))
 }
 
+/// What a component exports, as a program imports it, read from the
+/// component's binary, which carries its types: a world importing each
+/// interface the component's world exports, after each interface the
+/// exports take types from. `bytes` is the component a library carries in
+/// its `component/` folder; what the component itself imports is its own
+/// business, not the program's.
+pub fn component_exports(bytes: &[u8]) -> Result<(Resolve, WorldId), String> {
+    let wit_parser::decoding::DecodedWasm::Component(mut resolve, world) =
+        wit_parser::decoding::decode(bytes).map_err(|e| format!("reading the component: {e:#}"))?
+    else {
+        return Err(
+            "a WIT package, not a component: a library carries the `.wasm` its language built"
+                .to_string(),
+        );
+    };
+    let component = &resolve.worlds[world];
+    let mut exported = Vec::new();
+    for item in component.exports.values() {
+        match item {
+            WorldItem::Interface { id, .. } => exported.push(*id),
+            WorldItem::Function(function) => {
+                return Err(format!(
+                    "the component exports `{}` itself: rk imports a function from an interface",
+                    function.name
+                ));
+            }
+            WorldItem::Type { .. } => {}
+        }
+    }
+    if exported.is_empty() {
+        return Err("the component exports no interface".to_string());
+    }
+    // The interfaces the exports take types from, and those theirs take
+    // from: the world imports them, as a component's world imports what its
+    // exports use.
+    let mut needed: Vec<InterfaceId> = Vec::new();
+    let mut todo = exported.clone();
+    while let Some(id) = todo.pop() {
+        for dep in resolve.interface_direct_deps(id) {
+            if !needed.contains(&dep) && !exported.contains(&dep) {
+                needed.push(dep);
+                todo.push(dep);
+            }
+        }
+    }
+    let imported =
+        |item: &WorldItem| matches!(item, WorldItem::Interface { id, .. } if needed.contains(id));
+    if let Some(missing) = needed.iter().find(|dep| {
+        !component
+            .imports
+            .values()
+            .any(|item| matches!(item, WorldItem::Interface { id, .. } if id == *dep))
+    }) {
+        return Err(format!(
+            "the component's world does not import `{}`, whose types its exports take",
+            resolve.id_of(*missing).unwrap_or_default()
+        ));
+    }
+    let mut program = component.clone();
+    program.name = "bindgen".to_string();
+    program.imports = component
+        .imports
+        .iter()
+        .filter(|(_, item)| imported(item))
+        .chain(
+            component
+                .exports
+                .iter()
+                .filter(|(_, item)| matches!(item, WorldItem::Interface { .. })),
+        )
+        .map(|(key, item)| (key.clone(), item.clone()))
+        .collect();
+    program.exports = Default::default();
+    let world = resolve.worlds.alloc(program);
+    Ok((resolve, world))
+}
+
 /// The package written in the `.wit` files at the top of `dir`, or `None`
 /// when there are none: the folder ships only what its `deps/` holds.
 fn own_package(dir: &Path) -> Result<Option<wit_parser::UnresolvedPackageGroup>, String> {
