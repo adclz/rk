@@ -61,6 +61,19 @@ impl<'db> InitInference<'db> {
                 .to_diagnostic(db, self.scope.file(db)),
             );
         }
+        // E1425: a test's own, which no VAR_CONFIG path reaches.
+        if get_scope(db, var.get_scope_id(db)).is_test(db) {
+            use crate::check::errors::e14_config::{PartlyUnlocated, UnreachablePlace};
+            self.errors.push(
+                ConfigError::PartlyLocatedUnlocated(PartlyUnlocated::Unreachable {
+                    var: *var,
+                    member: Vec::new(),
+                    address: compact_str::CompactString::from(dv.to_address(db)),
+                    place: UnreachablePlace::Test,
+                })
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
         true
     }
 
@@ -102,7 +115,7 @@ impl<'db> InitInference<'db> {
     /// E1425: an instance whose type holds a variable declared `AT %I*`,
     /// held where no VAR_CONFIG path can name it, or where a call copies over
     /// it: an array's element, a STRUCT's field, a VAR_GLOBAL, an instance
-    /// made for each call, a VAR_INPUT. Returns whether it reported.
+    /// made for each call, a VAR_INPUT, a test's. Returns whether it reported.
     fn check_unreachable_partly(
         &mut self,
         db: &'db dyn WorkspaceDataBase,
@@ -139,9 +152,10 @@ impl<'db> InitInference<'db> {
                 None => return false,
             },
         };
+        let scope = get_scope(db, var.get_scope_id(db));
         let per_call = var.is_temp(db)
             || matches!(
-                get_scope(db, var.get_scope_id(db)).kind,
+                scope.kind,
                 ScopeKind::Pou(Pou::Function(_)) | ScopeKind::MethodDecl(_)
             );
         let place = if in_struct {
@@ -150,6 +164,10 @@ impl<'db> InitInference<'db> {
             UnreachablePlace::Array
         } else if var.is_global(db) {
             UnreachablePlace::Global
+        } else if scope.is_test(db) {
+            // A test FUNCTION's is made for each call too, but nothing could
+            // hold it where a VAR_CONFIG path reaches.
+            UnreachablePlace::Test
         } else if per_call {
             UnreachablePlace::PerCall
         } else if var.is_input(db) {
