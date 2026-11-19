@@ -215,6 +215,58 @@ fn a_library_with_dependencies_is_refused_on_its_line() {
     "#);
 }
 
+/// Two entries whose names differ only in case are one name: each is
+/// refused on its own line, and neither library is read.
+#[test]
+fn two_names_that_differ_only_in_case_are_refused_on_their_lines() {
+    let (_dir, root) = sandbox();
+    let pou = |name: &str| format!("FUNCTION {name} : INT\n    {name} := 1;\nEND_FUNCTION\n");
+    write(
+        &root,
+        &[
+            (
+                "ws/config.toml",
+                &config(
+                    "ws",
+                    "Drives = { path = \"../a\" }\ndrives = { path = \"../b\" }\n",
+                ),
+            ),
+            ("ws/main.st", &pou("Run")),
+            ("a/config.toml", &config("Drives", "")),
+            ("a/A.st", &pou("F")),
+            ("b/config.toml", &config("drives", "")),
+            ("b/B.st", &pou("G")),
+        ],
+    );
+    let ws = root.join("ws");
+    let (db, reported) = open(&ws);
+    assert_eq!(origins(&db), [("main.st".to_string(), None)]);
+    assert_snapshot!(reported, @r#"
+    Error: 'Drives' and 'drives' are one name
+       ╭─[ config.toml:6:1 ]
+       │
+     6 │ Drives = { path = "../a" }
+       │ ───┬──  
+       │    ╰──── 'Drives' and 'drives' are one name
+       │ 
+       │ Help: keep one of them
+       │ 
+       │ Note: a library's name is its namespace, and names are case-insensitive
+    ───╯
+    Error: 'drives' and 'Drives' are one name
+       ╭─[ config.toml:7:1 ]
+       │
+     7 │ drives = { path = "../b" }
+       │ ───┬──  
+       │    ╰──── 'drives' and 'Drives' are one name
+       │ 
+       │ Help: keep one of them
+       │ 
+       │ Note: a library's name is its namespace, and names are case-insensitive
+    ───╯
+    "#);
+}
+
 /// A file is the workspace's where the loader reads it: under the folder,
 /// in no folder with a `config.toml` of its own, and not a library's. The
 /// language server asks it of what the editor opens and the watcher

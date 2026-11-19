@@ -82,6 +82,74 @@ fn a_library_with_dependencies_is_refused() {
     );
 }
 
+/// Names are case-insensitive: two entries whose names differ only in case
+/// are one name, and both are refused, neither read nor fetched. The entry
+/// beside them is read.
+#[test]
+fn two_names_that_differ_only_in_case_are_both_refused() {
+    let t = tempfile::tempdir().unwrap();
+    library(t.path(), "a", "Drives", "");
+    library(t.path(), "c", "other", "");
+    let (workspace, config) = workspace_of(
+        t.path(),
+        &format!(
+            "Drives = {{ path = \"../a\" }}\n\
+             drives = {{ url = \"https://example.org/drives.tar.gz\", hash = \"{}\" }}\n\
+             other = {{ path = \"../c\" }}\n",
+            a_hash("ab")
+        ),
+    );
+    let cache = t.path().join("cache");
+    let mut asked = Vec::new();
+    let mut fetch = |remote: &Remote<'_>| {
+        asked.push(remote.name.to_string());
+        Ok(())
+    };
+    let resolution = resolve(&workspace, &config, None, Some(&cache), Some(&mut fetch));
+    assert_eq!(asked, [] as [&str; 0]);
+    assert_eq!(names(&resolution), ["other"]);
+    assert_eq!(
+        messages(&resolution),
+        [
+            "'Drives' and 'drives' are one name",
+            "'drives' and 'Drives' are one name"
+        ]
+    );
+    let problem = &resolution.problems[0];
+    assert_eq!(
+        problem.notes,
+        ["a library's name is its namespace, and names are case-insensitive"]
+    );
+    assert_eq!(problem.help.as_deref(), Some("keep one of them"));
+}
+
+/// An entry whose name is the standard library's in another case is
+/// refused, and the standard library is kept.
+#[test]
+fn the_standard_library_s_name_in_another_case_is_refused() {
+    let t = tempfile::tempdir().unwrap();
+    let std = library(t.path(), "std", "Stdlib", "");
+    library(t.path(), "mine", "stdlib", "");
+    let (workspace, config) = workspace_of(t.path(), "stdlib = { path = \"../mine\" }\n");
+    let resolution = resolve(
+        &workspace,
+        &config,
+        Some(Library::standard(std)),
+        None,
+        None,
+    );
+    assert_eq!(names(&resolution), ["Stdlib"]);
+    assert!(resolution.libraries[0].standard);
+    assert_eq!(
+        messages(&resolution),
+        ["'stdlib' and 'Stdlib', the standard library, are one name"]
+    );
+    assert_eq!(
+        resolution.problems[0].help.as_deref(),
+        Some("remove this entry")
+    );
+}
+
 /// The standard library comes first, and a dependency of its name from
 /// another folder does not replace it.
 #[test]
