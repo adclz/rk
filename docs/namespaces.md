@@ -173,7 +173,7 @@ NAMESPACE Motion // <-- Drives.Motion
 END_NAMESPACE
 ```
 
-Every library is imported.
+Every library is imported into your program.
 A name only one library has resolves bare: `Axis`, or `USING Motion`.
 A name two libraries have is ambiguous (`E0205` for an item, `E0212` for a namespace), and the library's name says which: `Drives.Axis`, `USING Drives.Motion`.
 
@@ -182,6 +182,8 @@ The library's stays reachable under its name.
 
 Inside the library, a namespace is reached from the root: `USING Motion`, `Motion.Ramp` or `Drives.Motion.Ramp`.
 A namespace the library names after itself is its root: `NAMESPACE Drives.Motion` is `Drives.Motion`, as `NAMESPACE Motion` is.
+
+The library's own code sees itself and the standard library, and nothing else: not another library, not your namespaces (`E1008`), see [Dependencies](dependencies.md).
 
 The standard library is the library `Std`.
 Its files write `NAMESPACE Std.Timers`, which is `Std.Timers`.

@@ -143,6 +143,16 @@ Note: hash mismatch: config.toml declares sha256:9f2c… but the fetched library
 
 This also happens when you change a URL and keep the old hash.
 
+## What a library sees
+
+A library's code sees its own declarations and the standard library's.
+It does not see another library your program lists, nor your program's namespaces and globals (`E1008`), so what it names means the same in every program.
+A namespace your program opens under the library's name is your program's too.
+
+A block of the library takes what it needs through its inputs and in-outs, and its `AT %I*` variables are located by your `VAR_CONFIG`.
+
+Your program's code sees every library it lists.
+
 ## What a library keeps for itself
 
 A `NAMESPACE INTERNAL` or a `FUNCTION PRIVATE` of a library can only be used by that library.
