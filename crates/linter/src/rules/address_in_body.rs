@@ -34,6 +34,10 @@ pub fn check<'db>(
         let VariableAccessKind::Direct(direct) = access.kind(db) else {
             return;
         };
+        // A library's code names no address at all, E1432 says so.
+        if hir::hir_ty::library::is_library_code(db, access.get_scope_id(db).file(db)) {
+            return;
+        }
         let address = direct.to_address(db);
         let mut d = diag()
             .message(format!("the address '{address}' is used directly"))
