@@ -124,13 +124,13 @@ pub enum Command {
         #[arg(long)]
         public: bool,
     },
-    /// Fetch the libraries the workspace depends on
+    /// Fetch the libraries the workspace depends on, or add one
     #[command(display_order = 7)]
     Fetch {
-        /// Fetch the archive at this URL and write it in config.toml, with
-        /// the hash of what it holds
-        #[arg(long, value_name = "URL")]
-        save: Option<String>,
+        /// Fetch the library at this URL, check it, and add it to
+        /// config.toml with the hash of what it holds
+        #[arg(value_name = "URL")]
+        url: Option<String>,
     },
     /// Format the workspace's .st files
     #[command(display_order = 4)]
