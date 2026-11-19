@@ -17,7 +17,7 @@ shared = { path = "../shared" }
 
 - **`path`** is a folder on your machine.
 - **`url`** is an archive to download, or a commit of a git repository.
-- **`hash`** says what the library contains. `rk fetch --save` writes it for you.
+- **`hash`** says what the library contains. `rk fetch <url>` writes it for you.
 
 > [!NOTE]
 > There is no package registry.
@@ -87,14 +87,16 @@ shared = { path = "../shared" }
 ## An archive
 
 ```sh
-rk fetch --save https://github.com/acme/drives/archive/refs/tags/v2.1.0.tar.gz
+rk fetch https://github.com/acme/drives/archive/refs/tags/v2.1.0.tar.gz
 ```
 
-This downloads the archive and writes the line in your `config.toml`, with its hash.
+This downloads the archive, checks the library, and writes the line in your `config.toml`, with its hash.
+It checks the line as the build reads it, and the library's code as `rk check` holds a library to its rules: a library that would be refused is reported, and nothing is written.
+The same URL again writes nothing: the line is up to date.
 
 - **The hash** is computed from the files of the library, not from the archive itself.
 - **The cache** keeps each library under its hash. A library that is in the cache is not downloaded again.
-- **A new version** is another URL. Run `rk fetch --save` with it and the line is replaced.
+- **A new version** is another URL. Run `rk fetch` with it and the line is replaced.
 
 `rk env cache` prints where the cache is.
 
@@ -108,10 +110,10 @@ A URL that starts with `git+https://` is a git repository.
 What follows the `#` is a tag, a branch or a commit:
 
 ```sh
-rk fetch --save git+https://github.com/acme/drives#v2.1.0
+rk fetch git+https://github.com/acme/drives#v2.1.0
 ```
 
-`rk fetch --save` finds the commit of that tag and writes it in the URL:
+`rk fetch` finds the commit of that tag and writes it in the URL:
 
 ```toml
 drives = { url = "git+https://github.com/acme/drives?ref=v2.1.0#4f1c…", hash = "sha256:9f2c…" }

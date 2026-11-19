@@ -361,11 +361,11 @@ A recursive function's frame larger than the stack is refused by `rk check` (`E1
 The key is the `name` of the library's `config.toml`.
 Names are case-insensitive: two keys that differ only in case are one name, and both are refused.
 An entry has a `path`, relative to this file, or a `url` with a `hash`.
-The `url` is a `.tar.gz` or `.tar` archive over `https`, `http` or `file`, or a git repository as `git+https://host/repo#tag`, which `rk fetch --save` pins to the commit of that tag.
+The `url` is a `.tar.gz` or `.tar` archive over `https`, `http` or `file`, or a git repository as `git+https://host/repo#tag`, which `rk fetch` pins to the commit of that tag.
 `[project] type` is `"program"`, the default, or `"library"`: a dependency must say `type = "library"`, or it is refused.
 In its own folder a library keeps a library's rules under `rk check` and `rk test` (no `[dependencies]`, no complete address, no `CONFIGURATION`, no `VAR_EXTERNAL`), and `rk compile` refuses it: a program that lists it builds it.
 `[project] paths` lists the files and folders a library is made of when it is fetched; without it, every file is.
-Never write a `hash` by hand: `rk fetch --save <url>` downloads the archive and writes the entry.
+Never write a `hash` by hand: `rk fetch <url>` downloads the archive, checks the library, and writes the entry; a library that would be refused is not written.
 There is no registry and no version range: a new version is another URL, saved the same way.
 `rk check`, `rk compile` and `rk test` download a library that is missing from the cache, and `rk fetch` downloads them all.
 A library has no `[dependencies]` of its own: the workspace lists every library the build reads, and a library that lists some is refused.
