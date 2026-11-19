@@ -69,6 +69,8 @@ END_FUNCTION_BLOCK
 
 `rk test` runs the cycles one after the other, with no wait between them: this test passes after 50 ms.
 The block declares its `DONE`, a `BOOL` in `VAR_OUTPUT` (`E1517`), and takes no `VAR_INPUT` or `VAR_IN_OUT` (`E1511`).
+It holds no block with a variable declared `AT %I*`, `%Q*` or `%M*`: `VAR_CONFIG` gives such a variable its address in a `PROGRAM`'s instances, and nothing gives one to a test's (`E1425`).
+Test the block that takes those values as inputs.
 A raise fails the test in the cycle that raised.
 A block still running when its time is spent fails too, and the report says how many cycles it ran, here with a valve that takes 10 s to open:
 

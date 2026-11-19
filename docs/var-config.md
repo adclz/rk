@@ -56,6 +56,8 @@ END_CONFIGURATION
 - **The address** is complete, in the variable's area and as wide as its type (`E1424`).
 - **An instance left without an address** is `E1425`.
 
+A test's instance has no path from a resource, since `rk test` makes it: a test holds no block with a partial address (`E1425`), see [Tests](tests.md).
+
 A variable of a `PROGRAM` takes a partial address too, and is located the same way: `Main.L1.level AT %IW2 : INT;`.
 
 ## A start value for one instance
