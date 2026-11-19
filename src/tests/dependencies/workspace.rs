@@ -765,7 +765,7 @@ itself = { path = \".\" }
         │ ────┬───  
         │     ╰───── 'unhashed' has no `hash`
         │ 
-        │ Help: run `rk fetch --save https://example.org/x.tar.gz`
+        │ Help: run `rk fetch https://example.org/x.tar.gz`
         │ 
         │ Note: a `url` goes with the `hash` of what it serves
     ────╯
@@ -818,11 +818,12 @@ fn drives(version: &str, result: &str) -> Vec<u8> {
     )
 }
 
-/// `rk fetch --save` writes the entry with the hash of what the URL
-/// serves, and the workspace then reads the library from the cache.
-/// Fetching the next version replaces the entry.
+/// `rk fetch <url>` adds the entry with the hash of what the URL serves,
+/// and the workspace then reads the library from the cache. Fetching the
+/// next version replaces the entry; fetching the same one again writes
+/// nothing.
 #[test]
-fn a_library_is_fetched_and_saved() {
+fn a_library_is_fetched_and_added() {
     let (_dir, root) = sandbox();
     let ws = root.join("ws");
     write(
@@ -868,6 +869,10 @@ fn a_library_is_fetched_and_saved() {
         library.dir,
         db::dependencies::cached_dir(&root.join("cache"), &first_hash)
     );
+    // Up to date: the line is left as its author spaced it.
+    let respaced = text.replace("drives = { url = ", "drives = {url = ");
+    std::fs::write(ws.join("config.toml"), &respaced).unwrap();
+    assert_eq!(saved(&first), (respaced, first_hash.clone()), "up to date");
 
     let second = served(&root, "drives-2.tar.gz", &drives("2.0.0", "20"));
     let (text, second_hash) = saved(&second);
@@ -875,6 +880,109 @@ fn a_library_is_fetched_and_saved() {
     assert_eq!(text.matches("drives = ").count(), 1, "{text}");
     assert!(text.contains(&second), "{text}");
     assert_eq!(open(&ws).1, "");
+}
+
+/// `rk fetch <url>` checks what it fetched before it writes anything: the
+/// entry as the build reads it, and the library's code as `rk check` holds
+/// it in its own folder. A refused library leaves `config.toml` as it was.
+#[test]
+fn a_library_is_checked_before_it_is_added() {
+    let (_dir, root) = sandbox();
+    let ws = root.join("ws");
+    let config = "[project]\nname = \"ws\"\nversion = \"1.0.0\"\n\n[dependencies]\nDRIVES = { path = \"../upper\" }\n";
+    let pou = |name: &str| format!("FUNCTION {name} : INT\n    {name} := 1;\nEND_FUNCTION\n");
+    write(
+        &root,
+        &[
+            ("ws/config.toml", config),
+            ("ws/main.st", &pou("Run")),
+            ("upper/config.toml", &library_config("DRIVES", "")),
+            ("upper/U.st", &pou("U")),
+        ],
+    );
+    let refused = |archive_name: &str, files: &[(&str, &str)]| {
+        let url = served(&root, archive_name, &archive("pkg", files));
+        let added = rk::commands::fetch::run_fetch(&ws, Some(&url), OutputFormat::Concise);
+        assert!(added.is_err(), "{archive_name} was added");
+        assert_eq!(
+            std::fs::read_to_string(ws.join("config.toml")).unwrap(),
+            config,
+            "{archive_name}"
+        );
+    };
+
+    // An address in its code (E1432).
+    refused(
+        "address.tar.gz",
+        &[
+            ("config.toml", &library_config("motion", "")),
+            (
+                "M.st",
+                "FUNCTION_BLOCK M\nVAR_OUTPUT q : BOOL; END_VAR\n    q := %IX0.0;\nEND_FUNCTION_BLOCK\n",
+            ),
+        ],
+    );
+    // A folder that does not say it is a library.
+    refused(
+        "program.tar.gz",
+        &[("config.toml", &config_of("plant")), ("P.st", &pou("P"))],
+    );
+    // A library with dependencies of its own.
+    refused(
+        "dependencies.tar.gz",
+        &[
+            (
+                "config.toml",
+                &library_config("units", "x = { path = \"x\" }\n"),
+            ),
+            ("U.st", &pou("Thrice")),
+        ],
+    );
+    // A name that is another entry's in another case.
+    refused(
+        "case.tar.gz",
+        &[
+            ("config.toml", &library_config("drives", "")),
+            ("D.st", &pou("D")),
+        ],
+    );
+}
+
+/// What is checked is the entry being added: another entry, broken before,
+/// does not stop it, and stays as it was.
+#[test]
+fn an_unrelated_broken_entry_does_not_stop_an_addition() {
+    let (_dir, root) = sandbox();
+    let ws = root.join("ws");
+    write(
+        &root,
+        &[
+            (
+                "ws/config.toml",
+                &config("ws", "stale = { path = \"../nowhere\" }\n"),
+            ),
+            (
+                "ws/main.st",
+                "FUNCTION Run : INT\n    Run := 1;\nEND_FUNCTION\n",
+            ),
+        ],
+    );
+    let url = served(&root, "drives-1.tar.gz", &drives("1.0.0", "10"));
+    rk::commands::fetch::run_fetch(&ws, Some(&url), OutputFormat::Concise).expect("added");
+    let text = std::fs::read_to_string(ws.join("config.toml")).unwrap();
+    assert!(
+        text.contains("stale = { path = \"../nowhere\" }\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains(&format!("drives = {{ url = \"{url}\"")),
+        "{text}"
+    );
+}
+
+/// A program's `config.toml` with no dependencies.
+fn config_of(name: &str) -> String {
+    config(name, "")
 }
 
 /// A library the cache lacks is fetched when the workspace is opened, and
