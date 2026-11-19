@@ -102,6 +102,7 @@ use crate::{
         program::ProgramDecl,
         semantic_index::semantic_index,
     },
+    hir_ty::library::Seen,
 };
 
 // ---------------------------------------------------------------------------
@@ -456,6 +457,20 @@ pub fn namespace_index<'db>(
     result
 }
 
+/// The namespace declarations of `path` that `seen` takes: a library's code
+/// does not see the blocks of another library or of the program, though
+/// they reopen a path of its own.
+pub fn namespace_index_seen<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: NamespacePath,
+    seen: Seen,
+) -> Vec<NamespaceDecl<'db>> {
+    namespace_index(db, path)
+        .into_iter()
+        .filter(|ns| seen.sees(db, ns.scope_id(db).file(db)))
+        .collect()
+}
+
 /// The scopes whose declarations `path` names: every block that declares
 /// it, and, when `path` is a library's root, the top level of each of the
 /// library's files. What a lookup of a namespace's members walks.
@@ -463,7 +478,16 @@ pub fn namespace_scopes<'db>(
     db: &'db dyn WorkspaceDataBase,
     path: NamespacePath,
 ) -> Vec<crate::hir_def::scope::ScopeId<'db>> {
-    let mut scopes: Vec<_> = namespace_index(db, path)
+    namespace_scopes_seen(db, path, Seen::Everything)
+}
+
+/// [`namespace_scopes`], those `seen` takes.
+pub fn namespace_scopes_seen<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: NamespacePath,
+    seen: Seen,
+) -> Vec<crate::hir_def::scope::ScopeId<'db>> {
+    let mut scopes: Vec<_> = namespace_index_seen(db, path, seen)
         .into_iter()
         .map(|ns| ns.scope_id(db))
         .collect();
@@ -473,6 +497,7 @@ pub fn namespace_scopes<'db>(
         scopes.extend(
             crate::hir_ty::library::library_files_of_root(db, root)
                 .into_iter()
+                .filter(|file| seen.sees(db, *file))
                 .map(|file| file_scope(db, file)),
         );
     }
@@ -482,7 +507,12 @@ pub fn namespace_scopes<'db>(
 /// Whether anything declares the absolute path `path`: a namespace, or a
 /// library whose root it is.
 pub fn namespace_exists(db: &dyn WorkspaceDataBase, path: NamespacePath) -> bool {
-    !namespace_scopes(db, path).is_empty()
+    namespace_exists_seen(db, path, Seen::Everything)
+}
+
+/// [`namespace_exists`], of what `seen` takes.
+pub fn namespace_exists_seen(db: &dyn WorkspaceDataBase, path: NamespacePath, seen: Seen) -> bool {
+    !namespace_scopes_seen(db, path, seen).is_empty()
 }
 
 /// A written namespace path, made absolute from where it was written: the
@@ -490,23 +520,35 @@ pub fn namespace_exists(db: &dyn WorkspaceDataBase, path: NamespacePath) -> bool
 /// Lib` means `Lib.Impl`), then the path as written. The first spelling any
 /// declaration answers to wins; a path nobody declares comes back as
 /// written, so the caller's "not found" report names what the user typed.
+/// Only what `scope`'s code sees answers ([`Seen`]).
 pub fn absolute_namespace_path<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: crate::hir_def::scope::ScopeId<'db>,
     written: NamespacePath,
 ) -> NamespacePath {
+    absolute_namespace_path_seen(db, scope, written, Seen::From(scope.file(db)))
+}
+
+/// [`absolute_namespace_path`], answered by what `seen` takes.
+pub fn absolute_namespace_path_seen<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: crate::hir_def::scope::ScopeId<'db>,
+    written: NamespacePath,
+    seen: Seen,
+) -> NamespacePath {
     namespace_path_candidates(db, scope, written)
-        .find(|candidate| namespace_exists(db, *candidate))
+        .find(|candidate| namespace_exists_seen(db, *candidate, seen))
         .unwrap_or(written)
 }
 
 /// Every spelling a written path may mean from `scope`, in resolution order:
 /// under the innermost enclosing namespace first, outward, then as written,
 /// then under each library's root, since every library is imported by
-/// default (see [`namespace_path_ambiguity`] for a path two of them have).
-/// Lazy, so [`absolute_namespace_path`] interns nothing past its first hit;
-/// an IDE feature completing a partial path walks the whole sequence, because
-/// a prefix nobody declares yet still names where the user is typing.
+/// default (see [`namespace_path_ambiguity`] for a path two of them have);
+/// only what `scope`'s code sees answers. Lazy, so [`absolute_namespace_path`] interns
+/// nothing past its first hit; an IDE feature completing a partial path walks
+/// the whole sequence, because a prefix nobody declares yet still names
+/// where the user is typing.
 pub fn namespace_path_candidates<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: crate::hir_def::scope::ScopeId<'db>,
@@ -526,7 +568,9 @@ pub fn namespace_path_candidates<'db>(
         .chain(under_each_root(db, written))
 }
 
-/// `written` under each library's root, in the order the libraries are read.
+/// `written` under each library's root, in the order the libraries are
+/// read. Whether one answers is a lookup's: a library's code finds nothing
+/// under another library's root, whose declarations it does not see.
 fn under_each_root<'db>(
     db: &'db dyn WorkspaceDataBase,
     written: NamespacePath,
@@ -543,25 +587,35 @@ fn under_each_root<'db>(
 /// The roots that answer to `written` from `scope` when nothing nearer does:
 /// a path two libraries declare is ambiguous until the library's name is
 /// written before it. `None` when a nearer spelling exists, or when fewer
-/// than two libraries have the path.
+/// than two libraries have the path. Only what `scope`'s code sees answers.
 pub fn namespace_path_ambiguity<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: crate::hir_def::scope::ScopeId<'db>,
     written: NamespacePath,
+) -> Option<Vec<NamespacePath>> {
+    namespace_path_ambiguity_seen(db, scope, written, Seen::From(scope.file(db)))
+}
+
+/// [`namespace_path_ambiguity`], among what `seen` takes.
+pub fn namespace_path_ambiguity_seen<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: crate::hir_def::scope::ScopeId<'db>,
+    written: NamespacePath,
+    seen: Seen,
 ) -> Option<Vec<NamespacePath>> {
     let roots = crate::hir_ty::library::library_roots(db).len();
     let candidates: Vec<NamespacePath> = namespace_path_candidates(db, scope, written).collect();
     let nearer = candidates.len() - roots;
     if candidates[..nearer]
         .iter()
-        .any(|candidate| namespace_exists(db, *candidate))
+        .any(|candidate| namespace_exists_seen(db, *candidate, seen))
     {
         return None;
     }
     let under_roots: Vec<NamespacePath> = candidates[nearer..]
         .iter()
         .copied()
-        .filter(|candidate| namespace_exists(db, *candidate))
+        .filter(|candidate| namespace_exists_seen(db, *candidate, seen))
         .collect();
     (under_roots.len() > 1).then_some(under_roots)
 }
@@ -574,7 +628,17 @@ pub fn namespace_pou_index<'db>(
     path: NamespacePath,
     name: Ident,
 ) -> Option<Pou<'db>> {
-    for scope in namespace_scopes(db, path) {
+    namespace_pou_index_seen(db, path, name, Seen::Everything)
+}
+
+/// [`namespace_pou_index`], among what `seen` takes.
+pub fn namespace_pou_index_seen<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: NamespacePath,
+    name: Ident,
+    seen: Seen,
+) -> Option<Pou<'db>> {
+    for scope in namespace_scopes_seen(db, path, seen) {
         if let Some(pou) = scope.def_map(db).local_pous.get(&name) {
             return Some(*pou);
         }
@@ -615,8 +679,18 @@ pub fn namespace_pou_candidates<'db>(
     path: NamespacePath,
     name: Ident,
 ) -> Vec<Pou<'db>> {
+    namespace_pou_candidates_seen(db, path, name, Seen::Everything)
+}
+
+/// [`namespace_pou_candidates`], among what `seen` takes.
+pub fn namespace_pou_candidates_seen<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: NamespacePath,
+    name: Ident,
+    seen: Seen,
+) -> Vec<Pou<'db>> {
     let mut result = Vec::new();
-    for scope in namespace_scopes(db, path) {
+    for scope in namespace_scopes_seen(db, path, seen) {
         for p in scope.pous(db).into_iter().flatten() {
             if p.get_name_ident(db) == name {
                 result.push(*p);

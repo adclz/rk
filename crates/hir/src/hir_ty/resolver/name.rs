@@ -4,7 +4,7 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    HasName,
+    HasName, HirNodeInfo,
     hir_def::{
         expressions::spec::{ElementarySpec, Spec, SpecKind},
         interned::{
@@ -20,6 +20,7 @@ use crate::{
     hir_ty::{
         head::signature::function_signature,
         index_graphs::{namespace_pou_candidates, pou_candidates, pou_index, program_index},
+        library::Seen,
         ty::{CallableType, Type},
     },
 };
@@ -80,14 +81,81 @@ pub enum NameResolution<'db> {
 /// 3. POU via namespace access (local scope → parent/USING → global)
 ///
 /// This function is used by both head-level (spec) and body-level (path expr) resolution.
+///
+/// Only what `scope`'s code sees answers: a library's code, its own
+/// declarations and the standard library's ([`Seen`]).
 pub fn resolve_name<'db>(
     db: &'db dyn WorkspaceDataBase,
     access: &NamespaceAccess<'db>,
     scope: ScopeId<'db>,
 ) -> NameResolution<'db> {
+    resolve_name_seen(db, access, scope, Seen::From(scope.file(db)))
+}
+
+/// Whose the declaration is that `access` names, when `scope` is a
+/// library's code that does not see it and that is all that stops it: what
+/// E1008 reports in place of a name not found. `None` for the program's
+/// code, which sees everything, and for a name no one declares.
+pub fn reached_outside<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    access: &NamespaceAccess<'db>,
+    scope: ScopeId<'db>,
+) -> Option<crate::check::errors::e10_visibility::Reached> {
+    db.library_of(scope.file(db))?;
+    let declared_in = match resolve_name_seen(db, access, scope, Seen::Everything) {
+        NameResolution::Pou(pou, _) => pou.get_scope_id(db).file(db),
+        NameResolution::Program(program) => program.scope_id(db).file(db),
+        _ => return None,
+    };
+    reached_in(db, scope, declared_in)
+}
+
+/// [`reached_outside`] for a namespace written in `scope`, a USING's.
+pub fn namespace_reached_outside<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    written: NamespacePath,
+) -> Option<crate::check::errors::e10_visibility::Reached> {
+    db.library_of(scope.file(db))?;
+    let path = crate::hir_ty::index_graphs::absolute_namespace_path_seen(
+        db,
+        scope,
+        written,
+        Seen::Everything,
+    );
+    let declared_in = crate::hir_ty::index_graphs::namespace_scopes(db, path)
+        .first()?
+        .file(db);
+    reached_in(db, scope, declared_in)
+}
+
+/// Whose a declaration of `declared_in` is, when `scope`'s code does not
+/// see it.
+fn reached_in<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    declared_in: auto_lsp::default::db::file::File,
+) -> Option<crate::check::errors::e10_visibility::Reached> {
+    use crate::check::errors::e10_visibility::Reached;
+    if Seen::From(scope.file(db)).sees(db, declared_in) {
+        return None;
+    }
+    Some(match crate::hir_ty::library::owner_of(db, declared_in) {
+        Some(name) => Reached::Library(name),
+        None => Reached::Program,
+    })
+}
+
+/// [`resolve_name`], answered by what `seen` takes.
+pub fn resolve_name_seen<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    access: &NamespaceAccess<'db>,
+    scope: ScopeId<'db>,
+    seen: Seen,
+) -> NameResolution<'db> {
     // Namespace-qualified names skip directly to namespace lookup (no ambiguity possible)
     if access.namespace.is_some() {
-        return match resolve_namespace_access(db, access) {
+        return match resolve_namespace_access_seen(db, access, seen) {
             PouResolution::Found(pou, using) => NameResolution::Pou(pou, using),
             // Qualified names can't be ambiguous — the user chose the namespace
             PouResolution::Ambiguous(_) => unreachable!(),
@@ -128,7 +196,7 @@ pub fn resolve_name<'db>(
     }
 
     // 3. POU resolution (local → parent/USING → global)
-    match resolve_namespace_access(db, access) {
+    match resolve_namespace_access_seen(db, access, seen) {
         PouResolution::Found(pou, using) => NameResolution::Pou(pou, using),
         PouResolution::Ambiguous(candidates) => NameResolution::Ambiguous(candidates),
         PouResolution::AmbiguousNamespace {
@@ -148,6 +216,15 @@ pub(crate) fn resolve_namespace_access<'db>(
     db: &'db dyn WorkspaceDataBase,
     access: &NamespaceAccess<'db>,
 ) -> PouResolution<'db> {
+    resolve_namespace_access_seen(db, access, Seen::From(access.target.scope_id.file(db)))
+}
+
+/// [`resolve_namespace_access`], answered by what `seen` takes.
+fn resolve_namespace_access_seen<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    access: &NamespaceAccess<'db>,
+    seen: Seen,
+) -> PouResolution<'db> {
     let target = &access.target;
 
     match &access.namespace {
@@ -160,17 +237,24 @@ pub(crate) fn resolve_namespace_access<'db>(
             // Relative to where it was written, then absolute, then under
             // the libraries' roots: two of those is no answer.
             let written = path.path(db);
-            if let Some(candidates) =
-                crate::hir_ty::index_graphs::namespace_path_ambiguity(db, target.scope_id, written)
-            {
+            if let Some(candidates) = crate::hir_ty::index_graphs::namespace_path_ambiguity_seen(
+                db,
+                target.scope_id,
+                written,
+                seen,
+            ) {
                 return PouResolution::AmbiguousNamespace {
                     written: path.path_with_case,
                     candidates,
                 };
             }
-            let path =
-                crate::hir_ty::index_graphs::absolute_namespace_path(db, target.scope_id, written);
-            for scope in crate::hir_ty::index_graphs::namespace_scopes(db, path) {
+            let path = crate::hir_ty::index_graphs::absolute_namespace_path_seen(
+                db,
+                target.scope_id,
+                written,
+                seen,
+            );
+            for scope in crate::hir_ty::index_graphs::namespace_scopes_seen(db, path, seen) {
                 if let Some(pou) = scope.def_map(db).local_pous.get(&target.ident(db)) {
                     return PouResolution::Found(*pou, None);
                 }
@@ -178,7 +262,7 @@ pub(crate) fn resolve_namespace_access<'db>(
             PouResolution::NotFound
         }
         // Unqualified: resolve via scope chain, USING can be ambiguous
-        None => pou_names_res(db, target.ident(db), target.scope_id),
+        None => pou_names_res_seen(db, target.ident(db), target.scope_id, seen),
     }
 }
 
@@ -187,17 +271,29 @@ pub fn pou_names_res<'db>(
     name: Ident,
     scope: ScopeId<'db>,
 ) -> PouResolution<'db> {
+    pou_names_res_seen(db, name, scope, Seen::From(scope.file(db)))
+}
+
+/// [`pou_names_res`], answered by what `seen` takes.
+fn pou_names_res_seen<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    name: Ident,
+    scope: ScopeId<'db>,
+    seen: Seen,
+) -> PouResolution<'db> {
     // Checks for POUs declared in the current scope
     if let Some(pou) = scope.def_map(db).local_pous.get(&name) {
         return PouResolution::Found(*pou, None);
     }
 
     // Checks for parent POUs and those imported via USING directives
-    match find_in_parent_pous(db, name, scope) {
+    match find_in_parent_pous_seen(db, name, scope, seen) {
         // The workspace's top level; a library's is its root, which the
-        // walk above reached.
+        // walk above reached. A library's code sees the workspace's only
+        // when everything is taken, to say whose a name is.
         PouResolution::NotFound
-            if crate::hir_ty::library::library_root(db, scope.file(db)).is_none() =>
+            if crate::hir_ty::library::library_root(db, scope.file(db)).is_none()
+                || seen == Seen::Everything =>
         {
             match pou_index(db, name) {
                 Some(pou) => PouResolution::Found(pou, None),
@@ -226,11 +322,25 @@ pub fn find_in_parent_pous<'db>(
     name: Ident,
     scope: ScopeId<'db>,
 ) -> PouResolution<'db> {
+    find_in_parent_pous_seen(db, name, scope, Seen::From(scope.file(db)))
+}
+
+/// [`find_in_parent_pous`], answered by what `seen` takes: a block another
+/// library or the program opens in a namespace of a library's is none of
+/// that library's code's.
+fn find_in_parent_pous_seen<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    name: Ident,
+    scope: ScopeId<'db>,
+    seen: Seen,
+) -> PouResolution<'db> {
     let file = scope.file(db);
     let index = semantic_index(db, file);
     for around in index.scope_iterator(db, scope) {
         if let ScopeKind::Namespace(ns) = around.kind {
-            for block in crate::hir_ty::index_graphs::namespace_scopes(db, ns.absolute_path(db)) {
+            for block in
+                crate::hir_ty::index_graphs::namespace_scopes_seen(db, ns.absolute_path(db), seen)
+            {
                 if let Some(p) = block.def_map(db).local_pous.get(&name) {
                     return PouResolution::Found(*p, None);
                 }
@@ -240,7 +350,9 @@ pub fn find_in_parent_pous<'db>(
             // The top level: the library's root, in every file of the
             // library, or the workspace's own.
             let found = match crate::hir_ty::library::library_root(db, file) {
-                Some(root) => crate::hir_ty::index_graphs::namespace_pou_index(db, root.path, name),
+                Some(root) => {
+                    crate::hir_ty::index_graphs::namespace_pou_index_seen(db, root.path, name, seen)
+                }
                 None => pou_index(db, name),
             };
             if let Some(pou) = found {
@@ -249,7 +361,7 @@ pub fn find_in_parent_pous<'db>(
         }
     }
 
-    imported(db, name, scope)
+    imported(db, name, scope, seen)
 }
 
 /// `name` through the USINGs around `scope`, the nearest level first, in one
@@ -259,6 +371,7 @@ fn imported<'db>(
     db: &'db dyn WorkspaceDataBase,
     name: Ident,
     scope: ScopeId<'db>,
+    seen: Seen,
 ) -> PouResolution<'db> {
     let index = semantic_index(db, scope.file(db));
     let mut uncallable: Option<Vec<Import<'db>>> = None;
@@ -267,12 +380,13 @@ fn imported<'db>(
         let mut matches: Vec<Import<'db>> = vec![];
         let mut others: Vec<Import<'db>> = vec![];
         for using in &around.usings {
-            let ns_path: NamespacePath = crate::hir_ty::index_graphs::absolute_namespace_path(
+            let ns_path: NamespacePath = crate::hir_ty::index_graphs::absolute_namespace_path_seen(
                 db,
                 around.id,
                 using.path(db).path(db),
+                seen,
             );
-            for block in crate::hir_ty::index_graphs::namespace_scopes(db, ns_path) {
+            for block in crate::hir_ty::index_graphs::namespace_scopes_seen(db, ns_path, seen) {
                 if let Some(pou) = block.def_map(db).local_pous.get(&name) {
                     let list = if matches!(pou, Pou::Function(f)
                         if !crate::hir_ty::resolver::visibility::function_visible_from(db, scope, *f))
@@ -300,7 +414,8 @@ fn imported<'db>(
 
     // Every library is imported by default: its root, after the USINGs. The
     // scope's own library was its top level, reached before any import. A
-    // name two libraries declare is ambiguous until qualified.
+    // name two libraries declare is ambiguous until qualified. A library's
+    // code finds nothing under another library's root: it does not see it.
     let own = crate::hir_ty::library::library_root(db, scope.file(db));
     let mut matches: Vec<Import<'db>> = vec![];
     let mut others: Vec<Import<'db>> = vec![];
@@ -309,7 +424,7 @@ fn imported<'db>(
             continue;
         }
         let path = root.path;
-        for block in crate::hir_ty::index_graphs::namespace_scopes(db, path) {
+        for block in crate::hir_ty::index_graphs::namespace_scopes_seen(db, path, seen) {
             if let Some(pou) = block.def_map(db).local_pous.get(&name) {
                 let list = if matches!(pou, Pou::Function(f)
                     if !crate::hir_ty::resolver::visibility::function_visible_from(db, scope, *f))
@@ -504,6 +619,9 @@ pub fn overload_discriminant<'db>(
 /// surfaces.
 pub fn select_overload<'db>(
     db: &'db dyn WorkspaceDataBase,
+    // What the calling code sees: a library's call picks among its own
+    // overloads, not one the program adds to its namespace.
+    seen: Seen,
     callable: CallableType<'db>,
     // The type the call's VALUE lands in, when the consuming site knows it —
     // an assignment's target, an initializer's declared type. What a
@@ -518,7 +636,10 @@ pub fn select_overload<'db>(
         return OverloadPick::One(callable);
     };
 
-    let functions = crate::hir_ty::head::signature::overload_set(db, first);
+    let functions: Vec<Function<'db>> = crate::hir_ty::head::signature::overload_set(db, first)
+        .into_iter()
+        .filter(|f| seen.sees(db, f.scope_id(db).file(db)))
+        .collect();
     if functions.len() <= 1 {
         // Not an overload set — nothing to pick.
         return OverloadPick::One(callable);

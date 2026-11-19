@@ -640,9 +640,11 @@ impl<'db> InitInference<'db> {
             // (E0207). Cycle-safe here where a named global type resolves
             // freely; inside signature inference the same resolution
             // re-enters `infer_signature`. Absence is E0206, the signature's,
-            // and an `ARRAY[*]` one is E0509.
+            // and an `ARRAY[*]` one is E0509. A library's has no global to
+            // agree with (E1008).
             if var.kind(db) == crate::hir_def::pous::variable::VariableKind::External
                 && var.conformand(db).is_none()
+                && !crate::hir_ty::library::is_library_code(db, self.scope.file(db))
                 && let Some(global) =
                     crate::hir_ty::index_graphs::external_var_lookup(db, var.get_name_ident(db))
                 && !Type::resolve_spec(db, var.spec(db)).is_never()
