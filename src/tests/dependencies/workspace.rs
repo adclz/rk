@@ -301,6 +301,54 @@ fn a_library_keeps_its_rules_in_its_own_folder() {
     assert_snapshot!(checked(&db, &drives), @"Axis.st:3:10: warning[L0132]: the address '%IX0.0' is used directly");
 }
 
+/// A library declares no CONFIGURATION (E1433), whose globals would be no
+/// program's: the program's VAR_EXTERNAL does not find them, and neither
+/// does the library's own block when a program reads it. The configuration
+/// is refused whole: the unknown program its resource runs is not reported
+/// beside it. In the library's own folder the error is the same.
+#[test]
+fn a_library_declares_no_configuration() {
+    let (_dir, root) = sandbox();
+    write(
+        &root,
+        &[
+            (
+                "ws/config.toml",
+                &config("ws", "lib = { path = \"../lib\" }\n"),
+            ),
+            (
+                "ws/main.st",
+                "PROGRAM Main\nVAR_EXTERNAL libg : INT; END_VAR\nVAR x : INT; END_VAR\n    x := libg;\nEND_PROGRAM\n",
+            ),
+            ("lib/config.toml", &library_config("lib", "")),
+            (
+                "lib/L.st",
+                "CONFIGURATION LibCell\nVAR_GLOBAL libg : INT := 5; END_VAR\n\
+                 \x20   RESOURCE Res ON PLC\n\
+                 \x20       TASK T(INTERVAL := T#10ms, PRIORITY := 1);\n\
+                 \x20       PROGRAM Inst WITH T : Nope;\n\
+                 \x20   END_RESOURCE\nEND_CONFIGURATION\n\n\
+                 FUNCTION_BLOCK UsesLibGlobal\nVAR_EXTERNAL libg : INT; END_VAR\nVAR_OUTPUT q : INT; END_VAR\n    q := libg;\nEND_FUNCTION_BLOCK\n",
+            ),
+        ],
+    );
+    // A library's file is shown by its URL, under the test's folder.
+    let under_root = format!("{}/", Url::from_file_path(&root).unwrap());
+    let ws = root.join("ws");
+    let (db, reported) = open(&ws);
+    assert_eq!(reported, "");
+    assert_snapshot!(errors(&db, &ws).replace(&under_root, ""), @r"
+    main.st:2:14: error[E0206]: no VAR_GLOBAL is named 'libg'
+    lib/L.st:1:15: error[E1433]: 'LibCell' is a CONFIGURATION in a library
+    lib/L.st:10:14: error[E0206]: no VAR_GLOBAL is named 'libg'
+    ");
+
+    let lib = root.join("lib");
+    let (db, reported) = open(&lib);
+    assert_eq!(reported, "");
+    assert_snapshot!(errors(&db, &lib), @"L.st:1:15: error[E1433]: 'LibCell' is a CONFIGURATION in a library");
+}
+
 /// Two entries whose names differ only in case are one name: each is
 /// refused on its own line, and neither library is read.
 #[test]
