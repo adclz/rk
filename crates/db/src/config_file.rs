@@ -35,7 +35,7 @@ pub struct Dependency {
     pub path: Option<String>,
     /// A `.tar.gz` archive, over `https`, `http` or `file`.
     pub url: Option<String>,
-    /// What the archive holds, as `rk fetch --save` writes it.
+    /// What the archive holds, as `rk fetch <url>` writes it.
     pub hash: Option<String>,
 }
 

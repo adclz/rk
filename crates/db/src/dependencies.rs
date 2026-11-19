@@ -438,7 +438,7 @@ impl Resolver<'_, '_> {
                 }
             }
             (None, Some(url)) => {
-                let fetch_and_save = format!("run `rk fetch --save {url}`");
+                let fetch_and_save = format!("run `rk fetch {url}`");
                 let Some(hash) = &dependency.hash else {
                     return Err(Problem::new(span, format!("'{name}' has no `hash`"))
                         .note("a `url` goes with the `hash` of what it serves")
