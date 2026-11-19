@@ -25,7 +25,7 @@ shared = { path = "../shared" }
 
 ## A library
 
-A library is written like a workspace.
+A library is written like a workspace, and its `config.toml` says it is one with `type = "library"`.
 The name in `[dependencies]` is the `name` of its `config.toml`:
 
 ```toml
@@ -33,7 +33,11 @@ The name in `[dependencies]` is the `name` of its `config.toml`:
 [project]
 name = "drives"
 version = "2.1.0"
+type = "library"
 ```
+
+A folder without `type = "library"` is a program, and a program is not a dependency: it is refused.
+In its own folder, `rk check` and `rk test` hold a library to the rules every program that lists it holds it to, and `rk compile` refuses it: a library is built into the programs that list it, never alone.
 
 ```st
 // drives/Axis.st
@@ -64,6 +68,7 @@ A library can also list the files it is made of:
 [project]
 name = "drives"
 version = "2.1.0"
+type = "library"
 paths = ["src", "LICENSE"]
 ```
 

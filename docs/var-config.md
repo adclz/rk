@@ -80,7 +80,7 @@ The path can go on into a `STRUCT`, to give one of its fields a value, and the o
 A library is code for any machine: it names no address.
 Its blocks declare `AT %I*`, `%Q*` or `%M*`, and your configuration locates each instance, as above.
 A complete address in a library, in an `AT` or written in a body, is `E1432`.
-This holds for every dependency, a `path` as a `url`, and for the standard library.
+This holds for every dependency, a `path` as a `url`, and for the standard library, and in the library's own folder too, see [Dependencies](dependencies.md).
 
 A library that reads a signal of the machine declares the variable `VAR_EXTERNAL`.
 Your configuration declares the `VAR_GLOBAL` and its address:
