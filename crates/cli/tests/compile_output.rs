@@ -126,6 +126,58 @@ fn a_library_is_not_compiled_alone() {
     }
 }
 
+/// `rk check` in a program reports its libraries' errors, as `rk compile`
+/// does, and its summary says how many are theirs.
+#[test]
+fn rk_check_counts_a_library_s_errors() {
+    let root = tempfile::tempdir().unwrap();
+    let (ws, motion) = (root.path().join("ws"), root.path().join("motion"));
+    for (path, text) in [
+        (
+            ws.join("config.toml"),
+            "[project]\nname = \"ws\"\nversion = \"0.1.0\"\n\n[dependencies]\nmotion = { path = \"../motion\" }\n",
+        ),
+        (
+            ws.join("main.st"),
+            "FUNCTION Run : INT\n    Run := 1;\nEND_FUNCTION\n",
+        ),
+        (
+            motion.join("config.toml"),
+            "[project]\nname = \"motion\"\nversion = \"0.1.0\"\ntype = \"library\"\n",
+        ),
+        (
+            motion.join("Motion.st"),
+            "FUNCTION Twice : INT\n    Twice := Nope();\nEND_FUNCTION\n",
+        ),
+    ] {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    let out = rk(&["check"], &ws);
+    assert!(!out.status.success(), "a library's error passed the check");
+    // Without the terminal's colors.
+    let plain = |bytes: &[u8]| {
+        let text = String::from_utf8_lossy(bytes).into_owned();
+        let mut out = String::new();
+        let mut chars = text.chars();
+        while let Some(c) = chars.next() {
+            if c == '\u{1b}' {
+                chars.by_ref().find(|c| *c == 'm');
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    };
+    let stdout = plain(&out.stdout);
+    assert!(
+        stdout.contains("1 error(s) (1 in library files), 0 warning(s) found."),
+        "{stdout}"
+    );
+    let stderr = plain(&out.stderr);
+    assert!(stderr.contains("E0201"), "{stderr}");
+}
+
 /// `--output` places the component, and nothing beside it.
 #[test]
 fn an_output_given_holds_the_component() {

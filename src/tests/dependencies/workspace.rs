@@ -948,6 +948,43 @@ fn a_library_is_checked_before_it_is_added() {
     );
 }
 
+/// `rk check` in a program reports its libraries' errors, as `rk compile`
+/// does: a library that does not check fails the check, and the program's
+/// own files are clean all the same.
+#[test]
+fn rk_check_reports_a_library_s_errors() {
+    let (_dir, root) = sandbox();
+    let pou = |body: &str| format!("FUNCTION Twice : INT\n    Twice := {body};\nEND_FUNCTION\n");
+    write(
+        &root,
+        &[
+            (
+                "ws/config.toml",
+                &config("ws", "motion = { path = \"../motion\" }\n"),
+            ),
+            (
+                "ws/main.st",
+                "FUNCTION Run : INT\n    Run := Twice();\nEND_FUNCTION\n",
+            ),
+            ("motion/config.toml", &library_config("motion", "")),
+            ("motion/Motion.st", &pou("Nope()")),
+        ],
+    );
+    let ws = root.join("ws");
+    let check = || {
+        rk::run_args([
+            "rk".as_ref(),
+            "check".as_ref(),
+            "--workspace".as_ref(),
+            ws.as_os_str(),
+        ])
+    };
+    assert!(check().is_err(), "a library's error passed the check");
+
+    write(&root, &[("motion/Motion.st", &pou("2"))]);
+    assert!(check().is_ok(), "a clean library failed the check");
+}
+
 /// What is checked is the entry being added: another entry, broken before,
 /// does not stop it, and stays as it was.
 #[test]
