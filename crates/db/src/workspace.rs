@@ -8,6 +8,7 @@ use ide_diagnostic::IdeDiagnostic;
 use salsa::{Durability, Setter};
 
 use crate::RootDatabase;
+use crate::config_file::ProjectKind;
 use crate::dependencies::{Fetch, Library};
 
 /// Pure data store for workspace configuration, created and updated by
@@ -27,6 +28,10 @@ pub struct Workspace {
     #[returns(as_ref)]
     pub config_file: Option<PathBuf>,
 
+    /// What the workspace is, as its `config.toml` says: a library checked
+    /// in its own folder keeps a library's rules.
+    pub kind: ProjectKind,
+
     pub encoding: PositionEncodingKind,
 }
 
@@ -35,6 +40,11 @@ impl Workspace {
     /// compiler, or the folder `RK_STDLIB_PATH` names.
     pub fn standard_library(self, db: &dyn salsa::Database) -> Option<&Library> {
         self.libraries(db).iter().find(|library| library.standard)
+    }
+
+    /// Whether the workspace is a library (`type = "library"`).
+    pub fn is_library(self, db: &dyn salsa::Database) -> bool {
+        self.kind(db) == ProjectKind::Library
     }
 
     pub fn init_or_update(
@@ -62,10 +72,10 @@ impl Workspace {
         file_errors: &mut Vec<IdeDiagnostic>,
         notices: &mut Vec<ConfigurationNotice>,
     ) -> Self {
-        let (workspace_folder, libraries, config_file) =
+        let (workspace_folder, libraries, config_file, kind) =
             resolve_all(workspace_uri, fetch, file_errors, notices);
 
-        Self::builder(workspace_folder, libraries, config_file, encoding)
+        Self::builder(workspace_folder, libraries, config_file, kind, encoding)
             .durability(Durability::HIGH)
             .new(db)
     }
@@ -78,12 +88,15 @@ impl Workspace {
         file_errors: &mut Vec<IdeDiagnostic>,
         notices: &mut Vec<ConfigurationNotice>,
     ) {
-        let (workspace_folder, libraries, config_file) =
+        let (workspace_folder, libraries, config_file, kind) =
             resolve_all(workspace_uri, fetch, file_errors, notices);
 
         self.set_workspace_folder(db).to(workspace_folder);
         self.set_libraries(db).to(libraries);
         self.set_config_file(db).to(config_file);
+        if self.kind(db) != kind {
+            self.set_kind(db).to(kind);
+        }
     }
 }
 
@@ -92,7 +105,7 @@ fn resolve_all(
     fetch: Option<Fetch<'_>>,
     file_errors: &mut Vec<IdeDiagnostic>,
     notices: &mut Vec<ConfigurationNotice>,
-) -> (Option<PathBuf>, Vec<Library>, Option<PathBuf>) {
+) -> (Option<PathBuf>, Vec<Library>, Option<PathBuf>, ProjectKind) {
     // 1. Resolve workspace folder from URI
     let workspace_folder = match workspace_uri {
         Some(uri) => match uri.to_file_path() {
@@ -167,6 +180,10 @@ fn resolve_all(
         }
     };
 
+    let kind = config
+        .as_ref()
+        .map_or(ProjectKind::Program, |(_, config)| config.project.kind);
+
     // 5. Resolve the libraries the configuration names. One the cache
     // lacks is fetched by the caller, or reported when it fetches nothing.
     let libraries = match (&workspace_folder, config) {
@@ -185,7 +202,7 @@ fn resolve_all(
         _ => standard.into_iter().collect(),
     };
 
-    (workspace_folder, libraries, config_file)
+    (workspace_folder, libraries, config_file, kind)
 }
 
 /// A dependency that could not be resolved, as a diagnostic on the entry of

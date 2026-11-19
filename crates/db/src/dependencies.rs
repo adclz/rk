@@ -8,9 +8,10 @@
 //! A dependency is a folder (`path`), or an archive (`url`) and the hash of
 //! what it holds (`hash`). There is no registry and nothing to solve: the
 //! hash names one content, and the URL is a place that serves it. A library
-//! has no dependencies of its own: the workspace names every library it
-//! reads, and a library whose `config.toml` names some is refused, nothing
-//! it names read.
+//! says so, `type = "library"` in its `config.toml`, and a folder that does
+//! not is refused. It has no dependencies of its own: the workspace names
+//! every library it reads, and a library whose `config.toml` names some is
+//! refused, nothing it names read, as is each entry in its own folder.
 //!
 //! A library's name is its namespace, and names are case-insensitive: two
 //! entries whose names differ only in case are one name, and both are
@@ -28,7 +29,7 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 
 use crate::cache::Entry;
-use crate::config_file::{CONFIG_FILE, Config, Dependency, parse_config};
+use crate::config_file::{CONFIG_FILE, Config, Dependency, ProjectKind, parse_config};
 
 /// A library's place in [`crate::workspace::Workspace::libraries`].
 pub type LibraryId = u32;
@@ -278,7 +279,8 @@ fn is_absolute_anywhere(path: &str) -> bool {
 }
 
 /// Resolves the `[dependencies]` of `config`, the configuration of the
-/// workspace at `workspace`.
+/// workspace at `workspace`. A library checked in its own folder lists none:
+/// each entry is refused there, and nothing is read for it.
 ///
 /// `standard` is the standard library, when there is one: it comes first
 /// and no dependency replaces it. With no `fetch`, a library the cache
@@ -301,9 +303,22 @@ pub fn resolve(
     };
     let mut clashes = case_clashes(&config.dependencies, standard.as_ref());
     resolver.resolution.libraries.extend(standard);
+    let a_library = config.project.kind == ProjectKind::Library;
     for (name, dependency) in &config.dependencies {
         let span = name.span();
         let name = name.get_ref();
+        if a_library {
+            // Checked in its own folder: what a program that lists it would
+            // refuse, refused here first, and nothing read.
+            resolver.resolution.problems.push(
+                Problem::new(&span, format!("'{name}' is a dependency of a library"))
+                    .note(
+                        "a library has no `[dependencies]`: a program lists every library it reads",
+                    )
+                    .help("remove this entry"),
+            );
+            continue;
+        }
         if let Some(problem) = clashes.remove(name.as_str()) {
             resolver.resolution.problems.push(problem);
             continue;
@@ -534,6 +549,11 @@ impl Resolver<'_, '_> {
                         crate::stdlib::PATH_ENV
                     )),
             );
+        }
+        if config.project.kind != ProjectKind::Library {
+            return Err(Problem::new(span, format!("'{name}' is not a library"))
+                .note("a library's config.toml says so: `type = \"library\"` in its `[project]`")
+                .help("add `type = \"library\"` to its `[project]`"));
         }
         if !config.dependencies.is_empty() {
             return Err(
