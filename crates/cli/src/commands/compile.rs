@@ -40,6 +40,13 @@ fn compile_once(
     verbose: bool,
 ) -> CliResult<()> {
     let db = init_db(workspace, verbose, true).ok_or(CliError::Failed)?;
+    // A library is code a program takes in: checked and tested in its own
+    // folder, built into each program that lists it, and never alone.
+    if db::workspace::Workspace::get(&db).is_library(&db) {
+        return Err(CliError::msg(
+            "this workspace is a library (`type = \"library\"`): `rk check` and `rk test` take it, and a program that lists it in its `[dependencies]` builds it",
+        ));
+    }
 
     let profile = if opts.release {
         wasm_codegen::Profile::Release
