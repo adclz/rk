@@ -359,6 +359,7 @@ A recursive function's frame larger than the stack is refused by `rk check` (`E1
 
 `[dependencies]` Optional: the libraries the workspace uses, each a folder with its own `config.toml`.
 The key is the `name` of the library's `config.toml`.
+Names are case-insensitive: two keys that differ only in case are one name, and both are refused.
 An entry has a `path`, relative to this file, or a `url` with a `hash`.
 The `url` is a `.tar.gz` or `.tar` archive over `https`, `http` or `file`, or a git repository as `git+https://host/repo#tag`, which `rk fetch --save` pins to the commit of that tag.
 `[project] paths` lists the files and folders a library is made of when it is fetched; without it, every file is.

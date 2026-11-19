@@ -52,6 +52,9 @@ USING Drives;
 The library's name is its namespace: everything `drives` declares is in `Drives`, and a `NAMESPACE Motion` of its files is `Drives.Motion`.
 A name only one library has resolves bare; a name two libraries have takes the library's name before it.
 
+Names are case-insensitive, so `drives` and `Drives` are one name.
+Two entries whose names differ only in case are both refused, and so is one that differs from the standard library's name, `Std`, only in case.
+
 A library has no `[dependencies]` of its own: your workspace lists every library the build reads.
 One whose `config.toml` lists some is refused, with an error on the line of your `config.toml` that names it.
 
