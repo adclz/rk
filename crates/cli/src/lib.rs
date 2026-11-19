@@ -123,7 +123,7 @@ pub fn run(
         Command::Check { watch } => check::run_check(workspace, watch, verbose, format),
         Command::Env { keys } => env::run_env(workspace, &keys, format),
         Command::Explain { code } => explain::run_explain(&code, format),
-        Command::Fetch { save } => fetch::run_fetch(workspace, save.as_deref(), format),
+        Command::Fetch { url } => fetch::run_fetch(workspace, url.as_deref(), format),
         Command::Compile {
             output,
             release,
