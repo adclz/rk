@@ -1,6 +1,6 @@
 ---
 name: cli-bindgen
-description: Write the ST declarations of a host's WIT interfaces with `rk bindgen`, so that a library can call the functions a host provides — WASI's or a runtime's own. Use when a library must call an interface of a WIT package, or when a host's package changes.
+description: Write the ST declarations of a library's component, or of a host's WIT interfaces, with `rk bindgen`, so that ST code calls the functions a component exports or a host provides. Use when a library carries a component built from another language, when a library must call an interface of a WIT package, or when either changes.
 ---
 
 > **Output format.** Every `rk` command takes `--output-format full|concise|json-lines`.
@@ -11,7 +11,29 @@ description: Write the ST declarations of a host's WIT interfaces with `rk bindg
 
 ## Summary
 
-Writes the ST declarations of a host's WIT interfaces, one `.st` file per interface, so that ST code calls them as FUNCTIONs and FUNCTION_BLOCKs.
+Writes the ST declarations of WIT interfaces, one `.st` file per interface, so that ST code calls them as FUNCTIONs and FUNCTION_BLOCKs.
+
+## A library's component
+
+A library can carry a component, a `.wasm` its language built, in a `component/` folder at its root, with the component's LICENSE beside it: one component a library.
+
+```
+drives/
+├─ config.toml
+├─ Axis.st              the library's own blocks
+├─ component/
+│  ├─ drive.wasm        the component, as its language built it
+│  └─ LICENSE
+└─ generated/           what rk bindgen writes
+```
+
+The component's binary carries its types, so no WIT is shipped beside it.
+Run in the library's folder, `rk bindgen` reads the component and writes what it exports into `generated/`, as the program imports it: each interface it exports, and those they take types from.
+A `func` is a FUNCTION, an `async func` a FUNCTION_BLOCK called until its `DONE`.
+What the component imports itself is its own, and is not written.
+A `component/` folder with no `.wasm`, or with two, is refused.
+
+## A host's interfaces
 
 A library that calls a host's functions keeps the WIT of the host's package in a `wit/` folder at its root, as the host ships it: the package's files at the top of the folder, and in `deps/` a folder for each package it uses.
 No world is written for it.
@@ -26,7 +48,7 @@ drives/
    └─ deps/             the packages it uses, if any
 ```
 
-Run in the library's folder, `rk bindgen` reads `wit/` and writes `generated/`: every interface of the host's package, and those it takes types from.
+Run in the library's folder of a library that carries no component, `rk bindgen` reads `wit/` and writes `generated/`: every interface of the host's package, and those it takes types from.
 A library that calls the packages of several hosts keeps them all in `deps/`, with no file at the top of `wit/`, and every interface of each package there is written.
 When the host's package declares a world, what that world imports is written instead, and `--world` names one of several.
 
@@ -37,7 +59,7 @@ An interface the program calls that no `wit/` ships stops the build; a declarati
 
 ## Usage
 
-`--wit <FOLDER>` The WIT folder, `wit/` of the workspace by default.
+`--wit <FOLDER>` A WIT folder to read. By default, the library's component, or its `wit/` folder when it carries none.
 
 `-o, --output <FOLDER>` Where the declarations go, `generated/` of the workspace by default.
 

@@ -171,6 +171,26 @@ A library declares no `CONFIGURATION` either (`E1433`): the configuration, its g
 
 See [VAR_CONFIG](var-config.md).
 
+## A component
+
+A library can carry a component, a `.wasm` built from another language, in a `component/` folder at its root, with the component's LICENSE beside it.
+One library carries one component.
+
+```schema
+drives/
+├─ config.toml
+├─ Axis.st                          the library's own blocks
+├─ component/
+│  ├─ drive.wasm                    the component, as its language built it
+│  └─ LICENSE
+└─ generated/                       what rk bindgen writes from the component
+```
+
+The component's binary carries its types: no WIT is shipped beside it.
+[`rk bindgen`](../skills/cli-bindgen/SKILL.md), run in the library's folder, reads the component and writes what it exports into `generated/`, as your program imports it: each interface it exports, one file each, with those they take types from.
+A `func` is a `FUNCTION`, and an `async func` a block you call until its `DONE`.
+What the component imports itself is its own, and is not written.
+
 ## The host's interfaces
 
 A library calls the functions a host provides, WASI's or a runtime's own, through the interfaces of their packages.

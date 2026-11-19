@@ -123,7 +123,11 @@ cargo run -p rk-bindgen
 # top, of each package in deps/. --public drops the root's INTERNAL.
 cargo run -p rk-bindgen -- --wit <dir> [--world <name>] [--public] <folder>
 # What a library author runs: the same generator as an rk subcommand,
-# reading <workspace>/wit/ into <workspace>/generated/ by default
+# writing <workspace>/generated/. By default it reads the library's
+# component, the one .wasm of <workspace>/component/, whose exports are the
+# program's imports (`rk_bindgen::component_exports`: the interfaces its
+# world exports and those they take types from, decoded from the binary),
+# or <workspace>/wit/ when the library carries none
 # (crates/cli/src/commands/bindgen.rs; the skill is skills/cli-bindgen).
 rk bindgen [--wit <dir>] [-o <dir>] [--world <name>] [--public]
 
