@@ -235,6 +235,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E1430", "frame larger than the stack"),
     ("E1431", "partial access to a type without parts"),
     ("E1432", "address in a library"),
+    ("E1433", "configuration in a library"),
     (
         "E1501",
         "extern pragma outside a FUNCTION or FUNCTION_BLOCK",
