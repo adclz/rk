@@ -28,8 +28,12 @@
 //! runtime runs them: each in a store of its own, fresh for each test, with
 //! the program's WASI 0.3. Each function the program imports from one is
 //! the host's, and makes the call in the component's store: plain values
-//! cross as they are. A trap of the component fails the program's call,
-//! named after its library.
+//! cross as they are, and a handle of the component's resource through the
+//! [`resource_bridge`](crate::resource_bridge), the program holding the
+//! host's proxy and the component's store the handle. A handle the program
+//! drops is dropped in the component's store before the program's next call
+//! into it. A trap of the component fails the program's call, named after
+//! its library.
 
 use std::future::Future;
 use std::ops::Range;
@@ -38,13 +42,16 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::control::{TestError, TestState};
+use crate::resource_bridge::{self, ProxyResource, Relocated, ResourceRegistry};
 use anyhow::{Context, Result};
 use debug_format::DebugInfo;
 use debug_format::test_manifest::{TEST_MANIFEST_SECTION, TestEntry, TestManifest};
 use debug_format::test_report::{Frame, Status, TestRecord};
-use wasmtime::component::types::ComponentItem;
-use wasmtime::component::{Accessor, Component, Func, InstancePre, Val};
-use wasmtime::{Caller, Engine, Extern, Instance, Linker, Memory, Module, Store, StoreContextMut};
+use wasmtime::component::types::{ComponentFunc, ComponentItem};
+use wasmtime::component::{Accessor, Component, Func, InstancePre, Resource, Val};
+use wasmtime::{
+    AsContextMut, Caller, Engine, Extern, Instance, Linker, Memory, Module, Store, StoreContextMut,
+};
 use wasmtime_wasi::p3::bindings::clocks::system_clock::Instant as WasiInstant;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
@@ -466,8 +473,8 @@ struct Runner<'a> {
     pre: InstancePre<ComponentHost>,
     /// The components beside it, each compiled and linked once too.
     beside: Vec<BesidePre>,
-    /// Each function it imports from one of them.
-    wires: Vec<Wire>,
+    /// What it imports from them.
+    wires: Wires,
     /// What each call runs on: wasmtime calls a component that imports a
     /// host function that waits, as WASI's `wait-for` does, through its
     /// async API only, and wasmtime-wasi waits on tokio's clock.
@@ -478,6 +485,18 @@ struct Runner<'a> {
 struct BesidePre {
     library: String,
     pre: InstancePre<ComponentHost>,
+}
+
+/// What the program imports from the components beside it: each function,
+/// and each resource type, whose handles cross between the stores through
+/// the [`resource_bridge`].
+#[derive(Default)]
+struct Wires {
+    functions: Vec<Wire>,
+    /// The component that owns each resource, by its place in
+    /// [`ComponentHost::beside`], the interface that declares it, and its
+    /// name.
+    resources: Vec<(usize, String, String)>,
 }
 
 /// A function the program imports from a component beside it: which
@@ -508,7 +527,7 @@ impl<'a> Runner<'a> {
         let beside = beside
             .into_iter()
             .map(|(library, component)| {
-                let pre = link_component(engine, &component, &[])?
+                let pre = link_component(engine, &component, &Wires::default())?
                     .instantiate_pre(&component)
                     .ctx(format!("linking the component of '{library}'"))?;
                 Ok(BesidePre { library, pre })
@@ -569,6 +588,23 @@ struct ComponentHost {
     beside: Vec<Started>,
     /// Each function the program imports from them, by [`Wire`].
     forwards: Vec<Forward>,
+    /// A component's store: the handles of its resources the program
+    /// holds ([`resource_bridge`]).
+    resource_registry: Option<ResourceRegistry>,
+    /// The program's store: the handles it let go of, by the component
+    /// that owns each and the id its registry knows it by, which reach that
+    /// component's store before the program's next call into it.
+    undelivered_drops: Vec<(usize, u64)>,
+}
+
+impl resource_bridge::Bridged for ComponentHost {
+    fn table(&mut self) -> &mut ResourceTable {
+        &mut self.table
+    }
+
+    fn resource_registry(&mut self) -> Option<&mut ResourceRegistry> {
+        self.resource_registry.as_mut()
+    }
 }
 
 /// A component beside the program, started for one test. A call takes its
@@ -678,7 +714,7 @@ const ZONE: &str = "wasi:clocks/timezone@0.3.0";
 fn link_component(
     engine: &Engine,
     component: &Component,
-    wires: &[Wire],
+    wires: &Wires,
 ) -> Result<wasmtime::component::Linker<ComponentHost>> {
     let mut linker = wasmtime::component::Linker::new(engine);
     wasmtime_wasi::p3::clocks::add_to_linker(&mut linker).ctx("wiring WASI's clocks")?;
@@ -709,7 +745,32 @@ fn link_component(
             )
         })
         .ctx("wiring the raise hook")?;
-    for (wire, w) in wires.iter().enumerate() {
+    // Every resource the program imports from a component is the bridge's
+    // one host type: the program holds proxies, the component the handles.
+    for (beside, interface, resource) in &wires.resources {
+        let beside = *beside;
+        linker
+            .instance(interface)
+            .and_then(|mut instance| {
+                instance.resource(
+                    resource,
+                    resource_bridge::proxy_resource_type(),
+                    move |mut store, rep| {
+                        let proxy = store
+                            .data_mut()
+                            .table
+                            .delete(Resource::<ProxyResource>::new_own(rep))?;
+                        store
+                            .data_mut()
+                            .undelivered_drops
+                            .push((beside, proxy.proxy_id));
+                        Ok(())
+                    },
+                )
+            })
+            .ctx(format!("wiring the resource `{resource}` of `{interface}`"))?;
+    }
+    for (wire, w) in wires.functions.iter().enumerate() {
         // An `async func` is the host's to run concurrently, as the program
         // calls it: the call is under way while the program scans.
         linker
@@ -717,12 +778,12 @@ fn link_component(
             .and_then(|mut instance| match w.is_async {
                 true => instance.func_new_concurrent(
                     &w.function,
-                    move |accessor, _, params, results| {
-                        forward_async(accessor, wire, params, results)
+                    move |accessor, ty, params, results| {
+                        forward_async(accessor, wire, ty, params, results)
                     },
                 ),
-                false => instance.func_new_async(&w.function, move |store, _, params, results| {
-                    forward(store, wire, params, results)
+                false => instance.func_new_async(&w.function, move |store, ty, params, results| {
+                    forward(store, wire, ty, params, results)
                 }),
             })
             .ctx(format!("wiring `{}` of `{}`", w.function, w.interface))?;
@@ -733,10 +794,10 @@ fn link_component(
     Ok(linker)
 }
 
-/// The functions `program` imports from the components `beside` it: each
-/// function of each interface it imports that one of them exports. The
-/// build let no two of them export one interface.
-fn wires(engine: &Engine, program: &Component, beside: &[(String, Component)]) -> Vec<Wire> {
+/// What `program` imports from the components `beside` it: each function
+/// and each resource of each interface it imports that one of them
+/// exports. The build let no two of them export one interface.
+fn wires(engine: &Engine, program: &Component, beside: &[(String, Component)]) -> Wires {
     let mut exporter = std::collections::HashMap::new();
     for (index, (_, component)) in beside.iter().enumerate() {
         for (name, item) in component.component_type().exports(engine) {
@@ -745,21 +806,27 @@ fn wires(engine: &Engine, program: &Component, beside: &[(String, Component)]) -
             }
         }
     }
-    let mut wires = Vec::new();
+    let mut wires = Wires::default();
     for (interface, item) in program.component_type().imports(engine) {
         let (Some(&beside), ComponentItem::ComponentInstance(instance)) =
             (exporter.get(interface), &item.ty)
         else {
             continue;
         };
-        for (function, item) in instance.exports(engine) {
-            if let ComponentItem::ComponentFunc(ty) = item.ty {
-                wires.push(Wire {
+        for (name, item) in instance.exports(engine) {
+            match item.ty {
+                ComponentItem::ComponentFunc(ty) => wires.functions.push(Wire {
                     beside,
                     interface: interface.to_string(),
-                    function: function.to_string(),
+                    function: name.to_string(),
                     is_async: ty.async_(),
-                });
+                }),
+                ComponentItem::Resource(_) => {
+                    wires
+                        .resources
+                        .push((beside, interface.to_string(), name.to_string()))
+                }
+                _ => {}
             }
         }
     }
@@ -773,16 +840,20 @@ fn wires(engine: &Engine, program: &Component, beside: &[(String, Component)]) -
 fn forward<'a>(
     mut store: StoreContextMut<'a, ComponentHost>,
     wire: usize,
+    ty: ComponentFunc,
     params: &'a [Val],
     results: &'a mut [Val],
 ) -> Box<dyn Future<Output = wasmtime::Result<()>> + Send + 'a> {
     Box::new(async move {
-        let host = store.data_mut();
-        let budget = host.budget;
-        let Forward { beside, func } = host.forwards[wire];
-        let Started { library, store } = &host.beside[beside];
-        let mut store = store.lock().await;
-        call(func, &mut store, library, budget, params, results).await
+        let Forward { beside, func } = store.data().forwards[wire];
+        let params = taken_out(&mut store, &ty, params)?;
+        let drops = undelivered(store.data_mut(), beside);
+        let (library, component, budget) = started(store.data(), beside);
+        let got = {
+            let mut component = component.lock().await;
+            call(func, &mut component, &library, budget, drops, params).await?
+        };
+        put_in(&mut store, got, results)
     })
 }
 
@@ -790,42 +861,131 @@ fn forward<'a>(
 fn forward_async<'a>(
     accessor: &'a Accessor<ComponentHost>,
     wire: usize,
+    ty: ComponentFunc,
     params: &'a [Val],
     results: &'a mut [Val],
 ) -> Pin<Box<dyn Future<Output = wasmtime::Result<()>> + Send + 'a>> {
     Box::pin(async move {
-        let (func, library, store, budget) = accessor.with(|mut access| {
-            let host = access.data_mut();
-            let Forward { beside, func } = host.forwards[wire];
-            let Started { library, store } = &host.beside[beside];
-            (func, library.clone(), store.clone(), host.budget)
-        });
-        let mut store = store.lock().await;
-        call(func, &mut store, &library, budget, params, results).await
+        let (func, params, drops, (library, component, budget)) =
+            accessor.with(|mut access| -> wasmtime::Result<_> {
+                let Forward { beside, func } = access.data_mut().forwards[wire];
+                let params = taken_out(&mut access, &ty, params)?;
+                let drops = undelivered(access.data_mut(), beside);
+                Ok((func, params, drops, started(access.data_mut(), beside)))
+            })?;
+        let got = {
+            let mut component = component.lock().await;
+            call(func, &mut component, &library, budget, drops, params).await?
+        };
+        accessor.with(|mut access| put_in(&mut access, got, results))
     })
 }
 
+/// The program's `params`, typed by its import `ty`, taken out of its
+/// store: each handle in them an id ([`resource_bridge::extract`]).
+fn taken_out(
+    mut store: impl AsContextMut<Data = ComponentHost>,
+    ty: &ComponentFunc,
+    params: &[Val],
+) -> wasmtime::Result<Vec<Relocated>> {
+    ty.params()
+        .zip(params)
+        .map(|((_, ty), value)| resource_bridge::extract(&mut store, value, &ty))
+        .collect()
+}
+
+/// What the component gave back, `got`, put into the program's store as
+/// the import's `results` ([`resource_bridge::inject`]).
+fn put_in(
+    mut store: impl AsContextMut<Data = ComponentHost>,
+    got: Vec<Relocated>,
+    results: &mut [Val],
+) -> wasmtime::Result<()> {
+    for (slot, value) in results.iter_mut().zip(got) {
+        *slot = resource_bridge::inject(&mut store, value)?;
+    }
+    Ok(())
+}
+
+/// The ids of the handles the program let go of that the component at
+/// `beside` owns, which have not reached its store yet.
+fn undelivered(host: &mut ComponentHost, beside: usize) -> Vec<u64> {
+    let (theirs, others): (Vec<_>, Vec<_>) = std::mem::take(&mut host.undelivered_drops)
+        .into_iter()
+        .partition(|(owner, _)| *owner == beside);
+    host.undelivered_drops = others;
+    theirs.into_iter().map(|(_, proxy_id)| proxy_id).collect()
+}
+
+/// The component at `beside`: its library, its store, and the program's
+/// budget.
+fn started(
+    host: &ComponentHost,
+    beside: usize,
+) -> (
+    String,
+    Arc<tokio::sync::Mutex<Store<ComponentHost>>>,
+    Duration,
+) {
+    let Started { library, store } = &host.beside[beside];
+    (library.clone(), store.clone(), host.budget)
+}
+
 /// `func` called in the store of the component `library` carries, with the
-/// program's budget. Its parameters and results are plain values, which
-/// cross as they are. A trap of the component comes back as
+/// program's budget: the handles the program let go of, `drops`, dropped
+/// there first; `params` put into the store, and its results taken out of
+/// it ([`resource_bridge`]). A trap of the component comes back as
 /// [`InComponent`], which traps the program's call where it made it.
 async fn call(
     func: Func,
     store: &mut Store<ComponentHost>,
     library: &str,
     budget: Duration,
-    params: &[Val],
-    results: &mut [Val],
-) -> wasmtime::Result<()> {
+    drops: Vec<u64>,
+    params: Vec<Relocated>,
+) -> wasmtime::Result<Vec<Relocated>> {
     store.set_epoch_deadline(ticks(budget));
-    func.call_async(&mut *store, params, results)
-        .await
-        .map_err(|e| {
-            wasmtime::Error::new(InComponent {
-                library: library.to_string(),
-                words: stopped(&e, budget),
-            })
+    let in_component = |e: wasmtime::Error| {
+        wasmtime::Error::new(InComponent {
+            library: library.to_string(),
+            words: stopped(&e, budget),
         })
+    };
+    if let Some(registry) = store.data_mut().resource_registry.as_mut() {
+        for proxy_id in drops {
+            registry.stage_drop(proxy_id);
+        }
+    }
+    flush_pending_resource_drops(store)
+        .await
+        .map_err(in_component)?;
+    let params = params
+        .into_iter()
+        .map(|param| resource_bridge::inject(&mut *store, param))
+        .collect::<wasmtime::Result<Vec<_>>>()?;
+    let mut results = vec![Val::Bool(false); func.ty(&*store).results().len()];
+    func.call_async(&mut *store, &params, &mut results)
+        .await
+        .map_err(in_component)?;
+    let ty = func.ty(&*store);
+    results
+        .iter()
+        .zip(ty.results())
+        .map(|(value, ty)| resource_bridge::extract(&mut *store, value, &ty))
+        .collect()
+}
+
+/// The handles the program let go of that wait in `store`'s registry,
+/// dropped in that store, where the component's destructor runs.
+async fn flush_pending_resource_drops(store: &mut Store<ComponentHost>) -> wasmtime::Result<()> {
+    let pending = match store.data_mut().resource_registry.as_mut() {
+        Some(registry) => registry.take_pending_drops(),
+        None => Vec::new(),
+    };
+    for real in pending {
+        real.resource_drop_async(&mut *store).await?;
+    }
+    Ok(())
 }
 
 /// One test on a fresh instance of the component: `init`, then `run-test`
@@ -838,7 +998,7 @@ async fn call(
 async fn run_test(
     pre: &InstancePre<ComponentHost>,
     module: &Range<usize>,
-    (beside, wires): (&[BesidePre], &[Wire]),
+    (beside, wires): (&[BesidePre], &Wires),
     place: u32,
     budget: Duration,
     capture: bool,
@@ -861,10 +1021,18 @@ async fn run_test(
         budget,
         beside: Vec::new(),
         forwards: Vec::new(),
+        resource_registry: None,
+        undelivered_drops: Vec::new(),
     };
     let mut started = Vec::with_capacity(beside.len());
     for BesidePre { library, pre } in beside {
-        let mut store = Store::new(pre.engine(), host(false));
+        let mut store = Store::new(
+            pre.engine(),
+            ComponentHost {
+                resource_registry: Some(ResourceRegistry::default()),
+                ..host(false)
+            },
+        );
         store.set_epoch_deadline(ticks(budget));
         match pre.instantiate_async(&mut store).await {
             Ok(instance) => started.push((library.clone(), store, instance)),
@@ -876,8 +1044,8 @@ async fn run_test(
             }
         }
     }
-    let mut forwards = Vec::with_capacity(wires.len());
-    for wire in wires {
+    let mut forwards = Vec::with_capacity(wires.functions.len());
+    for wire in &wires.functions {
         let (library, store, instance) = &mut started[wire.beside];
         let func = instance
             .get_export_index(&mut *store, None, &wire.interface)

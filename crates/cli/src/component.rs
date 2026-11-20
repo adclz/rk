@@ -764,7 +764,7 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
     for module in &carried {
         as_its_wit_declares(&resolve, &sizes, module, &imports[*module], interfaces)?;
         if let Some(provider) = provider_of(module) {
-            plain_values_only(&resolve, module, &imports[*module], interfaces, provider)?;
+            crosses_to_the_component(&resolve, module, &imports[*module], interfaces, provider)?;
         }
     }
 
@@ -901,10 +901,12 @@ fn outside_wasi_0_3(resolve: &wit_parser::Resolve, world: wit_parser::WorldId) -
 }
 
 /// Refuses an import from `module`, an interface a library's component
-/// exports, that passes what only one store holds: a resource's handle, a
-/// stream or a future. The component runs beside the module, in a store of
-/// its own, and only plain values cross between the two, for now.
-fn plain_values_only(
+/// exports, that passes what cannot cross from the module's store to the
+/// component's: a stream or a future, which the host does not carry yet,
+/// or a handle of a resource the component does not own. A handle of a
+/// resource of the component's own interfaces crosses as a proxy
+/// (`resource_bridge`).
+fn crosses_to_the_component(
     resolve: &wit_parser::Resolve,
     module: &str,
     names: &BTreeSet<String>,
@@ -923,17 +925,23 @@ fn plain_values_only(
         let imported = name
             .strip_prefix(mir::async_call::ASYNC_LOWER)
             .unwrap_or(name);
-        // A resource's function or drop, a stream's or a future's built-in.
-        let passes = match imported.starts_with('[') {
-            true => Some("a resource, a stream or a future"),
-            false => interface.functions.get(imported).and_then(|function| {
-                function
-                    .params
-                    .iter()
-                    .map(|param| &param.ty)
-                    .chain(function.result.iter())
-                    .find_map(|ty| held_by_one_store(resolve, ty))
-            }),
+        // A drop lets go of a handle of the interface's own resource.
+        if imported.starts_with("[resource-drop]") {
+            continue;
+        }
+        let passes = match interface.functions.get(imported) {
+            // A function, a resource's constructor, method or static one.
+            Some(function) => function
+                .params
+                .iter()
+                .map(|param| &param.ty)
+                .chain(function.result.iter())
+                .find_map(|ty| stays_in_its_store(resolve, ty, &provider.exports)),
+            // A stream's or a future's built-in.
+            None if imported.starts_with('[') => {
+                Some(format!("a stream or a future: {STREAMS_STAY}"))
+            }
+            None => None,
         };
         if let Some(passes) = passes {
             let by = interfaces
@@ -942,8 +950,7 @@ fn plain_values_only(
                 .map_or("a POU", String::as_str);
             return Err(format!(
                 "`{by}` imports `{imported}` of `{module}`, which the component of '{}' exports, \
-                 and it passes {passes}: a component beside the program passes plain values only, \
-                 for now",
+                 and it passes {passes}",
                 provider.carried.library
             ));
         }
@@ -951,9 +958,19 @@ fn plain_values_only(
     Ok(())
 }
 
-/// What `ty` holds that only one store can hold: a resource's handle, a
-/// stream or a future, anywhere inside it.
-fn held_by_one_store(resolve: &wit_parser::Resolve, ty: &wit_parser::Type) -> Option<&'static str> {
+/// Why a stream or a future stays in its store.
+const STREAMS_STAY: &str =
+    "a stream or a future does not cross to a component beside the program, for now";
+
+/// What `ty` holds that cannot cross to the component that exports the
+/// interfaces `exports`, anywhere inside it, and why: a stream, a future,
+/// or a handle of a resource of an interface the component does not
+/// export.
+fn stays_in_its_store(
+    resolve: &wit_parser::Resolve,
+    ty: &wit_parser::Type,
+    exports: &BTreeSet<String>,
+) -> Option<String> {
     use wit_parser::TypeDefKind;
     let wit_parser::Type::Id(id) = ty else {
         return None;
@@ -961,12 +978,15 @@ fn held_by_one_store(resolve: &wit_parser::Resolve, ty: &wit_parser::Type) -> Op
     let inside = |types: Vec<&wit_parser::Type>| {
         types
             .into_iter()
-            .find_map(|ty| held_by_one_store(resolve, ty))
+            .find_map(|ty| stays_in_its_store(resolve, ty, exports))
     };
     match &resolve.types[*id].kind {
-        TypeDefKind::Resource | TypeDefKind::Handle(_) => Some("a resource's handle"),
-        TypeDefKind::Stream(_) => Some("a stream"),
-        TypeDefKind::Future(_) => Some("a future"),
+        TypeDefKind::Handle(
+            wit_parser::Handle::Own(resource) | wit_parser::Handle::Borrow(resource),
+        ) => foreign_resource(resolve, *resource, exports),
+        TypeDefKind::Resource => foreign_resource(resolve, *id, exports),
+        TypeDefKind::Stream(_) => Some(format!("a stream: {STREAMS_STAY}")),
+        TypeDefKind::Future(_) => Some(format!("a future: {STREAMS_STAY}")),
         TypeDefKind::Record(record) => {
             inside(record.fields.iter().map(|field| &field.ty).collect())
         }
@@ -982,10 +1002,46 @@ fn held_by_one_store(resolve: &wit_parser::Resolve, ty: &wit_parser::Type) -> Op
         TypeDefKind::Option(ty)
         | TypeDefKind::List(ty)
         | TypeDefKind::FixedLengthList(ty, _)
-        | TypeDefKind::Type(ty) => held_by_one_store(resolve, ty),
+        | TypeDefKind::Type(ty) => stays_in_its_store(resolve, ty, exports),
         TypeDefKind::Map(key, value) => inside(vec![key, value]),
         TypeDefKind::Flags(_) | TypeDefKind::Enum(_) | TypeDefKind::Unknown => None,
     }
+}
+
+/// Why a handle of `resource` cannot cross to the component that exports
+/// `exports`, when the resource is no interface's of them: the host would
+/// not know whose store holds it.
+fn foreign_resource(
+    resolve: &wit_parser::Resolve,
+    mut resource: wit_parser::TypeId,
+    exports: &BTreeSet<String>,
+) -> Option<String> {
+    // An alias, `use`d from another interface, is that interface's resource.
+    while let wit_parser::TypeDefKind::Type(wit_parser::Type::Id(aliased)) =
+        resolve.types[resource].kind
+    {
+        resource = aliased;
+    }
+    let owner = match resolve.types[resource].owner {
+        wit_parser::TypeOwner::Interface(interface) => resolve.id_of(interface),
+        _ => None,
+    };
+    if owner.as_ref().is_some_and(|owner| exports.contains(owner)) {
+        return None;
+    }
+    let name = resolve.types[resource]
+        .name
+        .as_deref()
+        .unwrap_or("a resource");
+    Some(match owner {
+        Some(owner) => format!(
+            "a handle of `{name}`, a resource of `{owner}`: a handle crosses to the component \
+             whose resource it is"
+        ),
+        None => {
+            format!("a handle of `{name}`: a handle crosses to the component whose resource it is")
+        }
+    })
 }
 
 /// What `core` imports, by module: each function's name.
@@ -1432,6 +1488,74 @@ fn parse(dir: &str, files: &[(&str, &str)]) -> Result<wit_parser::UnresolvedPack
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What crosses to a component beside the program: a handle of a
+    /// resource of an interface it exports, at any depth; not a handle of
+    /// another interface's resource, `use`d or nested, nor a stream or a
+    /// future.
+    #[test]
+    fn a_handle_crosses_to_the_component_whose_resource_it_is() {
+        let mut resolve = wit_parser::Resolve::default();
+        resolve
+            .push_str(
+                "net.wit",
+                r#"
+                package acme:net@1.0.0;
+
+                interface types {
+                    resource socket;
+                }
+
+                interface net {
+                    use types.{socket};
+                    resource conn;
+                    open: func() -> conn;
+                    pair: func() -> option<tuple<u32, conn>>;
+                    peek: func(s: borrow<socket>) -> u32;
+                    both: func() -> option<tuple<u32, socket>>;
+                    tail: func() -> stream<u8>;
+                    later: func() -> future<u32>;
+                }
+                "#,
+            )
+            .expect("the WIT resolves");
+        let net = resolve
+            .interfaces
+            .iter()
+            .find(|(id, _)| resolve.id_of(*id).as_deref() == Some("acme:net/net@1.0.0"))
+            .map(|(id, _)| id)
+            .expect("net");
+        let passes = |exports: &[&str], function: &str| {
+            let exports: BTreeSet<String> = exports.iter().map(|e| e.to_string()).collect();
+            let function = &resolve.interfaces[net].functions[function];
+            function
+                .params
+                .iter()
+                .map(|param| &param.ty)
+                .chain(function.result.iter())
+                .find_map(|ty| stays_in_its_store(&resolve, ty, &exports))
+        };
+        let net_only = ["acme:net/net@1.0.0"];
+        assert_eq!(passes(&net_only, "open"), None);
+        assert_eq!(passes(&net_only, "pair"), None);
+        let socket = "a handle of `socket`, a resource of `acme:net/types@1.0.0`: a handle crosses \
+                      to the component whose resource it is";
+        assert_eq!(passes(&net_only, "peek").as_deref(), Some(socket));
+        assert_eq!(passes(&net_only, "both").as_deref(), Some(socket));
+        assert_eq!(
+            passes(&net_only, "tail").as_deref(),
+            Some(&*format!("a stream: {STREAMS_STAY}"))
+        );
+        assert_eq!(
+            passes(&net_only, "later").as_deref(),
+            Some(&*format!("a future: {STREAMS_STAY}"))
+        );
+        // A component that exports the interface of `socket` owns it.
+        assert_eq!(
+            passes(&["acme:net/net@1.0.0", "acme:net/types@1.0.0"], "peek"),
+            None
+        );
+    }
 
     /// A project's name becomes the world's package name, in the words WIT
     /// spells, or `plc` when it spells none.
