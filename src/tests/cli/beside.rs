@@ -126,6 +126,16 @@ fn compiled(ws: &Path) -> rk::error::CliResult<()> {
     )
 }
 
+/// Why `rk compile` of `ws` refuses the build, as `main` prints it: the
+/// message itself, whose paths are as the system writes them.
+fn refusal(ws: &Path) -> String {
+    match compiled(ws) {
+        Err(rk::error::CliError::Message(message)) => message,
+        Err(rk::error::CliError::Failed) => panic!("refused with diagnostics, not a message"),
+        Ok(()) => panic!("it builds"),
+    }
+}
+
 /// What `ws/out/components/` holds: each file, by its path in the folder.
 fn beside(ws: &Path) -> Vec<String> {
     fn files(folder: &Path, under: &str, found: &mut Vec<String>) {
@@ -361,14 +371,78 @@ fn one_interface_has_one_component() {
         "",
         Some(&component_of_world(AXIS_WITH_SPEED, "drive")),
     );
-    let refused = compiled(&ws).expect_err("two components export the interface");
+    let refused = refusal(&ws);
     assert!(
-        format!("{refused:?}").contains(
+        refused.contains(
             "the components of 'a' and of 'b' both export `acme:drive/axis@1.0.0`: the runtime \
              links an import to one component"
         ),
-        "{refused:?}"
+        "{refused}"
     );
+}
+
+/// A component runs on the WASI 0.3 the program gets: one that imports
+/// WASI 0.2, or a WASI package with no version, is refused, the library and
+/// the interface named. Any release of 0.3 passes, and a package of another
+/// namespace is the runtime's own.
+#[test]
+fn a_component_runs_on_wasi_0_3() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let ws = program(
+        &root,
+        "drives = { path = \"../drives\" }\n",
+        "Drives.Axis.POSITION()",
+    );
+    // A component that imports the clock of the package `clocks`.
+    let built_for = |clocks: &str| {
+        let interface = match clocks.split_once('@') {
+            Some((package, version)) => format!("{package}/monotonic-clock@{version}"),
+            None => format!("{clocks}/monotonic-clock"),
+        };
+        let wit = format!(
+            "package acme:drive@1.0.0;
+
+            package {clocks} {{
+                interface monotonic-clock {{
+                    now: func() -> u64;
+                }}
+            }}
+
+            interface axis {{
+                position: func() -> s32;
+            }}
+
+            world drive {{
+                import {interface};
+                export axis;
+            }}"
+        );
+        library(
+            &root,
+            "drives",
+            POSITION,
+            Some(&component_of_world(&wit, "drive")),
+        );
+    };
+    for (clocks, interface) in [
+        ("wasi:clocks@0.2.0", "wasi:clocks/monotonic-clock@0.2.0"),
+        ("wasi:clocks", "wasi:clocks/monotonic-clock"),
+    ] {
+        built_for(clocks);
+        assert_eq!(
+            refusal(&ws),
+            format!(
+                "the component of 'drives' imports `{interface}`, which is no part of WASI 0.3: \
+                 build it for WASI 0.3, with Rust's `--target wasm32-wasip3` for example"
+            )
+        );
+    }
+    for clocks in ["wasi:clocks@0.3.1", "acme:clocks@0.2.0"] {
+        built_for(clocks);
+        compiled(&ws).unwrap_or_else(|e| panic!("{clocks}: {e:?}"));
+    }
 }
 
 /// A component runs in a store of its own: what crosses to it is plain
@@ -394,14 +468,14 @@ fn a_component_s_interface_passes_plain_values_only() {
             "{export}\nFUNCTION Run : UDINT\n    Run := Files.OPEN();\nEND_FUNCTION\n",
         )],
     );
-    let refused = compiled(&ws).expect_err("a resource crosses");
+    let refused = refusal(&ws);
     assert!(
-        format!("{refused:?}").contains(
+        refused.contains(
             "`files.OPEN` imports `open` of `acme:files/files@1.0.0`, which the component of \
              'files' exports, and it passes a resource's handle: a component beside the program \
              passes plain values only, for now"
         ),
-        "{refused:?}"
+        "{refused}"
     );
 }
 
@@ -745,14 +819,14 @@ fn an_interface_is_a_component_s_or_the_host_s() {
         "a = { path = \"../a\" }\nb = { path = \"../b\" }\n",
         "A.Axis.POSITION()",
     );
-    let refused = compiled(&ws).expect_err("two sources of one interface");
+    let refused = refusal(&ws);
     assert!(
-        format!("{refused:?}").contains(&format!(
+        refused.contains(&format!(
             "the component of 'a' exports `acme:drive/axis@1.0.0`, which `{}` declares the \
              host gives: an import is linked to one or the other",
             root.join("b").join("wit").display()
         )),
-        "{refused:?}"
+        "{refused}"
     );
 }
 
@@ -769,9 +843,9 @@ fn a_wit_package_s_binary_is_no_component() {
         "drives = { path = \"../drives\" }\n",
         "Drives.Axis.POSITION()",
     );
-    let refused = compiled(&ws).expect_err("a package in component/");
+    let refused = refusal(&ws);
     assert!(
-        format!("{refused:?}").contains(&format!(
+        refused.contains(&format!(
             "{} is a WIT package, not a component: a library carries a host's package in its \
              `wit/`",
             root.join("drives")
@@ -779,6 +853,6 @@ fn a_wit_package_s_binary_is_no_component() {
                 .join("c.wasm")
                 .display()
         )),
-        "{refused:?}"
+        "{refused}"
     );
 }
