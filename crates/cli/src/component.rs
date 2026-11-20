@@ -828,6 +828,13 @@ fn providers(carried: &[Carried]) -> Result<Vec<Provider>, String> {
                 component.path.display()
             ));
         };
+        if let Some(interface) = outside_wasi_0_3(&resolve, world) {
+            return Err(format!(
+                "the component of '{}' imports `{interface}`, which is no part of WASI 0.3: \
+                 build it for WASI 0.3, with Rust's `--target wasm32-wasip3` for example",
+                component.library
+            ));
+        }
         let exports: BTreeSet<String> = resolve.worlds[world]
             .exports
             .values()
@@ -869,6 +876,28 @@ fn providers(carried: &[Carried]) -> Result<Vec<Provider>, String> {
         });
     }
     Ok(found)
+}
+
+/// The first interface a component's `world` imports from a WASI package
+/// outside WASI 0.3 (`wasi:io/poll@0.2.12`, of a build for WASI 0.2), or
+/// with no version. A component runs on the WASI 0.3 the program gets, and
+/// any release of 0.3 passes.
+fn outside_wasi_0_3(resolve: &wit_parser::Resolve, world: wit_parser::WorldId) -> Option<String> {
+    resolve.worlds[world].imports.values().find_map(|item| {
+        let wit_parser::WorldItem::Interface { id, .. } = item else {
+            return None;
+        };
+        let package = &resolve.packages[resolve.interfaces[*id].package?].name;
+        let in_0_3 = package
+            .version
+            .as_ref()
+            .is_some_and(|version| version.major == 0 && version.minor == 3);
+        if package.namespace == "wasi" && !in_0_3 {
+            resolve.id_of(*id)
+        } else {
+            None
+        }
+    })
 }
 
 /// Refuses an import from `module`, an interface a library's component
