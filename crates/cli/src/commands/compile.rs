@@ -88,11 +88,13 @@ fn compile_once(
     write_beside(output, &component.beside)
 }
 
-/// The libraries' components the program imports from, in `components/`
-/// beside it, each named after its library: the runtime runs them beside
-/// the program and links each import to the one that exports it. The
-/// folder holds those of the last build only, so that none it no longer
-/// imports from is run.
+/// The libraries' components the program imports from, beside it in
+/// `components/`: each library's `component/` folder copied whole into
+/// `components/<library>/`, so that the component's LICENSE, and whatever
+/// else its author put there, travel with it. The runtime runs each beside
+/// the program and links each import to the one that exports it. The folder
+/// holds those of the last build only, so that none it no longer imports
+/// from is run.
 pub(crate) fn write_beside(
     output: &std::path::Path,
     beside: &[crate::component::Carried],
@@ -101,39 +103,72 @@ pub(crate) fn write_beside(
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))
         .join("components");
-    let kept: Vec<std::path::PathBuf> = beside
-        .iter()
-        .map(|carried| folder.join(format!("{}.wasm", carried.library)))
-        .collect();
     if folder.is_dir() {
-        for entry in std::fs::read_dir(&folder)
-            .map_err(|e| CliError::msg(format!("reading {}: {e}", folder.display())))?
-        {
-            let path = entry
-                .map_err(|e| CliError::msg(format!("reading {}: {e}", folder.display())))?
-                .path();
-            if path.extension().is_some_and(|ext| ext == "wasm") && !kept.contains(&path) {
-                std::fs::remove_file(&path)
-                    .map_err(|e| CliError::msg(format!("removing {}: {e}", path.display())))?;
+        // What a build wrote there: a library's folder, which holds its
+        // `.wasm` at its top, and a `.wasm` itself, as builds once wrote
+        // them. Anything else is left as it is.
+        let a_wasm = |path: &std::path::Path| {
+            path.is_file() && path.extension().is_some_and(|ext| ext == "wasm")
+        };
+        for entry in std::fs::read_dir(&folder).map_err(|e| failed("reading", &folder, e))? {
+            let path = entry.map_err(|e| failed("reading", &folder, e))?.path();
+            if path.is_dir() {
+                let holds_a_wasm = std::fs::read_dir(&path)
+                    .map_err(|e| failed("reading", &path, e))?
+                    .filter_map(|entry| Some(entry.ok()?.path()))
+                    .any(|inside| a_wasm(&inside));
+                if holds_a_wasm {
+                    std::fs::remove_dir_all(&path).map_err(|e| failed("removing", &path, e))?;
+                }
+            } else if a_wasm(&path) {
+                std::fs::remove_file(&path).map_err(|e| failed("removing", &path, e))?;
             }
         }
         if beside.is_empty() && std::fs::read_dir(&folder).is_ok_and(|mut d| d.next().is_none()) {
             let _ = std::fs::remove_dir(&folder);
         }
     }
-    for (carried, to) in beside.iter().zip(&kept) {
-        std::fs::create_dir_all(&folder)
-            .map_err(|e| CliError::msg(format!("creating directory {}: {e}", folder.display())))?;
-        std::fs::copy(&carried.path, to).map_err(|e| {
-            CliError::msg(format!(
-                "copying {} to {}: {e}",
-                carried.path.display(),
-                to.display()
-            ))
-        })?;
+    for carried in beside {
+        let from = carried
+            .path
+            .parent()
+            .expect("a component is in its library's component/");
+        let to = folder.join(&carried.library);
+        copy_folder(from, &to)?;
         ui::detail(format!("    beside it: {}", to.display()));
     }
     Ok(())
+}
+
+/// Copy the folder `from` into `to`, which it creates, with every file and
+/// folder it holds.
+fn copy_folder(from: &std::path::Path, to: &std::path::Path) -> CliResult<()> {
+    std::fs::create_dir_all(to).map_err(|e| failed("creating directory", to, e))?;
+    for entry in std::fs::read_dir(from).map_err(|e| failed("reading", from, e))? {
+        let entry = entry.map_err(|e| failed("reading", from, e))?;
+        let (path, target) = (entry.path(), to.join(entry.file_name()));
+        let is_folder = entry
+            .file_type()
+            .map_err(|e| failed("reading", &path, e))?
+            .is_dir();
+        if is_folder {
+            copy_folder(&path, &target)?;
+        } else {
+            std::fs::copy(&path, &target).map_err(|e| {
+                CliError::msg(format!(
+                    "copying {} to {}: {e}",
+                    path.display(),
+                    target.display()
+                ))
+            })?;
+        }
+    }
+    Ok(())
+}
+
+/// The error of `doing` something to `path`.
+fn failed(doing: &str, path: &std::path::Path, e: std::io::Error) -> CliError {
+    CliError::msg(format!("{doing} {}: {e}", path.display()))
 }
 
 /// Write `bytes` to `output` (creating parent dirs), reporting success on stdout.

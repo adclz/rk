@@ -50,11 +50,18 @@ pub struct Carried {
 /// folder, or `None` with no such folder. A folder that holds no `.wasm`, or
 /// more than one, is refused: a library carries one component.
 pub fn carried_component(dir: &std::path::Path) -> Result<Option<std::path::PathBuf>, String> {
-    let folder = dir.join("component");
+    the_one_wasm(&dir.join("component"))
+}
+
+/// The one `.wasm` at the top of `folder`, which holds a library's
+/// component: its `component/`, or the copy of it a build writes beside
+/// the program. `None` with no such folder; a folder that holds no `.wasm`,
+/// or more than one, is refused.
+pub fn the_one_wasm(folder: &std::path::Path) -> Result<Option<std::path::PathBuf>, String> {
     if !folder.is_dir() {
         return Ok(None);
     }
-    let mut found: Vec<std::path::PathBuf> = std::fs::read_dir(&folder)
+    let mut found: Vec<std::path::PathBuf> = std::fs::read_dir(folder)
         .map_err(|e| format!("reading {}: {e}", folder.display()))?
         .filter_map(|entry| Some(entry.ok()?.path()))
         .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "wasm"))

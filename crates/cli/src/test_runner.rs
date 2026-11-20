@@ -157,8 +157,8 @@ pub fn run_tests(
 }
 
 /// The libraries' components beside the component at `wasm_path`, in
-/// `components/`, each named after its library: those the build wrote
-/// there, which a runtime runs beside it.
+/// `components/`, each in the folder named after its library: those the
+/// build wrote there, which a runtime runs beside it.
 pub fn beside_of(wasm_path: &Path) -> Result<Vec<crate::test_host::Beside>, String> {
     let folder = wasm_path
         .parent()
@@ -171,15 +171,15 @@ pub fn beside_of(wasm_path: &Path) -> Result<Vec<crate::test_host::Beside>, Stri
     let mut beside = Vec::new();
     for entry in std::fs::read_dir(&folder).map_err(unread)? {
         let path = entry.map_err(unread)?.path();
-        if path.extension().is_some_and(|ext| ext == "wasm") {
-            let library = path
-                .file_stem()
-                .map(|stem| stem.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let bytes =
-                std::fs::read(&path).map_err(|e| format!("reading {}: {e}", path.display()))?;
-            beside.push(crate::test_host::Beside { library, bytes });
-        }
+        let Some(wasm) = crate::component::the_one_wasm(&path)? else {
+            continue;
+        };
+        let library = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let bytes = std::fs::read(&wasm).map_err(|e| format!("reading {}: {e}", wasm.display()))?;
+        beside.push(crate::test_host::Beside { library, bytes });
     }
     beside.sort_by(|a, b| a.library.cmp(&b.library));
     Ok(beside)
