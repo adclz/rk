@@ -67,6 +67,29 @@ pub fn wasi_packages() -> Vec<std::path::PathBuf> {
         .collect()
 }
 
+/// WASI's packages as one WIT folder holds them, a folder each in its
+/// `deps/`, copied from WASI's repository: what a library that calls WASI
+/// ships in its `wit/`, read as one folder. The folder is `wit/` in what
+/// it returns, which keeps it.
+pub fn wasi_wit() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("a WIT folder");
+    for from in wasi_packages() {
+        let name = from
+            .parent()
+            .and_then(|proposal| proposal.file_name())
+            .expect("a proposal's folder");
+        let to = dir.path().join("wit").join("deps").join(name);
+        std::fs::create_dir_all(&to).expect("a folder");
+        for entry in std::fs::read_dir(&from).expect("WASI's package") {
+            let path = entry.expect("a file").path();
+            if path.extension().is_some_and(|ext| ext == "wit") {
+                std::fs::copy(&path, to.join(path.file_name().expect("a name"))).expect("a copy");
+            }
+        }
+    }
+    dir
+}
+
 /// What `f` returns, when it returns within `limit`. A test of something that
 /// took exponential time fails here instead of holding up the suite.
 pub fn within<T: Send + 'static>(
@@ -636,6 +659,17 @@ pub fn walk_hir_diagnostics(db: &dyn WorkspaceDataBase, file: File) -> Vec<IdeDi
     }
 
     vec![diag]
+}
+
+/// The binary of the WIT package `wit` writes, as `wasm-tools component wit
+/// --wasm` encodes one: a package a library's `wit/` may hold in its
+/// `deps/`, as WIT's tools allow.
+pub fn package_binary(wit: &str) -> Vec<u8> {
+    let mut resolve = wit_parser::Resolve::default();
+    let package = resolve
+        .push_str("package.wit", wit)
+        .expect("the WIT resolves");
+    wit_component::encode(&resolve, package, false).expect("the package encodes")
 }
 
 /// The component of the world `world` of `wit`, as wit-component builds one

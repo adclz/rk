@@ -199,56 +199,82 @@ fn an_output_given_holds_the_component() {
 }
 
 /// An interface of a package is typed by the package's WIT, which rk does
-/// not write: the build is refused until the workspace ships it in its
-/// `wit/`, and then the component imports it.
+/// not write: the build is refused until a library ships it in its `wit/`,
+/// and then the component imports it. The program carries no WIT: it calls
+/// the host's interfaces through the library, and its own `wit/` folder is
+/// refused.
 #[test]
-fn the_workspace_s_package_types_its_import() {
+fn a_host_s_package_comes_through_a_library() {
     let ws = workspace();
+    let root = ws.path();
     std::fs::write(
-        ws.path().join("display.st"),
-        r#"
-{extern 'acme:display/text@1.0.0' 'show'}
-FUNCTION Show : BOOL
-VAR_INPUT line : STRING; END_VAR
-END_FUNCTION
-
-{export}
-FUNCTION Ping : BOOL
-    Ping := Show(line := 'ping');
-END_FUNCTION
-"#,
+        root.join("config.toml"),
+        "[project]\nname = \"Plant_A\"\nversion = \"0.1.0\"\n\n[dependencies]\n\
+         display = { path = \"display\" }\n",
     )
     .unwrap();
-    let out = rk(&["compile"], ws.path());
-    assert!(!out.status.success(), "refused without the package's WIT");
-    let refused = String::from_utf8_lossy(&out.stderr);
+    let library = root.join("display");
+    std::fs::create_dir_all(&library).unwrap();
+    std::fs::write(
+        library.join("config.toml"),
+        "[project]\nname = \"display\"\nversion = \"1.0.0\"\ntype = \"library\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        library.join("Text.st"),
+        "{extern 'acme:display/text@1.0.0' 'show'}\nFUNCTION Show : BOOL\n\
+         VAR_INPUT line : STRING; END_VAR\nEND_FUNCTION\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("ping.st"),
+        "{export}\nFUNCTION Ping : BOOL\n    Ping := Display.Show(line := 'ping');\nEND_FUNCTION\n",
+    )
+    .unwrap();
+    let refused = |out: std::process::Output| {
+        assert!(!out.status.success(), "built");
+        String::from_utf8_lossy(&out.stderr).into_owned()
+    };
+    let stderr = refused(rk(&["compile"], root));
     assert!(
-        refused.contains(
-            "the module imports `acme:display/text@1.0.0`, which no `wit/` folder of the \
-             workspace or of a library describes, and no library's component exports"
+        stderr.contains(
+            "the module imports `acme:display/text@1.0.0`, which no library's `wit/` \
+             describes, and no library's component exports"
         ),
-        "{refused}"
+        "{stderr}"
     );
 
-    let shipped = "package acme:display@1.0.0;\n\ninterface text {\n    \
+    let package = "package acme:display@1.0.0;\n\ninterface text {\n    \
                    show: func(line: string) -> bool;\n}\n";
-    std::fs::create_dir_all(ws.path().join("wit")).unwrap();
-    std::fs::write(ws.path().join("wit").join("display.wit"), shipped).unwrap();
-    let out = rk(&["compile"], ws.path());
+    std::fs::create_dir_all(root.join("wit")).unwrap();
+    std::fs::write(root.join("wit").join("display.wit"), package).unwrap();
+    let stderr = refused(rk(&["compile"], root));
+    assert!(
+        stderr.contains("this program carries WIT text in `wit/`"),
+        "{stderr}"
+    );
+    std::fs::remove_dir_all(root.join("wit")).unwrap();
+
+    std::fs::create_dir_all(library.join("wit")).unwrap();
+    std::fs::write(library.join("wit").join("display.wit"), package).unwrap();
+    let out = rk(&["compile"], root);
     assert!(
         out.status.success(),
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let component = std::fs::read(
-        ws.path()
-            .join("rk_build")
-            .join("debug")
-            .join("Plant_A.wasm"),
-    )
-    .unwrap();
+    let component =
+        std::fs::read(root.join("rk_build").join("debug").join("Plant_A.wasm")).unwrap();
     let world = world_of(&component);
     assert!(world.contains("import acme:display/text@1.0.0;"), "{world}");
+    assert!(
+        !root
+            .join("rk_build")
+            .join("debug")
+            .join("components")
+            .exists(),
+        "nothing beside: the host gives the interface"
+    );
 }
 
 /// The `{export}` FUNCTIONs are in an interface named after the project,

@@ -191,3 +191,87 @@ fn rk_bindgen_reads_a_library_s_component() {
     std::fs::remove_file(&wasm).unwrap();
     assert!(run("bindgen", &library).is_err(), "no component");
 }
+
+/// A host's package, with no world: every interface is written.
+const MODBUS: &str = r#"
+    package acme:modbus@1.0.0;
+
+    interface types {
+        type register = u16;
+    }
+
+    interface client {
+        use types.{register};
+        read: func(at: register) -> u16;
+    }
+"#;
+
+/// `rk bindgen` in a library that carries both a component and the WIT of
+/// a host's package writes both: what the component exports, and the
+/// host's interfaces. The host's package may be a binary in `wit/deps/`,
+/// as WIT's tools allow.
+#[test]
+fn rk_bindgen_writes_both_folders_of_a_library() {
+    let dir = tempfile::tempdir().unwrap();
+    let library = dir.path().join("drives");
+    std::fs::create_dir_all(library.join("component")).unwrap();
+    std::fs::create_dir_all(library.join("wit").join("deps")).unwrap();
+    std::fs::write(
+        library.join("config.toml"),
+        "[project]\nname = \"drives\"\nversion = \"1\"\ntype = \"library\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        library.join("component").join("drive.wasm"),
+        component(DRIVE, "drive"),
+    )
+    .unwrap();
+    let mut resolve = Resolve::default();
+    let package = resolve
+        .push_str("modbus.wit", MODBUS)
+        .expect("the WIT resolves");
+    std::fs::write(
+        library.join("wit").join("deps").join("modbus.wasm"),
+        wit_component::encode(&resolve, package, false).expect("a WIT package encodes"),
+    )
+    .unwrap();
+    rk::run_args([
+        "rk".as_ref(),
+        "bindgen".as_ref(),
+        "--workspace".as_ref(),
+        library.as_os_str(),
+    ])
+    .expect("both are written");
+    let mut written: Vec<String> = std::fs::read_dir(library.join("generated"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    written.sort();
+    assert_eq!(
+        written,
+        [
+            "acme-drive-axis.st",
+            "acme-drive-types.st",
+            "acme-modbus-client.st",
+            "acme-modbus-types.st"
+        ]
+    );
+
+    // An interface is the component's or the host's: the component's own
+    // package in `wit/` is refused.
+    std::fs::write(library.join("wit").join("drive.wit"), DRIVE).unwrap();
+    let refused = rk::run_args([
+        "rk".as_ref(),
+        "bindgen".as_ref(),
+        "--workspace".as_ref(),
+        library.as_os_str(),
+    ])
+    .expect_err("one interface twice");
+    assert!(
+        format!("{refused:?}").contains(
+            "is written from the component and from `wit/`: an interface is the component's \
+             or the host's"
+        ),
+        "{refused:?}"
+    );
+}

@@ -282,7 +282,7 @@ fn std_s_interfaces_build_into_a_component(mut with_db: RootDatabase) {
 
 /// `stdlib/generated/` is what rk-bindgen writes for Std's WIT folder, file
 /// for file, and holds nothing else: after a change to the generator or to
-/// that folder, `cargo run -p rk-bindgen` writes it again. A checkout's line
+/// that folder, `rk bindgen`, run in `stdlib/`, writes it again. A checkout's line
 /// endings do not count.
 #[test]
 fn std_s_generated_folder_is_what_rk_bindgen_writes() {
@@ -298,14 +298,17 @@ fn std_s_generated_folder_is_what_rk_bindgen_writes() {
     on_disk.sort();
     let mut written: Vec<String> = files.iter().map(|file| file.name.clone()).collect();
     written.sort();
-    assert_eq!(on_disk, written, "run `cargo run -p rk-bindgen`");
+    assert_eq!(
+        on_disk, written,
+        "run `cargo run -p rk -- bindgen --workspace stdlib`"
+    );
     for file in &files {
         let text = std::fs::read_to_string(folder.join(&file.name))
             .expect("a generated file")
             .replace("\r\n", "\n");
         assert!(
             text == file.text,
-            "`stdlib/generated/{}` is not what rk-bindgen writes: run `cargo run -p rk-bindgen`",
+            "`stdlib/generated/{}` is not what rk bindgen writes: run `cargo run -p rk -- bindgen --workspace stdlib`",
             file.name
         );
     }

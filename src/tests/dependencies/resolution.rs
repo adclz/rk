@@ -90,6 +90,28 @@ fn a_library_with_dependencies_is_refused() {
     );
 }
 
+/// A program carries no WIT: it calls a host's interfaces through a
+/// library. One with a `wit/` folder is refused on its `[project]` line.
+#[test]
+fn a_program_carries_no_wit() {
+    let t = tempfile::tempdir().unwrap();
+    let (program, _) = workspace_of(t.path(), "");
+    let source = fs::read_to_string(program.join(CONFIG_FILE)).unwrap();
+    assert_eq!(db::dependencies::wit_in_program(&program, &source), None);
+    fs::create_dir_all(program.join("wit")).unwrap();
+    let problem = db::dependencies::wit_in_program(&program, &source).expect("refused");
+    assert_eq!(problem.message, "this program carries WIT text in `wit/`");
+    assert_eq!(&source[problem.span.clone()], "[project]");
+    assert_eq!(
+        problem.notes,
+        ["a program calls a host's interfaces through a library, which carries their WIT"]
+    );
+    assert_eq!(
+        problem.help.as_deref(),
+        Some("move the WIT into the `wit/` of a library the program lists, and remove `wit/`")
+    );
+}
+
 /// A folder is a program unless its `[project]` says `type = "library"`;
 /// another `type` is no configuration.
 #[test]

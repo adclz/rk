@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::tests::utils::{component_of_wat, component_of_world};
+use crate::tests::utils::{component_of_wat, component_of_world, package_binary};
 
 /// A component that exports an axis.
 const AXIS: &str = r#"
@@ -603,5 +603,93 @@ fn a_component_that_does_not_start_fails_each_test() {
             "test_position",
             Some("the component of 'drives' did not start: out of bounds memory access")
         )]
+    );
+}
+
+/// A library's own tests, in its own folder, call what its component
+/// exports as a program does: `rk test` runs the component beside them.
+#[test]
+fn a_library_s_own_tests_run_its_component() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let machine = component_of_wat(MACHINE, "drive", MACHINE_WAT);
+    library(&root, "drives", &declarations(&machine), Some(&machine));
+    write(
+        &root,
+        &[(
+            "drives/Tests.st",
+            "{test}\nFUNCTION test_position\n    IF Acme.Drive.Axis.POSITION() <> 42 THEN\n        \
+             __RAISE('the axis is not at 42');\n    END_IF;\nEND_FUNCTION\n",
+        )],
+    );
+    let drives = root.join("drives");
+    tested(&drives, None).expect("the library's test runs its component");
+    assert!(
+        drives
+            .join("rk_build")
+            .join("test")
+            .join("components")
+            .join("drives.wasm")
+            .is_file()
+    );
+}
+
+/// An interface is a component's, beside the program, or the host's, not
+/// both: a component that exports one that another library's `wit/`
+/// declares is refused.
+#[test]
+fn an_interface_is_a_component_s_or_the_host_s() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    library(
+        &root,
+        "a",
+        POSITION,
+        Some(&component_of_world(AXIS, "drive")),
+    );
+    library(&root, "b", "", None);
+    write(&root, &[("b/wit/axis.wit", AXIS)]);
+    let ws = program(
+        &root,
+        "a = { path = \"../a\" }\nb = { path = \"../b\" }\n",
+        "A.Axis.POSITION()",
+    );
+    let refused = compiled(&ws).expect_err("two sources of one interface");
+    assert!(
+        format!("{refused:?}").contains(&format!(
+            "the component of 'a' exports `acme:drive/axis@1.0.0`, which `{}` declares the \
+             host gives: an import is linked to one or the other",
+            root.join("b").join("wit").display()
+        )),
+        "{refused:?}"
+    );
+}
+
+/// `component/` holds a component, with code: a WIT package's binary there
+/// is refused, a host's package going in the library's `wit/`.
+#[test]
+fn a_wit_package_s_binary_is_no_component() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    library(&root, "drives", POSITION, Some(&package_binary(AXIS)));
+    let ws = program(
+        &root,
+        "drives = { path = \"../drives\" }\n",
+        "Drives.Axis.POSITION()",
+    );
+    let refused = compiled(&ws).expect_err("a package in component/");
+    assert!(
+        format!("{refused:?}").contains(&format!(
+            "{} is a WIT package, not a component: a library carries a host's package in its \
+             `wit/`",
+            root.join("drives")
+                .join("component")
+                .join("c.wasm")
+                .display()
+        )),
+        "{refused:?}"
     );
 }

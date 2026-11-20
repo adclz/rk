@@ -207,7 +207,8 @@ impl StdinStream for Stdin {
 fn load(db: &mut db::RootDatabase, source: &str, stdin: Stdin) -> Plc {
     let (mir, core) = compile_to_mir_and_wasm_as_built(db, source);
     let mut interfaces = rk::component::interfaces(db, &mir).expect("typed interfaces");
-    interfaces.wit.extend(crate::tests::utils::wasi_packages());
+    let wasi = crate::tests::utils::wasi_wit();
+    interfaces.wit.push(wasi.path().join("wit"));
     let component = rk::component::wrap(&core, "plant", &interfaces).expect("the module wraps");
     Plc::load(&component.bytes, WasiCtxBuilder::new().stdin(stdin).build())
 }
