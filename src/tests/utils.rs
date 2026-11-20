@@ -637,3 +637,31 @@ pub fn walk_hir_diagnostics(db: &dyn WorkspaceDataBase, file: File) -> Vec<IdeDi
 
     vec![diag]
 }
+
+/// The component of the world `world` of `wit`, as wit-component builds one
+/// from a module that implements it with traps: the binary carries its
+/// world.
+pub fn component_of_world(wit: &str, world: &str) -> Vec<u8> {
+    let mut resolve = wit_parser::Resolve::default();
+    let package = resolve
+        .push_str("component.wit", wit)
+        .expect("the WIT resolves");
+    let world = resolve
+        .select_world(&[package], Some(world))
+        .expect("the world");
+    let mut module =
+        wit_component::dummy_module(&resolve, world, wit_parser::ManglingAndAbi::Standard32);
+    wit_component::embed_component_metadata(
+        &mut module,
+        &resolve,
+        world,
+        wit_component::StringEncoding::UTF8,
+        false,
+    )
+    .expect("the module is typed with its world");
+    wit_component::ComponentEncoder::default()
+        .validate(true)
+        .module(&module)
+        .and_then(|encoder| encoder.encode())
+        .expect("the module wraps into a component")
+}

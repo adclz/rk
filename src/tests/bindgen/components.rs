@@ -13,35 +13,7 @@ use rstest::rstest;
 use wit_parser::Resolve;
 
 use super::{Bindings, assert_abi, built, shown};
-use crate::tests::utils::with_db;
-
-/// The component of the world `world` of `wit`, as wit-component builds one
-/// from a module that implements it with traps: the binary carries its
-/// world.
-fn component(wit: &str, world: &str) -> Vec<u8> {
-    let mut resolve = Resolve::default();
-    let package = resolve
-        .push_str("component.wit", wit)
-        .expect("the WIT resolves");
-    let world = resolve
-        .select_world(&[package], Some(world))
-        .expect("the world");
-    let mut module =
-        wit_component::dummy_module(&resolve, world, wit_parser::ManglingAndAbi::Standard32);
-    wit_component::embed_component_metadata(
-        &mut module,
-        &resolve,
-        world,
-        wit_component::StringEncoding::UTF8,
-        false,
-    )
-    .expect("the module is typed with its world");
-    wit_component::ComponentEncoder::default()
-        .validate(true)
-        .module(&module)
-        .and_then(|encoder| encoder.encode())
-        .expect("the module wraps into a component")
-}
+use crate::tests::utils::{component_of_world as component, with_db};
 
 /// A component that exports an axis, whose position is a record of
 /// another interface, and imports a log of its own.

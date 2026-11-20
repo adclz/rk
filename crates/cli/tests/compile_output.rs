@@ -225,7 +225,7 @@ END_FUNCTION
     assert!(
         refused.contains(
             "the module imports `acme:display/text@1.0.0`, which no `wit/` folder of the \
-             workspace or of a library describes"
+             workspace or of a library describes, and no library's component exports"
         ),
         "{refused}"
     );

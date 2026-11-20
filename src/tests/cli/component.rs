@@ -1213,7 +1213,7 @@ fn an_interface_of_a_package_no_folder_ships_is_refused(mut with_db: db::RootDat
         wrapped(wasi_packages()),
         Some(
             "the module imports `acme:display/text@1.0.0`, which no `wit/` folder of the \
-             workspace or of a library describes"
+             workspace or of a library describes, and no library's component exports"
                 .to_string()
         )
     );
