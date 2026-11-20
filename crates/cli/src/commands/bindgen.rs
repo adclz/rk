@@ -46,7 +46,7 @@ pub fn run_bindgen(
     };
     // A WIT folder given is what is read; with none, the component first.
     let component = match options.wit {
-        None => component_of(workspace)?,
+        None => crate::component::carried_component(workspace).map_err(CliError::Message)?,
         Some(_) => None,
     };
     let (resolve, world) = match (options.wit, component) {
@@ -102,31 +102,4 @@ pub fn run_bindgen(
     let shown = folder.canonicalize().unwrap_or_else(|_| folder.clone());
     println!("{} files in {}", files.len(), shown.display());
     Ok(())
-}
-
-/// The component `workspace` carries: the one `.wasm` of its `component/`
-/// folder, or `None` with no such folder. A folder that holds no `.wasm`, or
-/// more than one, is refused: a library carries one component.
-fn component_of(workspace: &Path) -> CliResult<Option<PathBuf>> {
-    let folder = workspace.join("component");
-    if !folder.is_dir() {
-        return Ok(None);
-    }
-    let mut found: Vec<PathBuf> = std::fs::read_dir(&folder)
-        .map_err(|e| CliError::msg(format!("reading {}: {e}", folder.display())))?
-        .filter_map(|entry| Some(entry.ok()?.path()))
-        .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "wasm"))
-        .collect();
-    found.sort();
-    match found.len() {
-        1 => Ok(found.pop()),
-        0 => Err(CliError::msg(format!(
-            "{} holds no `.wasm`: a library carries one component, its `.wasm` and its LICENSE",
-            folder.display()
-        ))),
-        n => Err(CliError::msg(format!(
-            "{} holds {n} `.wasm` files: a library carries one component",
-            folder.display()
-        ))),
-    }
 }

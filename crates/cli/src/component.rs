@@ -34,6 +34,43 @@ pub const WORLD: &str = "plc";
 pub struct Component {
     pub bytes: Vec<u8>,
     pub world: String,
+    /// The libraries' components it imports from, which run beside it: the
+    /// runtime links each import to the component that exports it.
+    pub beside: Vec<Carried>,
+}
+
+/// A library's component: the library that carries it, and its `.wasm`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Carried {
+    pub library: String,
+    pub path: std::path::PathBuf,
+}
+
+/// The component `dir` carries: the one `.wasm` of its `component/`
+/// folder, or `None` with no such folder. A folder that holds no `.wasm`, or
+/// more than one, is refused: a library carries one component.
+pub fn carried_component(dir: &std::path::Path) -> Result<Option<std::path::PathBuf>, String> {
+    let folder = dir.join("component");
+    if !folder.is_dir() {
+        return Ok(None);
+    }
+    let mut found: Vec<std::path::PathBuf> = std::fs::read_dir(&folder)
+        .map_err(|e| format!("reading {}: {e}", folder.display()))?
+        .filter_map(|entry| Some(entry.ok()?.path()))
+        .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "wasm"))
+        .collect();
+    found.sort();
+    match found.len() {
+        1 => Ok(found.pop()),
+        0 => Err(format!(
+            "{} holds no `.wasm`: a library carries one component, its `.wasm` and its LICENSE",
+            folder.display()
+        )),
+        n => Err(format!(
+            "{} holds {n} `.wasm` files: a library carries one component",
+            folder.display()
+        )),
+    }
 }
 
 /// A function the module imports from a plain module, typed in WIT from
@@ -97,8 +134,12 @@ pub struct Interfaces {
     /// The WIT folders of the workspace and of each library it reads,
     /// `wit/` at their root, whether there is one or not: the packages they
     /// hold type the imports of their interfaces, WASI's as the standard
-    /// library's folder holds them, and no other import names a package.
+    /// library's folder holds them.
     pub wit: Vec<std::path::PathBuf>,
+    /// The components of the libraries the workspace reads, in the order
+    /// they are read: what each exports types the imports of its interfaces,
+    /// from the component's binary. No other import names a package.
+    pub components: Vec<Carried>,
 }
 
 /// What a stream's read or write moves, by the buffer its block declares
@@ -173,7 +214,26 @@ pub fn interfaces(
         moved: moved(module),
         held: held(module),
         wit: wit_folders(db),
+        components: library_components(db)?,
     })
+}
+
+/// The component each library the workspace reads carries, in the order
+/// they are read.
+fn library_components(db: &dyn db::WorkspaceDataBase) -> Result<Vec<Carried>, String> {
+    let Some(workspace) = db::workspace::Workspace::try_get(db) else {
+        return Ok(Vec::new());
+    };
+    let mut components = Vec::new();
+    for library in workspace.libraries(db) {
+        if let Some(path) = carried_component(&library.dir)? {
+            components.push(Carried {
+                library: library.name.clone(),
+                path,
+            });
+        }
+    }
+    Ok(components)
 }
 
 /// The `wit/` folders of the libraries the workspace reads, the standard
@@ -298,7 +358,7 @@ fn unshipped(module: &str, shipped: &[Shipped]) -> String {
     }
     format!(
         "the module imports `{module}`, which no `wit/` folder of the workspace or of a \
-         library describes"
+         library describes, and no library's component exports"
     )
 }
 
@@ -537,9 +597,18 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
     let hosts = &interfaces.imports;
     let imports = imported_functions(core)?;
     let shipped = shipped(&interfaces.wit)?;
-    // A package rk declares, or one a WIT folder ships, types the module.
+    let providers = providers(&interfaces.components)?;
+    let provider_of = |module: &str| {
+        providers
+            .iter()
+            .find(|provider| provider.exports.contains(module))
+    };
+    // A package rk declares, one a WIT folder ships, or an interface a
+    // library's component exports, types the module.
     let typed = |module: &str| {
-        wit::package_of(module).is_some() || shipped.iter().any(|package| package.declares(module))
+        wit::package_of(module).is_some()
+            || shipped.iter().any(|package| package.declares(module))
+            || provider_of(module).is_some()
     };
     let mut carried = BTreeSet::new();
     let mut own: BTreeMap<&str, Vec<&HostFunction>> = BTreeMap::new();
@@ -593,9 +662,34 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
         .map(|package| parse(package.dir, package.files))
         .collect::<Result<Vec<_>, _>>()?;
     deps.extend(shipped.into_iter().map(|package| package.group));
+    // What the WIT folders ship first, then the types of the components
+    // the module imports from, as their binaries carry them: the world
+    // resolves against them all.
+    resolve
+        .push_groups(
+            parse(".", &[("shipped.wit", "package local:shipped;\n")])?,
+            deps,
+        )
+        .map_err(|e| format!("resolving the component's WIT: {e:#}"))?;
+    let beside: Vec<&Provider> = providers
+        .iter()
+        .filter(|provider| {
+            carried
+                .iter()
+                .any(|module| provider.exports.contains(*module))
+        })
+        .collect();
+    for provider in &beside {
+        resolve.merge(provider.resolve.clone()).map_err(|e| {
+            format!(
+                "reading the types of the component of '{}': {e:#}",
+                provider.carried.library
+            )
+        })?;
+    }
     let main = parse(".", &[("world.wit", world.as_str())])?;
     let package = resolve
-        .push_groups(main, deps)
+        .push_groups(main, Vec::new())
         .map_err(|e| format!("resolving the component's WIT: {e:#}"))?;
     let world_id = resolve
         .select_world(&[package], Some(WORLD))
@@ -606,6 +700,9 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
         .map_err(|e| format!("laying out the component's WIT types: {e:#}"))?;
     for module in &carried {
         as_its_wit_declares(&resolve, &sizes, module, &imports[*module], interfaces)?;
+        if let Some(provider) = provider_of(module) {
+            plain_values_only(&resolve, module, &imports[*module], interfaces, provider)?;
+        }
     }
 
     let mut module = core.to_vec();
@@ -623,7 +720,179 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
         .and_then(|encoder| encoder.encode())
         .map_err(|e| format!("wrapping the module into a component: {e:#}"))?;
 
-    Ok(Component { bytes, world })
+    Ok(Component {
+        bytes,
+        world,
+        beside: beside
+            .into_iter()
+            .map(|provider| provider.carried.clone())
+            .collect(),
+    })
+}
+
+/// A library's component, decoded: what it exports types the module's
+/// imports of those interfaces.
+struct Provider {
+    carried: Carried,
+    bytes: Vec<u8>,
+    /// Its types, the package of its world renamed apart from every other
+    /// component's.
+    resolve: wit_parser::Resolve,
+    /// Each interface it exports, as a module names it:
+    /// `acme:drive/axis@1.0.0`.
+    exports: BTreeSet<String>,
+}
+
+/// The components `carried`, decoded from their binaries. Two that export
+/// one interface are refused: the runtime links an import to one component.
+/// The same component, carried by two libraries, is one.
+fn providers(carried: &[Carried]) -> Result<Vec<Provider>, String> {
+    let mut found: Vec<Provider> = Vec::new();
+    for (index, component) in carried.iter().enumerate() {
+        let bytes = std::fs::read(&component.path)
+            .map_err(|e| format!("reading {}: {e}", component.path.display()))?;
+        if found.iter().any(|other| other.bytes == bytes) {
+            continue;
+        }
+        let wit_parser::decoding::DecodedWasm::Component(mut resolve, world) =
+            wit_parser::decoding::decode(&bytes).map_err(|e| {
+                format!("reading the component {}: {e:#}", component.path.display())
+            })?
+        else {
+            return Err(format!(
+                "{} is a WIT package, not a component",
+                component.path.display()
+            ));
+        };
+        let exports: BTreeSet<String> = resolve.worlds[world]
+            .exports
+            .values()
+            .filter_map(|item| match item {
+                wit_parser::WorldItem::Interface { id, .. } => resolve.id_of(*id),
+                _ => None,
+            })
+            .collect();
+        if let Some((other, interface)) = found.iter().find_map(|other| {
+            other
+                .exports
+                .intersection(&exports)
+                .next()
+                .map(|interface| (other, interface))
+        }) {
+            return Err(format!(
+                "the components of '{}' and of '{}' both export `{interface}`: the runtime links \
+                 an import to one component",
+                other.carried.library, component.library
+            ));
+        }
+        // A component's world is decoded into a package named
+        // `root:component` in every one: renamed apart, two merge.
+        if let Some(package) = resolve.worlds[world].package {
+            let name = wit_parser::PackageName {
+                namespace: "rk-component".to_string(),
+                name: format!("c{index}"),
+                version: None,
+            };
+            let old = std::mem::replace(&mut resolve.packages[package].name, name.clone());
+            resolve.package_names.shift_remove(&old);
+            resolve.package_names.insert(name, package);
+        }
+        found.push(Provider {
+            carried: component.clone(),
+            bytes,
+            resolve,
+            exports,
+        });
+    }
+    Ok(found)
+}
+
+/// Refuses an import from `module`, an interface a library's component
+/// exports, that passes what only one store holds: a resource's handle, a
+/// stream or a future. The component runs beside the module, in a store of
+/// its own, and only plain values cross between the two, for now.
+fn plain_values_only(
+    resolve: &wit_parser::Resolve,
+    module: &str,
+    names: &BTreeSet<String>,
+    interfaces: &Interfaces,
+    provider: &Provider,
+) -> Result<(), String> {
+    let Some(interface) = resolve
+        .interfaces
+        .iter()
+        .find(|(id, _)| resolve.id_of(*id).as_deref() == Some(module))
+        .map(|(_, interface)| interface)
+    else {
+        return Ok(());
+    };
+    for name in names {
+        let imported = name
+            .strip_prefix(mir::async_call::ASYNC_LOWER)
+            .unwrap_or(name);
+        // A resource's function or drop, a stream's or a future's built-in.
+        let passes = match imported.starts_with('[') {
+            true => Some("a resource, a stream or a future"),
+            false => interface.functions.get(imported).and_then(|function| {
+                function
+                    .params
+                    .iter()
+                    .map(|param| &param.ty)
+                    .chain(function.result.iter())
+                    .find_map(|ty| held_by_one_store(resolve, ty))
+            }),
+        };
+        if let Some(passes) = passes {
+            let by = interfaces
+                .declared
+                .get(&(module.to_string(), name.clone()))
+                .map_or("a POU", String::as_str);
+            return Err(format!(
+                "`{by}` imports `{imported}` of `{module}`, which the component of '{}' exports, \
+                 and it passes {passes}: a component beside the program passes plain values only, \
+                 for now",
+                provider.carried.library
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// What `ty` holds that only one store can hold: a resource's handle, a
+/// stream or a future, anywhere inside it.
+fn held_by_one_store(resolve: &wit_parser::Resolve, ty: &wit_parser::Type) -> Option<&'static str> {
+    use wit_parser::TypeDefKind;
+    let wit_parser::Type::Id(id) = ty else {
+        return None;
+    };
+    let inside = |types: Vec<&wit_parser::Type>| {
+        types
+            .into_iter()
+            .find_map(|ty| held_by_one_store(resolve, ty))
+    };
+    match &resolve.types[*id].kind {
+        TypeDefKind::Resource | TypeDefKind::Handle(_) => Some("a resource's handle"),
+        TypeDefKind::Stream(_) => Some("a stream"),
+        TypeDefKind::Future(_) => Some("a future"),
+        TypeDefKind::Record(record) => {
+            inside(record.fields.iter().map(|field| &field.ty).collect())
+        }
+        TypeDefKind::Tuple(tuple) => inside(tuple.types.iter().collect()),
+        TypeDefKind::Variant(variant) => inside(
+            variant
+                .cases
+                .iter()
+                .filter_map(|case| case.ty.as_ref())
+                .collect(),
+        ),
+        TypeDefKind::Result(result) => inside(result.ok.iter().chain(result.err.iter()).collect()),
+        TypeDefKind::Option(ty)
+        | TypeDefKind::List(ty)
+        | TypeDefKind::FixedLengthList(ty, _)
+        | TypeDefKind::Type(ty) => held_by_one_store(resolve, ty),
+        TypeDefKind::Map(key, value) => inside(vec![key, value]),
+        TypeDefKind::Flags(_) | TypeDefKind::Enum(_) | TypeDefKind::Unknown => None,
+    }
 }
 
 /// What `core` imports, by module: each function's name.
