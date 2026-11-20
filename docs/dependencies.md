@@ -191,6 +191,23 @@ The component's binary carries its types: no WIT is shipped beside it.
 A `func` is a `FUNCTION`, and an `async func` a block you call until its `DONE`.
 What the component imports itself is its own, and is not written.
 
+The component runs beside your program, not inside it.
+`rk compile` types your program's imports of its interfaces from its binary, and writes it beside your program, in `components/`, named after its library:
+
+```schema
+rk_build/debug/
+├─ press-line.wasm                  your program
+└─ components/
+   └─ drives.wasm                   the component of the library drives
+```
+
+The runtime runs each one beside your program, in a store of its own, and links each of your program's imports to the component that exports it.
+A component your program does not call is not written.
+
+- Two components that export the same interface are refused: an import is linked to one. The same component carried by two libraries is one.
+- Only plain values cross, for now: a function that takes or gives a resource, a stream or a future is refused.
+- `rk test` does not run a program's calls into a component yet.
+
 ## The host's interfaces
 
 A library calls the functions a host provides, WASI's or a runtime's own, through the interfaces of their packages.

@@ -19,6 +19,7 @@ A library (`type = "library"` in its `config.toml`) is refused: it is built into
 
 The component is written to `rk_build/debug/<project>.wasm`, or to `rk_build/release/<project>.wasm` with `--release`.
 It carries the types of what it imports and exports, so no WIT is written beside it: `wasm-tools component wit <project>.wasm` prints them.
+The components of the libraries the program calls go beside it, in `components/`, each named after its library: the runtime runs them beside the program and links its imports to them. The folder holds the last build's only.
 
 ## Usage
 
