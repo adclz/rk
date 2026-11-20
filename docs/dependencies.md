@@ -207,13 +207,16 @@ A `func` is a `FUNCTION`, and an `async func` a block you call until its `DONE`.
 What the component imports itself is its own, and is not written.
 
 The component runs beside your program, not inside it.
-`rk compile` types your program's imports of its interfaces from its binary, and writes it beside your program, in `components/`, named after its library:
+`rk compile` types your program's imports of its interfaces from its binary, and copies the library's `component/` beside your program, into `components/`, in a folder named after the library.
+The component's LICENSE, and whatever else its author put there, travel with it:
 
 ```schema
 rk_build/debug/
 ├─ press-line.wasm                  your program
 └─ components/
-   └─ drives.wasm                   the component of the library drives
+   └─ drives/                       the component/ of the library drives
+      ├─ drive.wasm
+      └─ LICENSE
 ```
 
 The runtime runs each one beside your program, in a store of its own, and links each of your program's imports to the component that exports it.
