@@ -5,12 +5,12 @@
 //! each build.
 //!
 //! The world imports the interfaces of packages the module calls, as the
-//! WIT folders of the libraries and of the workspace declare them (the
-//! standard library's holds the WASI interfaces its blocks call), the
-//! interfaces of plain modules, typed from the `{extern}` FUNCTIONs that
-//! import them, and exports the control interface every module has
+//! libraries' `wit/` folders declare them (the standard library's holds the
+//! WASI interfaces its blocks call) or their components export them, and
+//! the interfaces of plain modules, typed from the `{extern}` FUNCTIONs
+//! that import them. It exports the control interface every module has
 //! (`rk:plc/control`) and the workspace's `{export}` FUNCTIONs, in an
-//! interface named after the project.
+//! interface named after the project. A program carries no WIT of its own.
 //! The component carries the types of what it imports and exports, so rk
 //! writes no WIT beside it: a host's tools read them from the binary
 //! (`wasm-tools component wit`).
