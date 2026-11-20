@@ -955,6 +955,11 @@ mod tests {
         format!("[project]\nname = \"{name}\"\nversion = \"1\"\n\n[dependencies]\n{dependencies}")
     }
 
+    /// A library's `config.toml`.
+    fn library_config(name: &str) -> String {
+        format!("[project]\nname = \"{name}\"\nversion = \"1\"\ntype = \"library\"\n")
+    }
+
     /// A batch with the configuration in it reads the configuration again,
     /// and applies the rest of the batch: its other changes were dropped.
     #[test]
@@ -1031,9 +1036,9 @@ mod tests {
                 "ws/main.st",
                 "FUNCTION Run : INT\n    Run := A.FA() + B.FB();\nEND_FUNCTION\n",
             ),
-            ("a/config.toml", &config("a", "")),
+            ("a/config.toml", &library_config("a")),
             ("a/A.st", "FUNCTION FA : INT\n    FA := 1;\nEND_FUNCTION\n"),
-            ("b/config.toml", &config("b", "")),
+            ("b/config.toml", &library_config("b")),
             ("b/B.st", "FUNCTION FB : INT\n    FB := 2;\nEND_FUNCTION\n"),
         ]);
         let main = Url::from_file_path(root.join("ws/main.st"))

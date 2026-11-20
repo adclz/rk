@@ -130,7 +130,7 @@ fn every_assertion_fails_when_it_should_and_only_then() {
     let component = rk::component::wrap(&wasm, "unit", &interfaces).expect("the module wraps");
 
     let records: BTreeMap<String, TestRecord> =
-        rk::test_host::run_each(&component.bytes, None, None, |_| {})
+        rk::test_host::run_each(&component.bytes, &[], None, None, |_| {})
             .expect("the tests run")
             .into_iter()
             .map(|record| (record.name.clone(), record))

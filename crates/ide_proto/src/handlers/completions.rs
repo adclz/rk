@@ -1215,8 +1215,9 @@ pub(crate) fn resolve_namespace_prefix<'db>(
     scope: hir::hir_def::scope::ScopeId<'db>,
     written: NamespacePath,
 ) -> Option<NamespacePath> {
+    let seen = hir::hir_ty::library::Seen::From(scope.file(db));
     namespace_path_candidates(db, scope, written).find(|&candidate| {
-        if hir::hir_ty::index_graphs::namespace_exists(db, candidate) {
+        if hir::hir_ty::index_graphs::namespace_exists_seen(db, candidate, seen) {
             return true;
         }
         let mut query = Query::new(candidate.to_string(db));

@@ -38,6 +38,12 @@ pub enum ConfigError<'db> {
         /// Every OTHER configuration, so they can be reached from here.
         others: Vec<ConfigDecl<'db>>,
     },
+    /// A CONFIGURATION in a library's code (E1433). A library is code for
+    /// any machine: the configuration, its globals and its tasks are the
+    /// program's that lists it.
+    ConfigurationInLibrary {
+        config: ConfigDecl<'db>,
+    },
     /// The configuration declares more than one RESOURCE. A resource is its
     /// own execution unit and a runtime drives one, so a second resource
     /// compiled into the module was refused at DEPLOY, from a compile that
@@ -479,10 +485,12 @@ pub enum PartlyUnlocated<'db> {
         member: Vec<Ident>,
         address: compact_str::CompactString,
     },
-    /// Instances held where no VAR_CONFIG path reaches them.
+    /// Instances held where no VAR_CONFIG path reaches them, or a variable
+    /// declared with the partial address there itself.
     Unreachable {
         var: VariableDecl<'db>,
         /// The member declared with the partial address: `x`, or `fb.x`.
+        /// None when `var` is declared with it.
         member: Vec<Ident>,
         address: compact_str::CompactString,
         place: UnreachablePlace,
@@ -503,6 +511,9 @@ pub enum UnreachablePlace {
     Struct,
     /// A VAR_INPUT: each call copies its argument over it, pointers included.
     Input,
+    /// A test's variable, a FUNCTION_BLOCK's or a FUNCTION's: `rk test`
+    /// makes the test's instance itself, and no PROGRAM holds it.
+    Test,
 }
 
 /// What a part of a wider address was used for that it cannot be.
@@ -895,6 +906,7 @@ impl<'db> ErrorCode for ConfigError<'db> {
         match self {
             Self::NoConfigFileFound { .. } => "E1401",
             Self::MultipleConfigurations { .. } => "E1402",
+            Self::ConfigurationInLibrary { .. } => "E1433",
             Self::MultipleResources { .. } => "E1403",
             Self::TaskOrProgramOutsideResource(_) => "E1404",
             Self::MissingPriority(_) => "E1405",
@@ -984,6 +996,25 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 }
                 diag.with_note("a workspace has one CONFIGURATION".to_string());
                 diag.with_help("describe another PLC in its own workspace".to_string());
+                diag
+            }
+            Self::ConfigurationInLibrary { config } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is a CONFIGURATION in a library",
+                        config.name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &config.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "a library is code for any machine: the program that lists it declares the configuration"
+                        .to_string(),
+                );
+                diag.with_help("move it to a program that lists the library".to_string());
                 diag
             }
             Self::MultipleResources {
@@ -1850,11 +1881,15 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 address,
                 place,
             }) => {
-                let whose = format!(
-                    "'{}' holds '{}', declared AT {address}",
-                    var.get_name_with_case(db).text(db),
-                    dotted(db, member.iter().copied())
-                );
+                let name = var.get_name_with_case(db);
+                let whose = match member.as_slice() {
+                    [] => format!("'{}' is declared AT {address}", name.text(db)),
+                    _ => format!(
+                        "'{}' holds '{}', declared AT {address}",
+                        name.text(db),
+                        dotted(db, member.iter().copied())
+                    ),
+                };
                 let message = match place {
                     UnreachablePlace::Array => format!("{whose}, in the elements of an array"),
                     UnreachablePlace::Global => format!("{whose}, in a VAR_GLOBAL"),
@@ -1863,6 +1898,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     }
                     UnreachablePlace::Struct => format!("{whose}, in a field of a STRUCT"),
                     UnreachablePlace::Input => format!("{whose}, in a VAR_INPUT"),
+                    UnreachablePlace::Test => format!("{whose}, in a test"),
                 };
                 let mut diag = diag()
                     .message(message)
@@ -1877,6 +1913,19 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                                 .to_string(),
                         );
                         diag.with_help("pass the instance as a VAR_IN_OUT".to_string());
+                    }
+                    UnreachablePlace::Test => {
+                        diag.with_note(
+                            "a VAR_CONFIG path starts at a PROGRAM instance, and `rk test` makes a test's instance itself"
+                                .to_string(),
+                        );
+                        diag.with_help(match member.last() {
+                            Some(last) => format!(
+                                "test a block that takes '{}' as a VAR_INPUT",
+                                last.text(db)
+                            ),
+                            None => "declare it without `AT`".to_string(),
+                        });
                     }
                     _ => {
                         diag.with_note(

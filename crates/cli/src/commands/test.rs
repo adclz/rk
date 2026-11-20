@@ -33,13 +33,15 @@ pub fn run_test(
         crate::component::wrap(&core_bytes, &project, &interfaces).map_err(CliError::msg)?;
 
     // The artifact on disk is what ran, in a folder of its own: no other
-    // command builds it.
+    // command builds it. The libraries' components it calls go beside it,
+    // as `rk compile` writes them, and run beside it.
     let wasm_path = crate::compiler::test_component_path(workspace, opt_level, &project);
     if let Some(dir) = wasm_path.parent() {
         std::fs::create_dir_all(dir).ok();
     }
     std::fs::write(&wasm_path, &component.bytes)
         .map_err(|e| CliError::msg(format!("writing the tested component: {e}")))?;
+    crate::commands::compile::write_beside(&wasm_path, &component.beside)?;
 
     // The roots the manifest named each test's file against.
     let layout = db::workspace::Workspace::try_get(&db);

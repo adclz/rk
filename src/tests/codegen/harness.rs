@@ -899,6 +899,9 @@ pub struct TestBuild {
     pub core: Vec<u8>,
     pub component: Vec<u8>,
     interfaces: rk::component::Interfaces,
+    /// The WIT folder of WASI's packages, which [`TestBuild::wrap`] reads
+    /// again.
+    _wasi: tempfile::TempDir,
 }
 
 impl TestBuild {
@@ -981,7 +984,8 @@ fn test_build(db: &RootDatabase, mut mir: mir::MirModule) -> TestBuild {
     mir::raise_hook::add(db, &mut mir);
     let core = wasm_codegen::generate_wasm(db, &mir).finish();
     let mut interfaces = rk::component::interfaces(db, &mir).expect("typed interfaces");
-    interfaces.wit.extend(crate::tests::utils::wasi_packages());
+    let wasi = crate::tests::utils::wasi_wit();
+    interfaces.wit.push(wasi.path().join("wit"));
     let component = rk::component::wrap(&core, "plant", &interfaces)
         .expect("the module wraps")
         .bytes;
@@ -990,6 +994,7 @@ fn test_build(db: &RootDatabase, mut mir: mir::MirModule) -> TestBuild {
         core,
         component,
         interfaces,
+        _wasi: wasi,
     }
 }
 
@@ -1000,5 +1005,5 @@ pub fn run_tests(
     component: &[u8],
     filter: Option<&str>,
 ) -> Result<Vec<debug_format::test_report::TestRecord>> {
-    rk::test_host::run_each(component, filter, None, |_| {})
+    rk::test_host::run_each(component, &[], filter, None, |_| {})
 }

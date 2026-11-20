@@ -23,8 +23,17 @@
 //!
 //! What a test writes to the standard output and error is kept, and
 //! reported with the test when it fails.
+//!
+//! The components of the libraries the program calls run beside it, as a
+//! runtime runs them: each in a store of its own, fresh for each test, with
+//! the program's WASI 0.3. Each function the program imports from one is
+//! the host's, and makes the call in the component's store: plain values
+//! cross as they are. A trap of the component fails the program's call,
+//! named after its library.
 
+use std::future::Future;
 use std::ops::Range;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -33,7 +42,8 @@ use anyhow::{Context, Result};
 use debug_format::DebugInfo;
 use debug_format::test_manifest::{TEST_MANIFEST_SECTION, TestEntry, TestManifest};
 use debug_format::test_report::{Frame, Status, TestRecord};
-use wasmtime::component::{Component, InstancePre};
+use wasmtime::component::types::ComponentItem;
+use wasmtime::component::{Accessor, Component, Func, InstancePre, Val};
 use wasmtime::{Caller, Engine, Extern, Instance, Linker, Memory, Module, Store, StoreContextMut};
 use wasmtime_wasi::p3::bindings::clocks::system_clock::Instant as WasiInstant;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
@@ -76,11 +86,19 @@ pub fn discover(wasm: &[u8]) -> Vec<TestEntry> {
     Vec::new()
 }
 
-/// Run the tests of `component`, optionally filtered by a substring of
-/// their path, calling `on_result` as each finishes. `budget` bounds each
-/// test (`None` = [`DEFAULT_BUDGET`]).
+/// A library's component, which runs beside the program.
+pub struct Beside {
+    /// The library that carries it, which names it when it fails.
+    pub library: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Run the tests of `component`, with the components `beside` it, optionally
+/// filtered by a substring of their path, calling `on_result` as each
+/// finishes. `budget` bounds each test (`None` = [`DEFAULT_BUDGET`]).
 pub fn run_each(
     component: &[u8],
+    beside: &[Beside],
     filter: Option<&str>,
     budget: Option<Duration>,
     mut on_result: impl FnMut(&TestRecord),
@@ -88,7 +106,7 @@ pub fn run_each(
     let budget = budget.unwrap_or(DEFAULT_BUDGET);
     let engine = engine()?;
     // Compiled once: instantiation is per test, compilation is not.
-    let runner = Runner::new(&engine, component)?;
+    let runner = Runner::new(&engine, component, beside)?;
     let core = runner.core();
     let info = DebugInfo::from_wasm(core);
     // A test's name is an identifier: `T_ADD` finds `t_add` (IEC 61131-3
@@ -446,22 +464,62 @@ struct Runner<'a> {
     bytes: &'a [u8],
     module: Range<usize>,
     pre: InstancePre<ComponentHost>,
+    /// The components beside it, each compiled and linked once too.
+    beside: Vec<BesidePre>,
+    /// Each function it imports from one of them.
+    wires: Vec<Wire>,
     /// What each call runs on: wasmtime calls a component that imports a
     /// host function that waits, as WASI's `wait-for` does, through its
     /// async API only, and wasmtime-wasi waits on tokio's clock.
     runtime: tokio::runtime::Runtime,
 }
 
+/// A component beside the program, linked: the library that carries it.
+struct BesidePre {
+    library: String,
+    pre: InstancePre<ComponentHost>,
+}
+
+/// A function the program imports from a component beside it: which
+/// component, the interface it exports the function in, and whether WIT
+/// declares it an `async func`.
+struct Wire {
+    beside: usize,
+    interface: String,
+    function: String,
+    is_async: bool,
+}
+
 impl<'a> Runner<'a> {
-    fn new(engine: &Engine, bytes: &'a [u8]) -> Result<Self> {
+    fn new(engine: &Engine, bytes: &'a [u8], beside: &[Beside]) -> Result<Self> {
+        let beside = beside
+            .iter()
+            .map(|b| {
+                let component = Component::new(engine, &b.bytes)
+                    .ctx(format!("compiling the component of '{}'", b.library))?;
+                Ok((b.library.clone(), component))
+            })
+            .collect::<Result<Vec<_>>>()?;
         let component = Component::new(engine, bytes).ctx("compiling the component")?;
-        let pre = link_component(engine, &component)?
+        let wires = wires(engine, &component, &beside);
+        let pre = link_component(engine, &component, &wires)?
             .instantiate_pre(&component)
             .ctx("linking the component")?;
+        let beside = beside
+            .into_iter()
+            .map(|(library, component)| {
+                let pre = link_component(engine, &component, &[])?
+                    .instantiate_pre(&component)
+                    .ctx(format!("linking the component of '{library}'"))?;
+                Ok(BesidePre { library, pre })
+            })
+            .collect::<Result<Vec<_>>>()?;
         Ok(Runner {
             bytes,
             module: wrapped_module(bytes)?,
             pre,
+            beside,
+            wires,
             runtime: tokio::runtime::Builder::new_current_thread()
                 .enable_time()
                 .build()
@@ -482,6 +540,7 @@ impl<'a> Runner<'a> {
         let mut outcome = self.runtime.block_on(run_test(
             &self.pre,
             &self.module,
+            (&self.beside, &self.wires),
             place,
             budget,
             capture,
@@ -494,6 +553,7 @@ impl<'a> Runner<'a> {
 
 /// What a component's store holds: what wasmtime-wasi gives it, its clocks
 /// and its standard output and error, and the stack at the last raise.
+/// The program's store also holds the components beside it.
 struct ComponentHost {
     ctx: WasiCtx,
     table: ResourceTable,
@@ -502,7 +562,51 @@ struct ComponentHost {
     /// The stack when the module last said it raised, as [`stack_of`]
     /// gives it.
     raised: Option<Vec<(u32, u32)>>,
+    /// What a call may take before the watchdog stops it, a call into a
+    /// component beside the program as much as one of the program's.
+    budget: Duration,
+    /// The components beside the program, each in a store of its own.
+    beside: Vec<Started>,
+    /// Each function the program imports from them, by [`Wire`].
+    forwards: Vec<Forward>,
 }
+
+/// A component beside the program, started for one test. A call takes its
+/// store until it returns, an async one across the program's scans: a call
+/// the program makes meanwhile waits its turn.
+struct Started {
+    library: String,
+    store: Arc<tokio::sync::Mutex<Store<ComponentHost>>>,
+}
+
+/// Where a function the program imports runs: the component beside it, by
+/// its place in [`ComponentHost::beside`], and the function it exports.
+#[derive(Clone, Copy)]
+struct Forward {
+    beside: usize,
+    func: Func,
+}
+
+/// A trap in a component beside the program, which fails the program's
+/// call into it: the library that carries the component, and the trap in
+/// a reader's words.
+#[derive(Debug)]
+struct InComponent {
+    library: String,
+    words: String,
+}
+
+impl std::fmt::Display for InComponent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the component of '{}' trapped: {}",
+            self.library, self.words
+        )
+    }
+}
+
+impl std::error::Error for InComponent {}
 
 impl WasiView for ComponentHost {
     fn ctx(&mut self) -> WasiCtxView<'_> {
@@ -565,13 +669,16 @@ const ZONE: &str = "wasi:clocks/timezone@0.3.0";
 /// command line's interfaces, the standard output and error among them,
 /// from wasmtime-wasi; the zone's `utc-offset` from the system's zone
 /// ([`system_zone`]), since WASI's time zone is unstable and wasmtime-wasi
-/// has none; `rk:test/raise`'s `raised`, which takes the stack; and every
-/// other import a trap: a user can declare any `{extern}` host function, so
-/// imports cannot be whitelisted, and an unwired one fails only if the test
-/// calls it.
+/// has none; `rk:test/raise`'s `raised`, which takes the stack; each
+/// function of `wires`, made in the component beside it that exports it
+/// ([`forward`]); and every other import a trap: a user can declare any
+/// `{extern}` host function, so imports cannot be whitelisted, and an
+/// unwired one fails only if the test calls it. A component beside the
+/// program is linked the same way, with no wires.
 fn link_component(
     engine: &Engine,
     component: &Component,
+    wires: &[Wire],
 ) -> Result<wasmtime::component::Linker<ComponentHost>> {
     let mut linker = wasmtime::component::Linker::new(engine);
     wasmtime_wasi::p3::clocks::add_to_linker(&mut linker).ctx("wiring WASI's clocks")?;
@@ -602,10 +709,123 @@ fn link_component(
             )
         })
         .ctx("wiring the raise hook")?;
+    for (wire, w) in wires.iter().enumerate() {
+        // An `async func` is the host's to run concurrently, as the program
+        // calls it: the call is under way while the program scans.
+        linker
+            .instance(&w.interface)
+            .and_then(|mut instance| match w.is_async {
+                true => instance.func_new_concurrent(
+                    &w.function,
+                    move |accessor, _, params, results| {
+                        forward_async(accessor, wire, params, results)
+                    },
+                ),
+                false => instance.func_new_async(&w.function, move |store, _, params, results| {
+                    forward(store, wire, params, results)
+                }),
+            })
+            .ctx(format!("wiring `{}` of `{}`", w.function, w.interface))?;
+    }
     linker
         .define_unknown_imports_as_traps(component)
         .ctx("stubbing unwired host imports as traps")?;
     Ok(linker)
+}
+
+/// The functions `program` imports from the components `beside` it: each
+/// function of each interface it imports that one of them exports. The
+/// build let no two of them export one interface.
+fn wires(engine: &Engine, program: &Component, beside: &[(String, Component)]) -> Vec<Wire> {
+    let mut exporter = std::collections::HashMap::new();
+    for (index, (_, component)) in beside.iter().enumerate() {
+        for (name, item) in component.component_type().exports(engine) {
+            if let ComponentItem::ComponentInstance(_) = item.ty {
+                exporter.entry(name.to_string()).or_insert(index);
+            }
+        }
+    }
+    let mut wires = Vec::new();
+    for (interface, item) in program.component_type().imports(engine) {
+        let (Some(&beside), ComponentItem::ComponentInstance(instance)) =
+            (exporter.get(interface), &item.ty)
+        else {
+            continue;
+        };
+        for (function, item) in instance.exports(engine) {
+            if let ComponentItem::ComponentFunc(ty) = item.ty {
+                wires.push(Wire {
+                    beside,
+                    interface: interface.to_string(),
+                    function: function.to_string(),
+                    is_async: ty.async_(),
+                });
+            }
+        }
+    }
+    wires
+}
+
+/// The program's call of the function at `wire`, a `func`, made in the
+/// store of the component beside it that exports it ([`call`]). The
+/// program waits for it, its turn on the component included: an async call
+/// of its own holds the component until that call returns.
+fn forward<'a>(
+    mut store: StoreContextMut<'a, ComponentHost>,
+    wire: usize,
+    params: &'a [Val],
+    results: &'a mut [Val],
+) -> Box<dyn Future<Output = wasmtime::Result<()>> + Send + 'a> {
+    Box::new(async move {
+        let host = store.data_mut();
+        let budget = host.budget;
+        let Forward { beside, func } = host.forwards[wire];
+        let Started { library, store } = &host.beside[beside];
+        let mut store = store.lock().await;
+        call(func, &mut store, library, budget, params, results).await
+    })
+}
+
+/// [`forward`] for an `async func`, under way while the program scans.
+fn forward_async<'a>(
+    accessor: &'a Accessor<ComponentHost>,
+    wire: usize,
+    params: &'a [Val],
+    results: &'a mut [Val],
+) -> Pin<Box<dyn Future<Output = wasmtime::Result<()>> + Send + 'a>> {
+    Box::pin(async move {
+        let (func, library, store, budget) = accessor.with(|mut access| {
+            let host = access.data_mut();
+            let Forward { beside, func } = host.forwards[wire];
+            let Started { library, store } = &host.beside[beside];
+            (func, library.clone(), store.clone(), host.budget)
+        });
+        let mut store = store.lock().await;
+        call(func, &mut store, &library, budget, params, results).await
+    })
+}
+
+/// `func` called in the store of the component `library` carries, with the
+/// program's budget. Its parameters and results are plain values, which
+/// cross as they are. A trap of the component comes back as
+/// [`InComponent`], which traps the program's call where it made it.
+async fn call(
+    func: Func,
+    store: &mut Store<ComponentHost>,
+    library: &str,
+    budget: Duration,
+    params: &[Val],
+    results: &mut [Val],
+) -> wasmtime::Result<()> {
+    store.set_epoch_deadline(ticks(budget));
+    func.call_async(&mut *store, params, results)
+        .await
+        .map_err(|e| {
+            wasmtime::Error::new(InComponent {
+                library: library.to_string(),
+                words: stopped(&e, budget),
+            })
+        })
 }
 
 /// One test on a fresh instance of the component: `init`, then `run-test`
@@ -613,31 +833,79 @@ fn link_component(
 /// once per cycle for a test FUNCTION_BLOCK, its outputs written to `stdio`.
 /// A raise comes back as the error of a result, placed where the module
 /// last said it raised, a trap as the call's error, with its backtrace:
-/// both in the core module at `module` in the component.
+/// both in the core module at `module` in the component. The components
+/// beside it start first, fresh as it is, and write to `stdio` too.
 async fn run_test(
     pre: &InstancePre<ComponentHost>,
     module: &Range<usize>,
+    (beside, wires): (&[BesidePre], &[Wire]),
     place: u32,
     budget: Duration,
     capture: bool,
     stdio: &Arc<Mutex<Stdio>>,
 ) -> Result<Outcome> {
-    let sink = |stream| Sink {
-        stream,
-        stdio: stdio.clone(),
+    let host = |capture| ComponentHost {
+        ctx: WasiCtxBuilder::new()
+            .stdout(Sink {
+                stream: Stream::Stdout,
+                stdio: stdio.clone(),
+            })
+            .stderr(Sink {
+                stream: Stream::Stderr,
+                stdio: stdio.clone(),
+            })
+            .build(),
+        table: ResourceTable::new(),
+        capture,
+        raised: None,
+        budget,
+        beside: Vec::new(),
+        forwards: Vec::new(),
     };
-    let mut store = Store::new(
-        pre.engine(),
-        ComponentHost {
-            ctx: WasiCtxBuilder::new()
-                .stdout(sink(Stream::Stdout))
-                .stderr(sink(Stream::Stderr))
-                .build(),
-            table: ResourceTable::new(),
-            capture,
-            raised: None,
-        },
-    );
+    let mut started = Vec::with_capacity(beside.len());
+    for BesidePre { library, pre } in beside {
+        let mut store = Store::new(pre.engine(), host(false));
+        store.set_epoch_deadline(ticks(budget));
+        match pre.instantiate_async(&mut store).await {
+            Ok(instance) => started.push((library.clone(), store, instance)),
+            Err(e) => {
+                return Ok(Outcome::failed(format!(
+                    "the component of '{library}' did not start: {}",
+                    stopped(&e, budget)
+                )));
+            }
+        }
+    }
+    let mut forwards = Vec::with_capacity(wires.len());
+    for wire in wires {
+        let (library, store, instance) = &mut started[wire.beside];
+        let func = instance
+            .get_export_index(&mut *store, None, &wire.interface)
+            .and_then(|interface| {
+                instance.get_export_index(&mut *store, Some(&interface), &wire.function)
+            })
+            .and_then(|function| instance.get_func(&mut *store, function))
+            .with_context(|| {
+                format!(
+                    "the component of '{library}' exports no `{}` in `{}`",
+                    wire.function, wire.interface
+                )
+            })?;
+        forwards.push(Forward {
+            beside: wire.beside,
+            func,
+        });
+    }
+    let mut program = host(capture);
+    program.beside = started
+        .into_iter()
+        .map(|(library, store, _)| Started {
+            library,
+            store: Arc::new(tokio::sync::Mutex::new(store)),
+        })
+        .collect();
+    program.forwards = forwards;
+    let mut store = Store::new(pre.engine(), program);
     // A store with epoch interruption enabled starts at a deadline that has
     // always elapsed, so arm it before ANY wasm runs, instantiation included.
     store.set_epoch_deadline(ticks(budget));
@@ -675,7 +943,7 @@ async fn run_test(
             ));
         }
         Err(e) => {
-            let reason = format!("trapped in initialization: {}", stopped(&e, budget));
+            let reason = trapped("trapped in initialization", &e, budget);
             return Ok(Outcome::trapped_in(reason, &e, module));
         }
     }
@@ -711,7 +979,7 @@ async fn run_test(
                 break Outcome::raised("no such test".to_string(), None, module);
             }
             Err(e) => {
-                let reason = format!("trapped: {}", stopped(&e, budget));
+                let reason = trapped("trapped", &e, budget);
                 break Outcome::trapped_in(reason, &e, module);
             }
         }
@@ -778,6 +1046,17 @@ fn shown_name(name: &str) -> String {
     match name.split_once('$') {
         Some((pou, _)) => pou.to_string(),
         None => name.replace('#', "."),
+    }
+}
+
+/// Why a call of the program's failed, after `what`: in a component beside
+/// it, named after its library, or in the program itself.
+fn trapped(what: &str, err: &wasmtime::Error, budget: Duration) -> String {
+    match err.downcast_ref::<InComponent>() {
+        Some(InComponent { library, words }) => {
+            format!("{what} in the component of '{library}': {words}")
+        }
+        None => format!("{what}: {}", stopped(err, budget)),
     }
 }
 

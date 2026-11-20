@@ -96,17 +96,19 @@ pub enum Command {
         /// The code to explain, as diagnostics print it: E0301, L0002, ...
         code: String,
     },
-    /// Write the ST declarations of a host's WIT interfaces
+    /// Write the ST declarations of a library's component and of its host's interfaces
     ///
-    /// By default every interface of the package in the workspace's `wit/`
-    /// folder, or of each package in its `deps/` when there is none at its
-    /// top, into its `generated/` folder, one file per interface. A `.st`
-    /// file this command wrote there before and no longer writes is removed;
-    /// any other is left as it is.
+    /// In a library, by default: what the component in `component/` exports,
+    /// and every interface of the package in `wit/`, or of each package in
+    /// its `deps/` when there is none at its top. They go into `generated/`,
+    /// one file per interface. A program names a WIT folder with `--wit`. A
+    /// `.st` file this command wrote there before and no longer writes is
+    /// removed; any other is left as it is.
     #[command(display_order = 8)]
     Bindgen {
-        /// The WIT folder: a host's package at its top, and in `deps/` the
-        /// packages it uses (default: <workspace>/wit)
+        /// A WIT folder to read instead of the library's component and
+        /// `wit/`: a host's package at its top, and in `deps/` the packages
+        /// it uses, each a folder, a `.wit` file or a binary `.wasm` package
         #[arg(long, value_name = "FOLDER")]
         wit: Option<PathBuf>,
 
@@ -124,13 +126,13 @@ pub enum Command {
         #[arg(long)]
         public: bool,
     },
-    /// Fetch the libraries the workspace depends on
+    /// Fetch the libraries the workspace depends on, or add one
     #[command(display_order = 7)]
     Fetch {
-        /// Fetch the archive at this URL and write it in config.toml, with
-        /// the hash of what it holds
-        #[arg(long, value_name = "URL")]
-        save: Option<String>,
+        /// Fetch the library at this URL, check it, and add it to
+        /// config.toml with the hash of what it holds
+        #[arg(value_name = "URL")]
+        url: Option<String>,
     },
     /// Format the workspace's .st files
     #[command(display_order = 4)]

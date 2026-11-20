@@ -40,6 +40,13 @@ fn compile_once(
     verbose: bool,
 ) -> CliResult<()> {
     let db = init_db(workspace, verbose, true).ok_or(CliError::Failed)?;
+    // A library is code a program takes in: checked and tested in its own
+    // folder, built into each program that lists it, and never alone.
+    if db::workspace::Workspace::get(&db).is_library(&db) {
+        return Err(CliError::msg(
+            "this workspace is a library (`type = \"library\"`): `rk check` and `rk test` take it, and a program that lists it in its `[dependencies]` builds it",
+        ));
+    }
 
     let profile = if opts.release {
         wasm_codegen::Profile::Release
@@ -77,7 +84,56 @@ fn compile_once(
         .map_err(CliError::msg)?;
     let default_output = component_path(workspace, profile, &config.project.name);
     let output = opts.output.unwrap_or(&default_output);
-    write_output(output, &component.bytes, label)
+    write_output(output, &component.bytes, label)?;
+    write_beside(output, &component.beside)
+}
+
+/// The libraries' components the program imports from, in `components/`
+/// beside it, each named after its library: the runtime runs them beside
+/// the program and links each import to the one that exports it. The
+/// folder holds those of the last build only, so that none it no longer
+/// imports from is run.
+pub(crate) fn write_beside(
+    output: &std::path::Path,
+    beside: &[crate::component::Carried],
+) -> CliResult<()> {
+    let folder = output
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("components");
+    let kept: Vec<std::path::PathBuf> = beside
+        .iter()
+        .map(|carried| folder.join(format!("{}.wasm", carried.library)))
+        .collect();
+    if folder.is_dir() {
+        for entry in std::fs::read_dir(&folder)
+            .map_err(|e| CliError::msg(format!("reading {}: {e}", folder.display())))?
+        {
+            let path = entry
+                .map_err(|e| CliError::msg(format!("reading {}: {e}", folder.display())))?
+                .path();
+            if path.extension().is_some_and(|ext| ext == "wasm") && !kept.contains(&path) {
+                std::fs::remove_file(&path)
+                    .map_err(|e| CliError::msg(format!("removing {}: {e}", path.display())))?;
+            }
+        }
+        if beside.is_empty() && std::fs::read_dir(&folder).is_ok_and(|mut d| d.next().is_none()) {
+            let _ = std::fs::remove_dir(&folder);
+        }
+    }
+    for (carried, to) in beside.iter().zip(&kept) {
+        std::fs::create_dir_all(&folder)
+            .map_err(|e| CliError::msg(format!("creating directory {}: {e}", folder.display())))?;
+        std::fs::copy(&carried.path, to).map_err(|e| {
+            CliError::msg(format!(
+                "copying {} to {}: {e}",
+                carried.path.display(),
+                to.display()
+            ))
+        })?;
+        ui::detail(format!("    beside it: {}", to.display()));
+    }
+    Ok(())
 }
 
 /// Write `bytes` to `output` (creating parent dirs), reporting success on stdout.

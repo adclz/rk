@@ -24,7 +24,7 @@ fn a_test_name_is_matched_in_any_case(mut with_db: db::RootDatabase) {
     "#;
     let build = compile_tests(&mut with_db, source);
     let records: Vec<(String, Option<String>)> =
-        rk::test_host::run_each(&build.component, Some("T_SUB"), None, |_| {})
+        rk::test_host::run_each(&build.component, &[], Some("T_SUB"), None, |_| {})
             .expect("the tests run")
             .into_iter()
             .map(|record| (record.name, record.reason))

@@ -192,7 +192,7 @@ Its module and its name are written as WIT writes them, and rk converts neither 
 The module says where the import's types come from:
 
 - **A plain module**, a WIT name like `modbus`, is the host's own. rk types it in WIT from the declaration, as an interface the world declares itself.
-- **An interface of a package**, like `wasi:clocks/monotonic-clock@0.3.0` or `acme:modbus/rtu@1.0.0`, keeps the types the package's WIT gives it. rk writes no WIT for it: a library ships the package's WIT, see [Dependencies](dependencies.md). The build refuses an interface the program calls that no library ships.
+- **An interface of a package**, like `wasi:clocks/monotonic-clock@0.3.0` or `acme:modbus/rtu@1.0.0`, keeps the types the package's WIT gives it. rk writes no WIT for it: a library ships the package's WIT, or carries the component that exports the interface and whose binary types it, see [Dependencies](dependencies.md). The build refuses an interface the program calls that no library ships or exports.
 
 A plain module's import takes each `VAR_INPUT` as a parameter, and the return type is the result, or the record of the `VAR_OUTPUT` and the return type, named and typed as an export's are, except that an import returns no `STRING`.
 

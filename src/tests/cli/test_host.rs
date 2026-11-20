@@ -66,7 +66,7 @@ fn the_tests_read_wasi_s_clocks(mut with_db: db::RootDatabase) {
     );
     let build = compile_tests(&mut with_db, &source);
     let records =
-        rk::test_host::run_each(&build.component, None, None, |_| {}).expect("the tests run");
+        rk::test_host::run_each(&build.component, &[], None, None, |_| {}).expect("the tests run");
     let failed: Vec<_> = records
         .iter()
         .filter(|record| record.reason.is_some())
@@ -98,7 +98,7 @@ fn an_unwired_host_function_traps_the_test_that_calls_it(mut with_db: db::RootDa
     "#;
     let build = compile_tests(&mut with_db, source);
     let records =
-        rk::test_host::run_each(&build.component, None, None, |_| {}).expect("the tests run");
+        rk::test_host::run_each(&build.component, &[], None, None, |_| {}).expect("the tests run");
     let by_name = |name: &str| {
         records
             .iter()

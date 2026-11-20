@@ -55,7 +55,7 @@ pub struct Fetched {
 /// How a git URL that names no commit is taken.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Refs {
-    /// By `rk fetch --save`: it is resolved, and the commit is what is
+    /// By `rk fetch <url>`: it is resolved, and the commit is what is
     /// written down.
     Latest,
     /// By a dependency: it has to say which commit, since the same line
@@ -297,16 +297,15 @@ pub fn get(url: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-/// Writes `fetched` in the `[dependencies]` of `config_file`, under the
-/// name the library gives itself and with the URL to write down for it. An
-/// entry of that name is replaced, which is how a library is moved to
-/// another version. The rest of the file is left as it is written.
-pub fn save(config_file: &Path, fetched: &Fetched) -> Result<(), String> {
-    let source = std::fs::read_to_string(config_file)
-        .map_err(|e| format!("reading {}: {e}", config_file.display()))?;
+/// `source`, the text of a `config.toml`, with `fetched` in its
+/// `[dependencies]`, under the name the library gives itself and with the
+/// URL to write down for it. An entry of that name is replaced, which is how
+/// a library is moved to another version. The rest of the text is left as
+/// it is written. Nothing is written: the caller checks the entry first.
+pub fn with_entry(source: &str, fetched: &Fetched) -> Result<String, String> {
     let mut document = source
         .parse::<toml_edit::DocumentMut>()
-        .map_err(|e| format!("{}: {e}", config_file.display()))?;
+        .map_err(|e| e.to_string())?;
     let dependencies = document
         .entry("dependencies")
         .or_insert(toml_edit::table())
@@ -316,6 +315,5 @@ pub fn save(config_file: &Path, fetched: &Fetched) -> Result<(), String> {
     entry.insert("url", fetched.url.as_str().into());
     entry.insert("hash", fetched.hash.to_string().into());
     dependencies.insert(&fetched.name, toml_edit::value(entry));
-    std::fs::write(config_file, document.to_string())
-        .map_err(|e| format!("writing {}: {e}", config_file.display()))
+    Ok(document.to_string())
 }

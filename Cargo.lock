@@ -3013,6 +3013,7 @@ dependencies = [
  "wasmparser 0.244.0",
  "wasmtime",
  "wasmtime-wasi",
+ "wat",
  "wit-component",
  "wit-parser",
 ]
@@ -5073,6 +5074,7 @@ dependencies = [
  "wasm-encoder 0.261.0",
  "wasm-metadata",
  "wasmparser 0.261.0",
+ "wat",
  "wit-parser",
 ]
 

@@ -14,9 +14,13 @@ description: Compile a workspace and run its {test} FUNCTIONs and FUNCTION_BLOCK
 Runs every FUNCTION marked `{test}`, once, and every FUNCTION_BLOCK marked `{test}`, cycle by cycle until a cycle leaves its `DONE` TRUE.
 Writing them is the `programming-tests` skill.
 
-The tests run on the component of the workspace, unoptimized, the way a host runs it: it is left in `rk_build/test/<project>.wasm` with its WIT, or in `rk_build/test-O<level>/` with `-O`.
+The tests run on the component of the workspace, unoptimized, the way a host runs it: it is left in `rk_build/test/<project>.wasm`, or in `rk_build/test-O<level>/` with `-O`.
 That build tells `rk test` where each raise is, so a failure is reported with the calls in progress, and no other command writes it.
 The clocks are WASI's, as wasmtime gives them, and the time zone is the machine's.
+
+The components of the libraries the workspace calls go beside it, in `components/`, and run beside it, as a runtime runs them: each started for each test, in a store of its own, with the same WASI 0.3.
+A trap in one fails the test that called it, named after its library: `trapped in the component of 'drives': …`.
+An import of a component that `rk test` does not give traps only when the component calls it.
 
 Exit code is `0` when all passed, `1` otherwise.
 That same `1` is also a workspace that failed to compile, so read the output to tell the two apart.

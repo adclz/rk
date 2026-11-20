@@ -152,19 +152,34 @@ impl<'db> Resolver<'db> {
                 );
                 false
             }
+            name::NameResolution::NotFound
+                if let Some(reached) =
+                    name::reached_outside(db, access, path_expr.get_scope_id(db)) =>
+            {
+                ctx.errors.push(
+                    crate::check::errors::e10_visibility::VisibilityError::OutsideTheLibrary {
+                        text: CallSite::from_scoped(db, &path_expr).to_string(db),
+                        span: path_expr.get_span(db),
+                        reached,
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
+                false
+            }
             name::NameResolution::NotFound => {
                 // When a namespaced path like `MY_TYPE.field` fails FQ resolution,
                 // check whether the namespace prefix itself is invalid. If the prefix
                 // is not a real namespace (e.g. it's a TYPE name), point the error at
                 // the first step rather than the last — the root cause is the prefix.
                 let error_expr = if let Some(ns_path) = &access.namespace
-                    && !crate::hir_ty::index_graphs::namespace_exists(
+                    && !crate::hir_ty::index_graphs::namespace_exists_seen(
                         db,
                         crate::hir_ty::index_graphs::absolute_namespace_path(
                             db,
                             path_expr.scope_id(db),
                             ns_path.path(db),
                         ),
+                        crate::hir_ty::library::Seen::From(path_expr.scope_id(db).file(db)),
                     ) {
                     path_expr
                         .flatten(db)
@@ -233,7 +248,7 @@ impl<'db> Resolver<'db> {
                     } else {
                         UnlocatableAddress::Malformed
                     })
-                } else if crate::check::check_duplicates::is_library_file(db, ctx.scope.file(db)) {
+                } else if crate::hir_ty::library::is_library_code(db, ctx.scope.file(db)) {
                     Some(UnlocatableAddress::InLibrary)
                 } else {
                     None
@@ -619,6 +634,22 @@ impl<'db> Resolver<'db> {
                         // try_resolve_as_fq pushed a "not found" error; this access is
                         // actually valid, so drop it.
                         ctx.errors.pop();
+                        // Not from a library's code, which sees no global
+                        // (E1008): the program's are the program's.
+                        if crate::hir_ty::library::is_library_code(db, ctx.scope.file(db)) {
+                            let expr = step.get_expr(db);
+                            ctx.errors.push(
+                                crate::check::errors::e10_visibility::VisibilityError::OutsideTheLibrary {
+                                    text: CallSite::from_scoped(db, &expr).to_string(db),
+                                    span: expr.get_span(db),
+                                    reached: crate::check::errors::e10_visibility::Reached::Global,
+                                }
+                                .to_diagnostic(db, ctx.scope.file(db)),
+                            );
+                            ctx.type_of_path_expr.insert(expr, Type::Never);
+                            ctx.type_of_path_expr.insert(path_expr, Type::Never);
+                            return;
+                        }
                         let ty = Type::new_var_with_multibits(db, global, step_multibits);
                         ctx.type_of_path_expr.insert(step.get_expr(db), ty);
                         ctx.variable_of_path_expr.insert(step.get_expr(db), global);

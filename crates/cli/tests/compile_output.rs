@@ -86,6 +86,98 @@ fn a_build_is_one_component() {
     assert!(world.contains("export rk:plc/control@0.1.0;"), "{world}");
 }
 
+/// A library is built into the programs that list it, never alone: `rk
+/// compile` refuses its folder and writes nothing, where `rk check` and `rk
+/// test` take it.
+#[test]
+fn a_library_is_not_compiled_alone() {
+    let ws = tempfile::tempdir().unwrap();
+    std::fs::write(
+        ws.path().join("config.toml"),
+        "[project]\nname = \"drives\"\nversion = \"0.1.0\"\ntype = \"library\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        ws.path().join("Axis.st"),
+        "FUNCTION Twice : INT\nVAR_INPUT n : INT; END_VAR\n    Twice := n * 2;\nEND_FUNCTION\n\n\
+         {test}\nFUNCTION test_twice\n    IF Twice(2) <> 4 THEN __RAISE('twice'); END_IF;\nEND_FUNCTION\n",
+    )
+    .unwrap();
+    let out = rk(&["compile"], ws.path());
+    assert!(!out.status.success(), "a library compiled alone");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(
+            "this workspace is a library (`type = \"library\"`): `rk check` and `rk test` take it, and a program that lists it in its `[dependencies]` builds it"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        !ws.path().join("rk_build").join("debug").exists(),
+        "nothing written"
+    );
+    for command in ["check", "test"] {
+        let out = rk(&[command], ws.path());
+        assert!(
+            out.status.success(),
+            "rk {command}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
+/// `rk check` in a program reports its libraries' errors, as `rk compile`
+/// does, and its summary says how many are theirs.
+#[test]
+fn rk_check_counts_a_library_s_errors() {
+    let root = tempfile::tempdir().unwrap();
+    let (ws, motion) = (root.path().join("ws"), root.path().join("motion"));
+    for (path, text) in [
+        (
+            ws.join("config.toml"),
+            "[project]\nname = \"ws\"\nversion = \"0.1.0\"\n\n[dependencies]\nmotion = { path = \"../motion\" }\n",
+        ),
+        (
+            ws.join("main.st"),
+            "FUNCTION Run : INT\n    Run := 1;\nEND_FUNCTION\n",
+        ),
+        (
+            motion.join("config.toml"),
+            "[project]\nname = \"motion\"\nversion = \"0.1.0\"\ntype = \"library\"\n",
+        ),
+        (
+            motion.join("Motion.st"),
+            "FUNCTION Twice : INT\n    Twice := Nope();\nEND_FUNCTION\n",
+        ),
+    ] {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    let out = rk(&["check"], &ws);
+    assert!(!out.status.success(), "a library's error passed the check");
+    // Without the terminal's colors.
+    let plain = |bytes: &[u8]| {
+        let text = String::from_utf8_lossy(bytes).into_owned();
+        let mut out = String::new();
+        let mut chars = text.chars();
+        while let Some(c) = chars.next() {
+            if c == '\u{1b}' {
+                chars.by_ref().find(|c| *c == 'm');
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    };
+    let stdout = plain(&out.stdout);
+    assert!(
+        stdout.contains("1 error(s) (1 in library files), 0 warning(s) found."),
+        "{stdout}"
+    );
+    let stderr = plain(&out.stderr);
+    assert!(stderr.contains("E0201"), "{stderr}");
+}
+
 /// `--output` places the component, and nothing beside it.
 #[test]
 fn an_output_given_holds_the_component() {
@@ -107,56 +199,103 @@ fn an_output_given_holds_the_component() {
 }
 
 /// An interface of a package is typed by the package's WIT, which rk does
-/// not write: the build is refused until the workspace ships it in its
-/// `wit/`, and then the component imports it.
+/// not write: the build is refused until a library ships it in its `wit/`,
+/// and then the component imports it. The program carries no WIT: it calls
+/// the host's interfaces through the library, and its own `wit/` folder is
+/// refused.
 #[test]
-fn the_workspace_s_package_types_its_import() {
+fn a_host_s_package_comes_through_a_library() {
     let ws = workspace();
+    let root = ws.path();
     std::fs::write(
-        ws.path().join("display.st"),
-        r#"
-{extern 'acme:display/text@1.0.0' 'show'}
-FUNCTION Show : BOOL
-VAR_INPUT line : STRING; END_VAR
-END_FUNCTION
-
-{export}
-FUNCTION Ping : BOOL
-    Ping := Show(line := 'ping');
-END_FUNCTION
-"#,
+        root.join("config.toml"),
+        "[project]\nname = \"Plant_A\"\nversion = \"0.1.0\"\n\n[dependencies]\n\
+         display = { path = \"display\" }\n",
     )
     .unwrap();
-    let out = rk(&["compile"], ws.path());
-    assert!(!out.status.success(), "refused without the package's WIT");
-    let refused = String::from_utf8_lossy(&out.stderr);
+    let library = root.join("display");
+    std::fs::create_dir_all(&library).unwrap();
+    std::fs::write(
+        library.join("config.toml"),
+        "[project]\nname = \"display\"\nversion = \"1.0.0\"\ntype = \"library\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        library.join("Text.st"),
+        "{extern 'acme:display/text@1.0.0' 'show'}\nFUNCTION Show : BOOL\n\
+         VAR_INPUT line : STRING; END_VAR\nEND_FUNCTION\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("ping.st"),
+        "{export}\nFUNCTION Ping : BOOL\n    Ping := Display.Show(line := 'ping');\nEND_FUNCTION\n",
+    )
+    .unwrap();
+    let refused = |out: std::process::Output| {
+        assert!(!out.status.success(), "built");
+        String::from_utf8_lossy(&out.stderr).into_owned()
+    };
+    let stderr = refused(rk(&["compile"], root));
     assert!(
-        refused.contains(
-            "the module imports `acme:display/text@1.0.0`, which no `wit/` folder of the \
-             workspace or of a library describes"
+        stderr.contains(
+            "the module imports `acme:display/text@1.0.0`, which no library's `wit/` \
+             describes, and no library's component exports"
         ),
-        "{refused}"
+        "{stderr}"
     );
 
-    let shipped = "package acme:display@1.0.0;\n\ninterface text {\n    \
+    let package = "package acme:display@1.0.0;\n\ninterface text {\n    \
                    show: func(line: string) -> bool;\n}\n";
-    std::fs::create_dir_all(ws.path().join("wit")).unwrap();
-    std::fs::write(ws.path().join("wit").join("display.wit"), shipped).unwrap();
-    let out = rk(&["compile"], ws.path());
+    std::fs::create_dir_all(root.join("wit")).unwrap();
+    std::fs::write(root.join("wit").join("display.wit"), package).unwrap();
+    let stderr = refused(rk(&["compile"], root));
+    assert!(
+        stderr.contains("this program carries WIT text in `wit/`"),
+        "{stderr}"
+    );
+    std::fs::remove_dir_all(root.join("wit")).unwrap();
+
+    std::fs::create_dir_all(library.join("wit")).unwrap();
+    std::fs::write(library.join("wit").join("display.wit"), package).unwrap();
+    let out = rk(&["compile"], root);
     assert!(
         out.status.success(),
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let component = std::fs::read(
-        ws.path()
-            .join("rk_build")
-            .join("debug")
-            .join("Plant_A.wasm"),
-    )
-    .unwrap();
+    let component =
+        std::fs::read(root.join("rk_build").join("debug").join("Plant_A.wasm")).unwrap();
     let world = world_of(&component);
     assert!(world.contains("import acme:display/text@1.0.0;"), "{world}");
+    assert!(
+        !root
+            .join("rk_build")
+            .join("debug")
+            .join("components")
+            .exists(),
+        "nothing beside: the host gives the interface"
+    );
+}
+
+/// A program calls a component through a library: one with a `component/`
+/// folder of its own is refused by the check and by the build, and nothing
+/// is built.
+#[test]
+fn a_program_carries_no_component() {
+    let ws = workspace();
+    let root = ws.path();
+    std::fs::create_dir_all(root.join("component")).unwrap();
+    std::fs::write(root.join("component").join("drive.wasm"), b"\0asm").unwrap();
+    for command in ["check", "compile"] {
+        let out = rk(&[command], root);
+        assert!(!out.status.success(), "rk {command} let it through");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains("this program carries a component in `component/`"),
+            "{stderr}"
+        );
+    }
+    assert!(!root.join("rk_build").exists(), "nothing built");
 }
 
 /// The `{export}` FUNCTIONs are in an interface named after the project,

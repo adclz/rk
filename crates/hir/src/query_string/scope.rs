@@ -8,7 +8,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::hir_ty::resolver::visibility::{first_closed_internal, pou_visible_from};
 use crate::{
-    HasName,
+    HasName, HirNodeInfo,
     hir_def::{
         interned::{identifier::Ident, namespace::NamespacePath},
         namespace::NamespaceDecl,
@@ -297,10 +297,13 @@ fn search_file_indexes<'db>(
 
                 // Not visible from here: a PRIVATE function outside its
                 // namespace, an INTERNAL namespace's content from outside
-                // it, a test from production code. Offering it would only
-                // lead to the diagnostic that refuses it.
+                // it, a test from production code, what a library's code
+                // does not see. Offering it would only lead to the
+                // diagnostic that refuses it.
                 if let Some(calling) = scope
-                    && !pou_visible_from(db, calling, pou)
+                    && (!pou_visible_from(db, calling, pou)
+                        || !crate::hir_ty::library::Seen::From(calling.file(db))
+                            .sees(db, pou.get_scope_id(db).file(db)))
                 {
                     return ControlFlow::Continue::<()>(());
                 }
@@ -331,7 +334,9 @@ fn search_file_indexes<'db>(
             }
             SymbolKind::Namespace(ns) if include_namespaces => {
                 if let Some(calling) = scope
-                    && first_closed_internal(db, calling, ns.scope_id(db)).is_some()
+                    && (first_closed_internal(db, calling, ns.scope_id(db)).is_some()
+                        || !crate::hir_ty::library::Seen::From(calling.file(db))
+                            .sees(db, ns.scope_id(db).file(db)))
                 {
                     return ControlFlow::Continue::<()>(());
                 }
@@ -361,7 +366,9 @@ pub fn discover_in_scope<'db>(
         result.pous.insert(*n, *p);
     });
 
-    // Every library is imported: its root is in scope with no USING.
+    // Every library is imported: its root is in scope with no USING. A
+    // library's code sees what its own and the standard library declare.
+    let seen = crate::hir_ty::library::Seen::From(scope.file(db));
     for root in crate::hir_ty::library::library_roots(db) {
         result.seen_namespaces.insert(root.path);
     }
@@ -371,7 +378,7 @@ pub fn discover_in_scope<'db>(
         // Find POUs in all shared namespaces
         if let ScopeKind::Namespace(ns) = scope.kind {
             let path = ns.absolute_path(db);
-            if crate::hir_ty::index_graphs::namespace_exists(db, path) {
+            if crate::hir_ty::index_graphs::namespace_exists_seen(db, path, seen) {
                 result.seen_namespaces.insert(path);
             }
         }
@@ -383,7 +390,7 @@ pub fn discover_in_scope<'db>(
                 scope.id,
                 using.path(db).path(db),
             );
-            if crate::hir_ty::index_graphs::namespace_exists(db, path) {
+            if crate::hir_ty::index_graphs::namespace_exists_seen(db, path, seen) {
                 result.seen_namespaces.insert(path);
             }
         }

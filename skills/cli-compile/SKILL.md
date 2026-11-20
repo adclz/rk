@@ -15,9 +15,11 @@ Compiles the workspace to one WebAssembly component: a core module, wrapped with
 
 A workspace with errors does not compile, and `rk check` reports the same diagnostics without writing anything.
 The linter does not run here, so a lint can never block a build.
+A library (`type = "library"` in its `config.toml`) is refused: it is built into the programs that list it, and `rk check` and `rk test` take it in its own folder.
 
 The component is written to `rk_build/debug/<project>.wasm`, or to `rk_build/release/<project>.wasm` with `--release`.
 It carries the types of what it imports and exports, so no WIT is written beside it: `wasm-tools component wit <project>.wasm` prints them.
+The components of the libraries the program calls go beside it, in `components/`, each named after its library: the runtime runs them beside the program and links its imports to them. The folder holds the last build's only.
 
 ## Usage
 

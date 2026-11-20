@@ -51,6 +51,27 @@ pub enum VisibilityError<'db> {
     /// signature, and a test FUNCTION_BLOCK runs on the runner's instance,
     /// left out of the build of a library's user with the library's tests.
     TestOnly { call_site: CallSite<'db> },
+    /// What a library's code names that it does not see: another library's
+    /// declaration, the program's, or a global. A library uses itself and
+    /// the standard library only, whatever the program that reads it lists.
+    OutsideTheLibrary {
+        /// What the code wrote.
+        text: compact_str::CompactString,
+        span: auto_lsp::tree_sitter::Range,
+        reached: Reached,
+    },
+}
+
+/// What a library's code reached for outside it (E1008).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, salsa::Update)]
+pub enum Reached {
+    /// A declaration of the library of this name.
+    Library(crate::hir_def::interned::identifier::Ident),
+    /// A declaration of the program that reads the library.
+    Program,
+    /// A global, which only the program declares: by a VAR_EXTERNAL, or by
+    /// its bare name.
+    Global,
 }
 
 impl<'db> ErrorCode for VisibilityError<'db> {
@@ -63,6 +84,7 @@ impl<'db> ErrorCode for VisibilityError<'db> {
             Self::PrivateFunction { .. } => "E1005",
             Self::SpecifierNotOnFunction { .. } => "E1006",
             Self::TestOnly { .. } => "E1007",
+            Self::OutsideTheLibrary { .. } => "E1008",
         }
     }
 }
@@ -222,6 +244,37 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     "for code shared between tests, write a POU without the pragma".into(),
                 );
 
+                diag
+            }
+            VisibilityError::OutsideTheLibrary {
+                text,
+                span,
+                reached,
+            } => {
+                let message = match reached {
+                    Reached::Library(name) => {
+                        format!("'{text}' is declared by the library '{}'", name.text(db))
+                    }
+                    Reached::Program => format!("'{text}' is declared by the program"),
+                    Reached::Global => format!("'{text}' is a global"),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call();
+                match reached {
+                    Reached::Global => {
+                        diag.with_note(
+                            "a library sees no global: the program declares them".into(),
+                        );
+                        diag.with_help("take it as a VAR_IN_OUT".into());
+                    }
+                    _ => diag.with_note(
+                        "a library sees its own declarations and the standard library's".into(),
+                    ),
+                }
                 diag
             }
         }

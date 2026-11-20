@@ -153,6 +153,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E1005", "call of a PRIVATE function"),
     ("E1006", "specifier not applicable to a FUNCTION"),
     ("E1007", "access to a test-only item"),
+    ("E1008", "access outside the library"),
     ("E1101", "more than one EXTENDS clause"),
     ("E1102", "more than one IMPLEMENTS clause"),
     ("E1103", "IMPLEMENTS before EXTENDS"),
@@ -235,6 +236,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E1430", "frame larger than the stack"),
     ("E1431", "partial access to a type without parts"),
     ("E1432", "address in a library"),
+    ("E1433", "configuration in a library"),
     (
         "E1501",
         "extern pragma outside a FUNCTION or FUNCTION_BLOCK",
