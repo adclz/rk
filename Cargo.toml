@@ -162,6 +162,8 @@ wit-parser = { workspace = true }
 # exports a world's interfaces, built from a module that traps, as a
 # library's component stands in a test.
 wit-component = { workspace = true, features = ["dummy-module"] }
+# The modules of the components a test's library carries, written as text.
+wat = "1"
 wasmtime = "50.0.1"
 # The hosts the console tests build: WASI's standard output and error from
 # wasmtime-wasi, over sinks that are ready, stalled or closed.

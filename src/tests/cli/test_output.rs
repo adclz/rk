@@ -14,7 +14,7 @@ use rstest::rstest;
 /// takes what each writes within the call.
 fn run(db: &mut db::RootDatabase, source: &str) -> Vec<TestRecord> {
     let build = compile_tests_with_libraries(db, STD_CONSOLE, source);
-    rk::test_host::run_each(&build.component, None, None, |_| {}).expect("the tests run")
+    rk::test_host::run_each(&build.component, &[], None, None, |_| {}).expect("the tests run")
 }
 
 fn record<'a>(records: &'a [TestRecord], name: &str) -> &'a TestRecord {

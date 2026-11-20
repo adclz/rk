@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::tests::utils::component_of_world;
+use crate::tests::utils::{component_of_wat, component_of_world};
 
 /// A component that exports an axis.
 const AXIS: &str = r#"
@@ -311,5 +311,297 @@ fn a_component_s_interface_passes_plain_values_only() {
              passes plain values only, for now"
         ),
         "{refused:?}"
+    );
+}
+
+/// A component that computes: an axis at 42, a text sent back as it came,
+/// the time WASI's monotonic clock gives it, and a reading of a bus no host
+/// gives a test.
+const MACHINE: &str = r#"
+    package acme:drive@1.0.0;
+
+    interface axis {
+        position: func() -> s32;
+        echo: func(text: string) -> string;
+        uptime: func() -> u64;
+        stuck: func() -> s32;
+    }
+
+    interface bus {
+        read: func() -> u32;
+    }
+
+    world drive {
+        import bus;
+        import wasi:clocks/monotonic-clock@0.3.0;
+        export axis;
+    }
+"#;
+
+/// [`MACHINE`]'s module: `echo` gives back the bytes it was given, which
+/// the call placed in its memory.
+const MACHINE_WAT: &str = r#"
+    (module
+        (import "acme:drive/bus@1.0.0" "read" (func $read (result i32)))
+        (import "wasi:clocks/monotonic-clock@0.3.0" "now" (func $now (result i64)))
+        (memory (export "memory") 1)
+        (global $next (mut i32) (i32.const 1024))
+        (func $realloc (export "cabi_realloc") (param i32 i32 i32 i32) (result i32)
+            (local $at i32)
+            global.get $next
+            local.get 2 i32.const 1 i32.sub i32.add
+            local.get 2 i32.const 1 i32.sub i32.const -1 i32.xor i32.and
+            local.tee $at
+            local.get 3 i32.add
+            global.set $next
+            local.get $at)
+        (func (export "acme:drive/axis@1.0.0#position") (result i32)
+            i32.const 42)
+        (func (export "acme:drive/axis@1.0.0#echo") (param $text i32) (param $len i32) (result i32)
+            (local $result i32)
+            i32.const 0 i32.const 0 i32.const 4 i32.const 8
+            call $realloc
+            local.tee $result
+            local.get $text
+            i32.store
+            local.get $result
+            local.get $len
+            i32.store offset=4
+            local.get $result)
+        (func (export "cabi_post_acme:drive/axis@1.0.0#echo") (param i32)
+            i32.const 1024
+            global.set $next)
+        (func (export "acme:drive/axis@1.0.0#uptime") (result i64)
+            call $now)
+        (func (export "acme:drive/axis@1.0.0#stuck") (result i32)
+            call $read))
+"#;
+
+/// The tests of a program that calls [`MACHINE`]'s axis.
+const MACHINE_TESTS: &str = "
+{test}
+FUNCTION test_position
+    IF Acme.Drive.Axis.POSITION() <> 42 THEN
+        __RAISE('the axis is not at 42');
+    END_IF;
+END_FUNCTION
+
+{test}
+FUNCTION test_echo
+VAR back : STRING; END_VAR
+    Acme.Drive.Axis.ECHO(text := 'hello', value := back);
+    IF back <> 'hello' THEN
+        __RAISE(back);
+    END_IF;
+END_FUNCTION
+
+{test}
+FUNCTION test_uptime
+    IF Acme.Drive.Axis.UPTIME() = 0 THEN
+        __RAISE('the clock stands at 0');
+    END_IF;
+END_FUNCTION
+
+{test}
+FUNCTION test_stuck
+    IF Acme.Drive.Axis.STUCK() = 0 THEN
+        __RAISE('nothing was read');
+    END_IF;
+END_FUNCTION
+
+{test}
+FUNCTION_BLOCK test_advance
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR belt : Acme.Conveyor.Belt.ADVANCE; END_VAR
+    belt(steps := 4);
+    IF belt.DONE THEN
+        IF belt.value <> 40 THEN
+            __RAISE('the belt did not advance by 40');
+        END_IF;
+        DONE := TRUE;
+    END_IF;
+END_FUNCTION_BLOCK
+";
+
+/// A component whose function is async, lifted as such: it returns what
+/// the call asked for through `task.return`, ten times the steps.
+const CONVEYOR: &str = r#"
+    package acme:conveyor@1.0.0;
+
+    interface belt {
+        advance: async func(steps: s32) -> s32;
+    }
+
+    world conveyor {
+        export belt;
+    }
+"#;
+
+const CONVEYOR_WAT: &str = r#"
+    (module
+        (import "[export]acme:conveyor/belt@1.0.0" "[task-return]advance"
+            (func $return (param i32)))
+        (memory (export "memory") 1)
+        (func (export "[async-lift]acme:conveyor/belt@1.0.0#advance")
+            (param $steps i32) (result i32)
+            local.get $steps
+            i32.const 10
+            i32.mul
+            call $return
+            ;; EXIT: the call is over.
+            i32.const 0)
+        (func (export "[callback][async-lift]acme:conveyor/belt@1.0.0#advance")
+            (param i32 i32 i32) (result i32)
+            i32.const 0))
+"#;
+
+/// What rk-bindgen writes for every program from what `component` exports,
+/// in one file.
+fn declarations(component: &[u8]) -> String {
+    let (resolve, world) = rk_bindgen::component_exports(component).expect("the component reads");
+    rk_bindgen::generate_reaching(&resolve, world, rk_bindgen::Reach::Everyone)
+        .expect("its exports are written")
+        .into_iter()
+        .map(|file| file.text)
+        .collect()
+}
+
+/// `rk test` of the workspace `ws`, of the tests whose name holds `only`
+/// when it is given.
+fn tested(ws: &Path, only: Option<&str>) -> rk::error::CliResult<()> {
+    rk::run(
+        ws,
+        false,
+        rk::cli::OutputFormat::Concise,
+        rk::cli::Command::Test {
+            test_name: only.map(str::to_string),
+            opt_level: None,
+            timeout: None,
+        },
+    )
+}
+
+/// `rk test` runs the program's calls into the libraries' components, as a
+/// runtime runs them: each component in a store of its own, beside the
+/// program, with the program's WASI 0.3. A number and a string cross both
+/// ways, and an async call goes to the component that exports it. A trap in
+/// a component fails the test that called it, named after its library, at
+/// the program's call.
+#[test]
+fn rk_test_runs_the_program_s_calls_into_a_component() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let machine = component_of_wat(MACHINE, "drive", MACHINE_WAT);
+    library(&root, "drives", &declarations(&machine), Some(&machine));
+    let conveyor = component_of_wat(CONVEYOR, "conveyor", CONVEYOR_WAT);
+    library(&root, "belts", &declarations(&conveyor), Some(&conveyor));
+    let ws = program(
+        &root,
+        "drives = { path = \"../drives\" }\nbelts = { path = \"../belts\" }\n",
+        "0",
+    );
+    write(&ws, &[("main.st", MACHINE_TESTS)]);
+    tested(&ws, Some("test_echo")).expect("the string comes back");
+    assert!(tested(&ws, None).is_err(), "test_stuck fails");
+
+    // What ran: the program, and the components beside it, byte for byte.
+    let built = ws.join("rk_build").join("test");
+    assert_eq!(
+        std::fs::read(built.join("components").join("drives.wasm")).unwrap(),
+        machine
+    );
+    assert_eq!(
+        std::fs::read(built.join("components").join("belts.wasm")).unwrap(),
+        conveyor
+    );
+    let beside = rk::test_runner::beside_of(&built.join("plant.wasm")).unwrap();
+    let records = rk::test_host::run_each(
+        &std::fs::read(built.join("plant.wasm")).unwrap(),
+        &beside,
+        None,
+        None,
+        |_| {},
+    )
+    .expect("the tests run");
+    let outcomes: Vec<(&str, Option<&str>)> = records
+        .iter()
+        .map(|record| (record.name.as_str(), record.reason.as_deref()))
+        .collect();
+    assert_eq!(
+        outcomes,
+        [
+            ("test_advance", None),
+            ("test_echo", None),
+            ("test_position", None),
+            (
+                "test_stuck",
+                Some(
+                    "trapped in the component of 'drives': unknown import: \
+                     `acme:drive/bus@1.0.0#read` has not been defined"
+                )
+            ),
+            ("test_uptime", None),
+        ]
+    );
+    // The program's call, not the component's insides.
+    let stuck = &records[3].backtrace;
+    assert_eq!(
+        stuck
+            .iter()
+            .map(|frame| (frame.function.as_str(), frame.line))
+            .collect::<Vec<_>>(),
+        [("test_stuck", Some(27))]
+    );
+}
+
+/// A component that does not start, its memory too small for its data,
+/// fails each test, named after its library: none runs without it.
+#[test]
+fn a_component_that_does_not_start_fails_each_test() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let broken = component_of_wat(
+        AXIS,
+        "drive",
+        r#"
+        (module
+            (memory (export "memory") 1)
+            (data (i32.const 70000) "past the end")
+            (func (export "acme:drive/axis@1.0.0#position") (result i32)
+                i32.const 1))
+        "#,
+    );
+    library(&root, "drives", POSITION, Some(&broken));
+    let ws = program(&root, "drives = { path = \"../drives\" }\n", "0");
+    write(
+        &ws,
+        &[(
+            "main.st",
+            "{test}\nFUNCTION test_position\n    IF Drives.Axis.POSITION() <> 1 THEN\n        \
+             __RAISE('the axis moved');\n    END_IF;\nEND_FUNCTION\n",
+        )],
+    );
+    assert!(tested(&ws, None).is_err(), "the test fails");
+    let built = ws.join("rk_build").join("test");
+    let records = rk::test_host::run_each(
+        &std::fs::read(built.join("plant.wasm")).unwrap(),
+        &rk::test_runner::beside_of(&built.join("plant.wasm")).unwrap(),
+        None,
+        None,
+        |_| {},
+    )
+    .expect("the tests run");
+    let outcomes: Vec<(&str, Option<&str>)> = records
+        .iter()
+        .map(|record| (record.name.as_str(), record.reason.as_deref()))
+        .collect();
+    assert_eq!(
+        outcomes,
+        [(
+            "test_position",
+            Some("the component of 'drives' did not start: out of bounds memory access")
+        )]
     );
 }

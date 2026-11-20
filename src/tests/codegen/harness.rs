@@ -1000,5 +1000,5 @@ pub fn run_tests(
     component: &[u8],
     filter: Option<&str>,
 ) -> Result<Vec<debug_format::test_report::TestRecord>> {
-    rk::test_host::run_each(component, filter, None, |_| {})
+    rk::test_host::run_each(component, &[], filter, None, |_| {})
 }

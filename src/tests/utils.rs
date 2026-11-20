@@ -649,11 +649,51 @@ pub fn component_of_world(wit: &str, world: &str) -> Vec<u8> {
     let world = resolve
         .select_world(&[package], Some(world))
         .expect("the world");
-    let mut module =
+    let module =
         wit_component::dummy_module(&resolve, world, wit_parser::ManglingAndAbi::Standard32);
+    wrapped(module, &resolve, world)
+}
+
+/// The component of the world `world` of `wit`, whose module is `wat`, as
+/// wit-component builds one: the binary carries its world. `wit` may take
+/// WASI's clocks, at the version the standard library ships.
+pub fn component_of_wat(wit: &str, world: &str, wat: &str) -> Vec<u8> {
+    let mut resolve = wit_parser::Resolve {
+        // WASI's time zone is `@unstable(feature = clocks-timezone)`.
+        all_features: true,
+        ..Default::default()
+    };
+    resolve
+        .push_dir(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("stdlib")
+                .join("wit")
+                .join("deps")
+                .join("wasi-clocks"),
+        )
+        .expect("WASI's clocks resolve");
+    let package = resolve
+        .push_str("component.wit", wit)
+        .expect("the WIT resolves");
+    let world = resolve
+        .select_world(&[package], Some(world))
+        .expect("the world");
+    wrapped(
+        wat::parse_str(wat).expect("the module parses"),
+        &resolve,
+        world,
+    )
+}
+
+/// `module`, typed with `world` and wrapped into a component.
+fn wrapped(
+    mut module: Vec<u8>,
+    resolve: &wit_parser::Resolve,
+    world: wit_parser::WorldId,
+) -> Vec<u8> {
     wit_component::embed_component_metadata(
         &mut module,
-        &resolve,
+        resolve,
         world,
         wit_component::StringEncoding::UTF8,
         false,
