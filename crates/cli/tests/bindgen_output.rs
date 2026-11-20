@@ -123,6 +123,27 @@ fn only_what_rk_bindgen_wrote_is_removed() {
     assert!(root.join("generated/acme-drive-axis.st").is_file());
 }
 
+/// `rk bindgen --help` says what the command reads: in a library, its
+/// component and its `wit/`, and otherwise the WIT folder `--wit` names.
+/// The help is wrapped at the terminal's width, so words are compared, not
+/// lines.
+#[test]
+fn rk_bindgen_s_help_says_what_it_reads() {
+    let words = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let workspace = tempfile::tempdir().unwrap();
+    let help = words(&succeeded(&rk(&["bindgen", "--help"], workspace.path())));
+    for said in [
+        "Write the ST declarations of a library's component and of its host's interfaces",
+        "In a library, by default: what the component in `component/` exports, and every \
+         interface of the package in `wit/`",
+        "A program names a WIT folder with `--wit`.",
+        "A WIT folder to read instead of the library's component and `wit/`",
+        "each a folder, a `.wit` file or a binary `.wasm` package",
+    ] {
+        assert!(help.contains(&words(said)), "{said}\n\n{help}");
+    }
+}
+
 /// A program calls a host's interfaces through a library: `rk bindgen` in a
 /// program names a WIT folder, and one that is not there is refused, the
 /// folder named.

@@ -90,25 +90,61 @@ fn a_library_with_dependencies_is_refused() {
     );
 }
 
-/// A program carries no WIT: it calls a host's interfaces through a
-/// library. One with a `wit/` folder is refused on its `[project]` line.
+/// A program carries no WIT and no component: it calls a host's interfaces
+/// and a component through a library. One with a `wit/` or a `component/`
+/// folder is refused on its `[project]` line, once for each.
 #[test]
-fn a_program_carries_no_wit() {
+fn a_program_carries_no_wit_and_no_component() {
     let t = tempfile::tempdir().unwrap();
     let (program, _) = workspace_of(t.path(), "");
     let source = fs::read_to_string(program.join(CONFIG_FILE)).unwrap();
-    assert_eq!(db::dependencies::wit_in_program(&program, &source), None);
+    let refused = || db::dependencies::library_folders_in_program(&program, &source);
+    assert!(refused().is_empty());
+
     fs::create_dir_all(program.join("wit")).unwrap();
-    let problem = db::dependencies::wit_in_program(&program, &source).expect("refused");
-    assert_eq!(problem.message, "this program carries WIT text in `wit/`");
-    assert_eq!(&source[problem.span.clone()], "[project]");
+    let [wit] = refused().try_into().expect("one problem");
+    assert_eq!(wit.message, "this program carries WIT text in `wit/`");
+    assert_eq!(&source[wit.span.clone()], "[project]");
     assert_eq!(
-        problem.notes,
+        wit.notes,
         ["a program calls a host's interfaces through a library, which carries their WIT"]
     );
     assert_eq!(
-        problem.help.as_deref(),
+        wit.help.as_deref(),
         Some("move the WIT into the `wit/` of a library the program lists, and remove `wit/`")
+    );
+
+    fs::remove_dir_all(program.join("wit")).unwrap();
+    fs::create_dir_all(program.join("component")).unwrap();
+    let [component] = refused().try_into().expect("one problem");
+    assert_eq!(
+        component.message,
+        "this program carries a component in `component/`"
+    );
+    assert_eq!(&source[component.span.clone()], "[project]");
+    assert_eq!(
+        component.notes,
+        ["a program calls a component through a library, which carries it"]
+    );
+    assert_eq!(
+        component.help.as_deref(),
+        Some(
+            "move the component into the `component/` of a library the program lists, and \
+             remove `component/`"
+        )
+    );
+
+    fs::create_dir_all(program.join("wit")).unwrap();
+    let both: Vec<String> = refused()
+        .into_iter()
+        .map(|problem| problem.message)
+        .collect();
+    assert_eq!(
+        both,
+        [
+            "this program carries WIT text in `wit/`",
+            "this program carries a component in `component/`"
+        ]
     );
 }
 

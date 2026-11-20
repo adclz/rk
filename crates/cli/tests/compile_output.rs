@@ -277,6 +277,27 @@ fn a_host_s_package_comes_through_a_library() {
     );
 }
 
+/// A program calls a component through a library: one with a `component/`
+/// folder of its own is refused by the check and by the build, and nothing
+/// is built.
+#[test]
+fn a_program_carries_no_component() {
+    let ws = workspace();
+    let root = ws.path();
+    std::fs::create_dir_all(root.join("component")).unwrap();
+    std::fs::write(root.join("component").join("drive.wasm"), b"\0asm").unwrap();
+    for command in ["check", "compile"] {
+        let out = rk(&[command], root);
+        assert!(!out.status.success(), "rk {command} let it through");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains("this program carries a component in `component/`"),
+            "{stderr}"
+        );
+    }
+    assert!(!root.join("rk_build").exists(), "nothing built");
+}
+
 /// The `{export}` FUNCTIONs are in an interface named after the project,
 /// in the component's world.
 #[test]
