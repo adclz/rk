@@ -175,6 +175,7 @@ See [VAR_CONFIG](var-config.md).
 
 A library can carry a component, a `.wasm` built from another language, in a `component/` folder at its root, with the component's LICENSE beside it.
 One library carries one component, with its code: the WIT of a host's package goes in `wit/` (below), and a library may carry both.
+Your program carries none: it calls a component through a library, and a `component/` folder of its own is refused.
 
 ```schema
 drives/

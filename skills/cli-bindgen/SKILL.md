@@ -57,7 +57,8 @@ The declarations are under the package's namespace, `Acme.Drive.Axis` for `acme:
 
 The build reads each library's `wit/` on its own, and types each import of a package's interface with it, so the folder ships with the library and holds in its `deps/` what its own packages use.
 An interface the program calls that no `wit/` ships stops the build; a declaration nothing calls costs nothing.
-A program carries no WIT: it calls a host's interfaces through a library, and `rk bindgen` in a program reads only the folder `--wit` names.
+A program carries no WIT and no component: it calls a host's interfaces and a component through a library.
+A `wit/` or a `component/` folder in a program is refused, and `rk bindgen` in a program reads only the folder `--wit` names.
 
 ## Usage
 
