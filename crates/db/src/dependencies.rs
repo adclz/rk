@@ -339,6 +339,38 @@ pub fn resolve(
     resolver.resolution
 }
 
+/// A program with a `wit/` folder, `workspace`: refused on the `[project]`
+/// line of its `config.toml`, `source`. A program calls a host's
+/// interfaces through a library, whose `wit/` types them.
+pub fn wit_in_program(workspace: &Path, source: &str) -> Option<Problem> {
+    if !workspace.join("wit").is_dir() {
+        return None;
+    }
+    Some(
+        Problem::new(
+            &line_of(source, |line| line == "[project]"),
+            "this program carries WIT text in `wit/`".to_string(),
+        )
+        .note("a program calls a host's interfaces through a library, which carries their WIT")
+        .help("move the WIT into the `wit/` of a library the program lists, and remove `wit/`"),
+    )
+}
+
+/// The first line of `source` that `is` says is the one, trimmed, or the
+/// start of the file.
+fn line_of(source: &str, is: impl Fn(&str) -> bool) -> Range<usize> {
+    let mut start = 0;
+    for line in source.split_inclusive('\n') {
+        let text = line.trim();
+        if is(text) {
+            let at = start + (line.len() - line.trim_start().len());
+            return at..at + text.len();
+        }
+        start += line.len();
+    }
+    0..0
+}
+
 /// The rule the problems about two names that are one rest on.
 const CASE_INSENSITIVE: &str = "a library's name is its namespace, and names are case-insensitive";
 

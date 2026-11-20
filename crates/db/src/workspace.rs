@@ -197,6 +197,13 @@ fn resolve_all(
                     .into_iter()
                     .map(|problem| dependency_diagnostic(&source, problem)),
             );
+            // A program reads WIT through its libraries only.
+            if config.project.kind == ProjectKind::Program {
+                file_errors.extend(
+                    crate::dependencies::wit_in_program(workspace, &source)
+                        .map(|problem| dependency_diagnostic(&source, problem)),
+                );
+            }
             resolution.libraries
         }
         _ => standard.into_iter().collect(),
