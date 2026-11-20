@@ -174,7 +174,7 @@ See [VAR_CONFIG](var-config.md).
 ## A component
 
 A library can carry a component, a `.wasm` built from another language, in a `component/` folder at its root, with the component's LICENSE beside it.
-One library carries one component.
+One library carries one component, with its code: the WIT of a host's package goes in `wit/` (below), and a library may carry both.
 
 ```schema
 drives/
@@ -221,7 +221,8 @@ An import of the component that `rk test` does not give, as here, traps only whe
 ## The host's interfaces
 
 A library calls the functions a host provides, WASI's or a runtime's own, through the interfaces of their packages.
-It ships the WIT of those packages in a `wit/` folder at its root, as the host ships them: the host's package, its files at the top of the folder, and in `deps/` a folder for each package it uses.
+It ships the WIT of those packages in a `wit/` folder at its root, as WIT's tools lay one out: the host's package, its files at the top of the folder, and in `deps/` one for each package it uses.
+A package in `deps/` may be a folder, a `.wit` file, or a binary `.wasm` package, as a registry hands one out.
 No world is written for it.
 
 ```schema
@@ -234,7 +235,7 @@ drives/
    └─ deps/                         the packages it uses, if any
 ```
 
-[`rk bindgen`](../skills/cli-bindgen/SKILL.md), run in the library's folder, writes the ST declarations of every interface of the host's package into `generated/`, one file per interface, with those the package takes types from:
+[`rk bindgen`](../skills/cli-bindgen/SKILL.md), run in the library's folder, writes the ST declarations of every interface of the host's package into `generated/`, one file per interface, with those the package takes types from, beside what the library's component exports when it carries one:
 
 ```sh
 rk bindgen
@@ -247,14 +248,14 @@ The declarations are `INTERNAL`: only the library's own blocks call them, as the
 With `--public` they are written for every program.
 Running it again after the WIT changes rewrites them, and leaves the library's own files alone.
 
-The build reads the `wit/` of every library and of the workspace, and types each import of a package's interface with it, see [WASM ABI](wasm-abi.md).
+The build reads the `wit/` of every library, each folder on its own, and types each import of a package's interface with it, see [WASM ABI](wasm-abi.md): a folder holds in its `deps/` the packages its own use.
 An interface the program calls that no `wit/` ships stops the build, and so does one shipped at another version. A declaration nothing calls is neither imported nor checked.
+An interface is the host's or a component's: one that a component exports and a library's `wit/` declares is refused.
 
-Several libraries can ship parts of one package, the files that declare what each one calls, and the build reads them as one package:
+Several libraries can ship parts of one package, the interfaces each one calls, as text or as binaries, and the build reads them as one package.
+An interface two of them ship must be written the same way in both, docs and feature gates (`@since`, `@unstable`) aside.
 
-- a file that two of them ship must be written the same way in both;
-- an interface is declared in one file only;
-- a package's doc comment is in one of its files.
+Your program carries no WIT: it calls a host's interfaces through a library, and a `wit/` folder of its own is refused.
 
 The standard library ships the WASI files its blocks call this way, in `stdlib/wit/`.
 A library that calls more of WASI ships the files it needs, as WASI's repository writes them.

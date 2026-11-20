@@ -35,8 +35,9 @@ A `component/` folder with no `.wasm`, or with two, is refused.
 
 ## A host's interfaces
 
-A library that calls a host's functions keeps the WIT of the host's package in a `wit/` folder at its root, as the host ships it: the package's files at the top of the folder, and in `deps/` a folder for each package it uses.
+A library that calls a host's functions keeps the WIT of the host's package in a `wit/` folder at its root, as WIT's tools lay one out: the package's files at the top of the folder, and in `deps/` one for each package it uses, a folder, a `.wit` file or a binary `.wasm` package.
 No world is written for it.
+A library may carry both a component and a `wit/`.
 
 ```
 drives/
@@ -48,18 +49,19 @@ drives/
    └─ deps/             the packages it uses, if any
 ```
 
-Run in the library's folder of a library that carries no component, `rk bindgen` reads `wit/` and writes `generated/`: every interface of the host's package, and those it takes types from.
+Run in the library's folder, `rk bindgen` writes into `generated/` what the component exports and every interface of the host's package in `wit/`, with those it takes types from.
 A library that calls the packages of several hosts keeps them all in `deps/`, with no file at the top of `wit/`, and every interface of each package there is written.
 When the host's package declares a world, what that world imports is written instead, and `--world` names one of several.
 
 The declarations are under the package's namespace, `Acme.Drive.Axis` for `acme:drive/axis`, and `INTERNAL`: only the library's own blocks call them, the way the standard library's blocks call WASI.
 
-The build reads the same `wit/` folder, and types each import of a package's interface with it, so the folder ships with the library.
+The build reads each library's `wit/` on its own, and types each import of a package's interface with it, so the folder ships with the library and holds in its `deps/` what its own packages use.
 An interface the program calls that no `wit/` ships stops the build; a declaration nothing calls costs nothing.
+A program carries no WIT: it calls a host's interfaces through a library, and `rk bindgen` in a program reads only the folder `--wit` names.
 
 ## Usage
 
-`--wit <FOLDER>` A WIT folder to read. By default, the library's component, or its `wit/` folder when it carries none.
+`--wit <FOLDER>` A WIT folder to read instead. By default, the library's component and its `wit/` folder.
 
 `-o, --output <FOLDER>` Where the declarations go, `generated/` of the workspace by default.
 
