@@ -206,7 +206,17 @@ A component your program does not call is not written.
 
 - Two components that export the same interface are refused: an import is linked to one. The same component carried by two libraries is one.
 - Only plain values cross, for now: a function that takes or gives a resource, a stream or a future is refused.
-- `rk test` does not run a program's calls into a component yet.
+
+`rk test` runs them the same way.
+It writes them beside its own build, in `rk_build/test/components/`, and starts each one for each test, in a store of its own, with the WASI 0.3 your program gets: its clocks and its command line.
+Build a component for WASI 0.3, with Rust's `--target wasm32-wasip3` for example.
+A trap in a component fails the test that called it, named after its library, at your program's call:
+
+```console
+    FAIL test_stuck (main.st:26): trapped in the component of 'drives': unknown import: `acme:drive/bus@1.0.0#read` has not been defined [at test_stuck (main.st:27:5)]
+```
+
+An import of the component that `rk test` does not give, as here, traps only when the component calls it.
 
 ## The host's interfaces
 

@@ -13,9 +13,10 @@ END_FUNCTION
 ```
 
 `rk test` compiles the workspace and runs all of them, showing a summary at the end.
-It runs them on the component of the workspace, unoptimized, the way a host runs it, and leaves it in `rk_build/test/` with its WIT.
+It runs them on the component of the workspace, unoptimized, the way a host runs it, and leaves it in `rk_build/test/`.
 That build tells `rk test` where each raise is (below), so no other command writes it.
 The clocks are WASI's, as wasmtime gives them, and the time zone is the machine's.
+The components of the libraries the workspace calls run beside it, with the same WASI, see [Dependencies](dependencies.md#a-component).
 It calls a test with no arguments, so a test FUNCTION has no `VAR_INPUT`, `VAR_OUTPUT` or `VAR_IN_OUT` (`E1511`).
 
 ```sh
