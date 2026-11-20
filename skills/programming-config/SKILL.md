@@ -365,6 +365,7 @@ The `url` is a `.tar.gz` or `.tar` archive over `https`, `http` or `file`, or a 
 `[project] type` is `"program"`, the default, or `"library"`: a dependency must say `type = "library"`, or it is refused.
 In its own folder a library keeps a library's rules under `rk check` and `rk test` (no `[dependencies]`, no complete address, no `CONFIGURATION`, no `VAR_EXTERNAL`), and `rk compile` refuses it: a program that lists it builds it.
 `[project] paths` lists the files and folders a library is made of when it is fetched; without it, every file is.
+A library may hold a `component/` (one component, built from another language) and a `wit/` (the WIT of the host's functions it calls), with the `generated/` that `rk bindgen` writes from them (see `cli-bindgen`): with `paths`, list each one it holds, or it is left out. A program holds neither `component/` nor `wit/`: each is refused.
 Never write a `hash` by hand: `rk fetch <url>` downloads the archive, checks the library, and writes the entry; a library that would be refused is not written.
 There is no registry and no version range: a new version is another URL, saved the same way.
 `rk check`, `rk compile` and `rk test` download a library that is missing from the cache, and `rk fetch` downloads them all.

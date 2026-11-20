@@ -125,7 +125,7 @@ FUNCTION ReadCoils: UDINT
 END_FUNCTION
 ```
 
-The module says where the import's types come from. A plain module (`'modbus'`) is the host's own: rk types it in WIT from the declaration, in the component's world. An interface of a package (`'wasi:clocks/monotonic-clock@0.3.0'`, `'acme:modbus/rtu@1.0.0'`) keeps the types the package's WIT gives it; rk writes none for it, and the build refuses an interface no library ships in its `wit/` folder.
+The module says where the import's types come from. A plain module (`'modbus'`) is the host's own: rk types it in WIT from the declaration, in the component's world. An interface of a package (`'wasi:clocks/monotonic-clock@0.3.0'`, `'acme:modbus/rtu@1.0.0'`) keeps the types the package's WIT gives it; rk writes none for it, and the build refuses an interface that no library ships in its `wit/` folder and no library's component exports.
 What may cross a plain module's import: a scalar `VAR_INPUT` (BOOL, the integers and bit strings, REAL, LREAL, CHAR, the durations and dates, an enum or a subrange), a `STRING` input as WIT's `string`, and scalar outputs and return type, 16 inputs at most with a STRING counting two.
 Each `VAR_INPUT` and `VAR_OUTPUT` is named in WIT by its name in lowercase, each `_` written `-`: a name with an empty word (`x_`, `a__b`), or a letter outside ASCII, is E1512, and so are two names that differ only by a `_` (`ab`, `a_b`) and an output named as the import is.
 

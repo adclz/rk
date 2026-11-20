@@ -63,6 +63,19 @@ Two entries whose names differ only in case are both refused, and so is one that
 A library has no `[dependencies]` of its own: your workspace lists every library the build reads.
 One whose `config.toml` lists some is refused, with an error on the line of your `config.toml` that names it.
 
+Besides its source files, a library may hold three folders:
+
+```schema
+drives/
+├─ config.toml                      type = "library"
+├─ Axis.st                          the library's own code
+├─ component/                       code built from another language (A component, below)
+├─ wit/                             the WIT of the host's functions it calls (The host's interfaces, below)
+└─ generated/                       what rk bindgen writes from the two
+```
+
+A library of Structured Text alone needs none of them.
+
 A library can also list the files it is made of:
 
 ```toml
@@ -70,10 +83,11 @@ A library can also list the files it is made of:
 name = "drives"
 version = "2.1.0"
 type = "library"
-paths = ["src", "LICENSE"]
+paths = ["Axis.st", "component", "wit", "generated", "LICENSE"]
 ```
 
 When it is fetched, the rest is left out: its tests, its build folder.
+Name each of the three folders above that the library holds, or it is left out too.
 Without `paths`, every file is part of the library.
 
 ## A folder
@@ -256,7 +270,7 @@ An interface is the host's or a component's: one that a component exports and a 
 Several libraries can ship parts of one package, the interfaces each one calls, as text or as binaries, and the build reads them as one package.
 An interface two of them ship must be written the same way in both, docs and feature gates (`@since`, `@unstable`) aside.
 
-Your program carries no WIT: it calls a host's interfaces through a library, and a `wit/` folder of its own is refused.
+Your program carries no WIT: the WIT of the interfaces it calls is a library's, and a `wit/` folder of its own is refused.
 
 The standard library ships the WASI files its blocks call this way, in `stdlib/wit/`.
 A library that calls more of WASI ships the files it needs, as WASI's repository writes them.
