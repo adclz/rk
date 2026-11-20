@@ -3,9 +3,9 @@
 
 //! A library's component runs beside the program, in a store of its own:
 //! `rk compile` types the program's imports of its interfaces from the
-//! component's binary, and writes the component into `components/` beside
-//! the program, where the runtime links each import to the one that exports
-//! it.
+//! component's binary, and copies the library's `component/` beside the
+//! program, into `components/<library>/`, where the runtime links each
+//! import to the one that exports it.
 
 use std::path::{Path, PathBuf};
 
@@ -126,17 +126,26 @@ fn compiled(ws: &Path) -> rk::error::CliResult<()> {
     )
 }
 
-/// The `.wasm` files of `ws/out/components/`, by name.
+/// What `ws/out/components/` holds: each file, by its path in the folder.
 fn beside(ws: &Path) -> Vec<String> {
-    let folder = ws.join("out").join("components");
-    let mut names: Vec<String> = match std::fs::read_dir(&folder) {
-        Ok(entries) => entries
-            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-            .collect(),
-        Err(_) => Vec::new(),
-    };
-    names.sort();
-    names
+    fn files(folder: &Path, under: &str, found: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(folder) else {
+            return;
+        };
+        for entry in entries {
+            let entry = entry.unwrap();
+            let name = format!("{under}{}", entry.file_name().to_string_lossy());
+            if entry.path().is_dir() {
+                files(&entry.path(), &format!("{name}/"), found);
+            } else {
+                found.push(name);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    files(&ws.join("out").join("components"), "", &mut found);
+    found.sort();
+    found
 }
 
 /// What the program built in `ws` imports, by interface.
@@ -160,8 +169,8 @@ fn imported(ws: &Path) -> Vec<String> {
 }
 
 /// The program imports what the library's component exports, typed from
-/// the component's binary, and the component goes beside it, named after
-/// its library, byte for byte.
+/// the component's binary, and the component goes beside it, in the folder
+/// named after its library, byte for byte.
 #[test]
 fn a_library_s_component_runs_beside_the_program() {
     super::disable_stdlib();
@@ -176,10 +185,76 @@ fn a_library_s_component_runs_beside_the_program() {
     );
     compiled(&ws).expect("it builds");
     assert_eq!(imported(&ws), ["acme:drive/axis@1.0.0"]);
-    assert_eq!(beside(&ws), ["drives.wasm"]);
+    assert_eq!(beside(&ws), ["drives/c.wasm"]);
     assert_eq!(
-        std::fs::read(ws.join("out").join("components").join("drives.wasm")).unwrap(),
+        std::fs::read(
+            ws.join("out")
+                .join("components")
+                .join("drives")
+                .join("c.wasm")
+        )
+        .unwrap(),
         axis
+    );
+}
+
+/// The library's `component/` goes beside the program whole: the
+/// component's LICENSE, and whatever else its author put there, travel with
+/// it, as the library holds them at each build.
+#[test]
+fn the_component_s_folder_goes_beside_it_whole() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    library(
+        &root,
+        "drives",
+        POSITION,
+        Some(&component_of_world(AXIS, "drive")),
+    );
+    write(
+        &root,
+        &[
+            ("drives/component/LICENSE", "Apache-2.0"),
+            ("drives/component/NOTICE", "Acme"),
+            ("drives/component/licenses/crates.txt", "MIT"),
+        ],
+    );
+    let ws = program(
+        &root,
+        "drives = { path = \"../drives\" }\n",
+        "Drives.Axis.POSITION()",
+    );
+    compiled(&ws).expect("it builds");
+    assert_eq!(
+        beside(&ws),
+        [
+            "drives/LICENSE",
+            "drives/NOTICE",
+            "drives/c.wasm",
+            "drives/licenses/crates.txt"
+        ]
+    );
+    let copied = ws.join("out").join("components").join("drives");
+    assert_eq!(
+        std::fs::read_to_string(copied.join("LICENSE")).unwrap(),
+        "Apache-2.0"
+    );
+    assert_eq!(
+        std::fs::read_to_string(copied.join("licenses").join("crates.txt")).unwrap(),
+        "MIT"
+    );
+
+    // A file the library no longer holds is no longer beside the program.
+    std::fs::remove_file(root.join("drives").join("component").join("NOTICE")).unwrap();
+    compiled(&ws).expect("it builds again");
+    assert_eq!(
+        beside(&ws),
+        [
+            "drives/LICENSE",
+            "drives/c.wasm",
+            "drives/licenses/crates.txt"
+        ]
     );
 }
 
@@ -221,12 +296,13 @@ fn two_components_run_beside_the_program() {
         imported(&ws),
         ["acme:conveyor/belt@1.0.0", "acme:drive/axis@1.0.0"]
     );
-    assert_eq!(beside(&ws), ["belts.wasm", "drives.wasm"]);
+    assert_eq!(beside(&ws), ["belts/c.wasm", "drives/c.wasm"]);
 }
 
 /// A component the program does not call is not written beside it, and
-/// one a build left there before is removed: the runtime runs what is
-/// there.
+/// one a build left there before is removed, as a library's folder or as
+/// a `.wasm` of its own: the runtime runs what is there. A folder that
+/// holds no `.wasm` is no build's, and is left as it is.
 #[test]
 fn a_component_the_program_does_not_call_stays_out() {
     super::disable_stdlib();
@@ -239,10 +315,25 @@ fn a_component_the_program_does_not_call_stays_out() {
         Some(&component_of_world(AXIS, "drive")),
     );
     let ws = program(&root, "drives = { path = \"../drives\" }\n", "1");
-    write(&ws, &[("out/components/stale.wasm", "an old build's")]);
+    write(
+        &ws,
+        &[
+            ("out/components/stale.wasm", "an old build's"),
+            ("out/components/belts/c.wasm", "an old build's"),
+            ("out/components/belts/LICENSE", "an old build's"),
+            ("out/components/notes/todo.txt", "someone's"),
+        ],
+    );
     compiled(&ws).expect("it builds");
     assert_eq!(imported(&ws), [] as [&str; 0]);
-    assert_eq!(beside(&ws), [] as [&str; 0]);
+    assert_eq!(beside(&ws), ["notes/todo.txt"]);
+
+    std::fs::remove_dir_all(ws.join("out").join("components").join("notes")).unwrap();
+    compiled(&ws).expect("it builds again");
+    assert!(
+        !ws.join("out").join("components").exists(),
+        "an empty folder goes"
+    );
 }
 
 /// Two components that export one interface are refused: the runtime links
@@ -262,7 +353,7 @@ fn one_interface_has_one_component() {
         "A.Axis.POSITION()",
     );
     compiled(&ws).expect("one component, carried twice");
-    assert_eq!(beside(&ws), ["a.wasm"]);
+    assert_eq!(beside(&ws), ["a/c.wasm"]);
 
     library(
         &root,
@@ -507,14 +598,11 @@ fn rk_test_runs_the_program_s_calls_into_a_component() {
 
     // What ran: the program, and the components beside it, byte for byte.
     let built = ws.join("rk_build").join("test");
-    assert_eq!(
-        std::fs::read(built.join("components").join("drives.wasm")).unwrap(),
-        machine
-    );
-    assert_eq!(
-        std::fs::read(built.join("components").join("belts.wasm")).unwrap(),
-        conveyor
-    );
+    let component = |library: &str| {
+        std::fs::read(built.join("components").join(library).join("c.wasm")).unwrap()
+    };
+    assert_eq!(component("drives"), machine);
+    assert_eq!(component("belts"), conveyor);
     let beside = rk::test_runner::beside_of(&built.join("plant.wasm")).unwrap();
     let records = rk::test_host::run_each(
         &std::fs::read(built.join("plant.wasm")).unwrap(),
@@ -630,7 +718,8 @@ fn a_library_s_own_tests_run_its_component() {
             .join("rk_build")
             .join("test")
             .join("components")
-            .join("drives.wasm")
+            .join("drives")
+            .join("c.wasm")
             .is_file()
     );
 }
