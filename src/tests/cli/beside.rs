@@ -445,11 +445,11 @@ fn a_component_runs_on_wasi_0_3() {
     }
 }
 
-/// A component runs in a store of its own: what crosses to it is plain
-/// values only, for now, and a function that gives a resource's handle is
-/// refused.
+/// A component runs in a store of its own: a handle of its own resource
+/// crosses to it, as the host's proxy, but a stream or a future does not,
+/// for now.
 #[test]
-fn a_component_s_interface_passes_plain_values_only() {
+fn a_component_s_resources_cross_and_its_streams_do_not() {
     super::disable_stdlib();
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().canonicalize().unwrap();
@@ -468,15 +468,155 @@ fn a_component_s_interface_passes_plain_values_only() {
             "{export}\nFUNCTION Run : UDINT\n    Run := Files.OPEN();\nEND_FUNCTION\n",
         )],
     );
+    compiled(&ws).expect("a handle of the component's resource crosses");
+
+    let logs = r#"
+        package acme:logs@1.0.0;
+
+        interface logs {
+            tail: func() -> stream<u8>;
+        }
+
+        world logger {
+            export logs;
+        }
+    "#;
+    library(
+        &root,
+        "files",
+        "{extern 'acme:logs/logs@1.0.0' 'tail'}\nFUNCTION TAIL : UDINT\nEND_FUNCTION\n",
+        Some(&component_of_world(logs, "logger")),
+    );
+    write(
+        &ws,
+        &[(
+            "main.st",
+            "{export}\nFUNCTION Run : UDINT\n    Run := Files.TAIL();\nEND_FUNCTION\n",
+        )],
+    );
     let refused = refusal(&ws);
     assert!(
         refused.contains(
-            "`files.OPEN` imports `open` of `acme:files/files@1.0.0`, which the component of \
-             'files' exports, and it passes a resource's handle: a component beside the program \
-             passes plain values only, for now"
+            "`files.TAIL` imports `tail` of `acme:logs/logs@1.0.0`, which the component of \
+             'files' exports, and it passes a stream: a stream or a future does not cross to a \
+             component beside the program, for now"
         ),
         "{refused}"
     );
+}
+
+/// A component that keeps files: each is a resource whose handle the
+/// program holds, made by its constructor, read by a method, lent to a
+/// function, given back to another, found in an option, and dropped; the
+/// component counts the files its destructor ran for.
+const STORAGE: &str = r#"
+    package acme:files@1.0.0;
+
+    interface files {
+        resource file {
+            constructor(size: u32);
+            size: func() -> u32;
+        }
+        peek: func(f: borrow<file>) -> u32;
+        measure: func(f: file) -> u32;
+        find: func(size: u32) -> option<file>;
+        dropped: func() -> u32;
+    }
+
+    world storage {
+        export files;
+    }
+"#;
+
+/// [`STORAGE`]'s module: a file's size is its representation, a borrowed
+/// handle comes as the representation, an owned one as the component's
+/// own handle, which `measure` drops, and the destructor counts.
+const STORAGE_WAT: &str = r#"
+    (module
+        (import "[export]acme:files/files@1.0.0" "[resource-new]file" (func $new (param i32) (result i32)))
+        (import "[export]acme:files/files@1.0.0" "[resource-rep]file" (func $rep (param i32) (result i32)))
+        (import "[export]acme:files/files@1.0.0" "[resource-drop]file" (func $drop (param i32)))
+        (memory (export "memory") 1)
+        (global $dropped (mut i32) (i32.const 0))
+        (func (export "acme:files/files@1.0.0#[constructor]file") (param $size i32) (result i32)
+            local.get $size
+            call $new)
+        (func (export "acme:files/files@1.0.0#[method]file.size") (param $rep i32) (result i32)
+            local.get $rep)
+        (func (export "acme:files/files@1.0.0#peek") (param $rep i32) (result i32)
+            local.get $rep)
+        (func (export "acme:files/files@1.0.0#measure") (param $handle i32) (result i32)
+            (local $size i32)
+            local.get $handle
+            call $rep
+            local.set $size
+            local.get $handle
+            call $drop
+            local.get $size)
+        (func (export "acme:files/files@1.0.0#find") (param $size i32) (result i32)
+            i32.const 16
+            i32.const 1
+            i32.store8
+            i32.const 20
+            local.get $size
+            call $new
+            i32.store
+            i32.const 16)
+        (func (export "acme:files/files@1.0.0#dropped") (result i32)
+            global.get $dropped)
+        (func (export "acme:files/files@1.0.0#[dtor]file") (param $rep i32)
+            global.get $dropped
+            i32.const 1
+            i32.add
+            global.set $dropped))
+"#;
+
+/// The program's tests of [`STORAGE`]'s files.
+const STORAGE_TESTS: &str = "
+{test}
+FUNCTION test_files
+VAR a : Acme.Files.Files.FILE; b : Acme.Files.Files.FILE; found : BOOL; END_VAR
+    a := Acme.Files.Files.FILE_NEW(size := 41);
+    IF Acme.Files.Files.FILE_SIZE(self := a) <> 41 THEN
+        __RAISE('a method of the handle');
+    END_IF;
+    IF Acme.Files.Files.PEEK(f := a) <> 41 THEN
+        __RAISE('the handle lent');
+    END_IF;
+    Acme.Files.Files.FILE_DROP(handle := a);
+    IF Acme.Files.Files.DROPPED() <> 1 THEN
+        __RAISE('the drop did not reach the component');
+    END_IF;
+    b := Acme.Files.Files.FILE_NEW(size := 7);
+    IF Acme.Files.Files.MEASURE(f := b) <> 7 THEN
+        __RAISE('the handle given back');
+    END_IF;
+    IF Acme.Files.Files.DROPPED() <> 2 THEN
+        __RAISE('the component did not drop what it was given');
+    END_IF;
+    Acme.Files.Files.FIND(size := 5, is_some => found, value => a);
+    IF NOT found OR Acme.Files.Files.FILE_SIZE(self := a) <> 5 THEN
+        __RAISE('the handle in an option');
+    END_IF;
+END_FUNCTION
+";
+
+/// `rk test` passes a component's resources between the program and the
+/// component as the runtimes that link components across stores do: the
+/// program holds the host's proxy, the component's store the handle. A
+/// method, a handle lent or given back, one inside an option, and a drop,
+/// which runs the component's destructor before the program's next call
+/// into it.
+#[test]
+fn rk_test_passes_a_component_s_resources() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let storage = component_of_wat(STORAGE, "storage", STORAGE_WAT);
+    library(&root, "files", &declarations(&storage), Some(&storage));
+    let ws = program(&root, "files = { path = \"../files\" }\n", "0");
+    write(&ws, &[("main.st", STORAGE_TESTS)]);
+    tested(&ws, None).expect("the handles cross");
 }
 
 /// A component that computes: an axis at 42, a text sent back as it came,
