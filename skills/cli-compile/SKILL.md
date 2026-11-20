@@ -20,6 +20,7 @@ A library (`type = "library"` in its `config.toml`) is refused: it is built into
 The component is written to `rk_build/debug/<project>.wasm`, or to `rk_build/release/<project>.wasm` with `--release`.
 It carries the types of what it imports and exports, so no WIT is written beside it: `wasm-tools component wit <project>.wasm` prints them.
 The components of the libraries the program calls go beside it, in `components/`: each library's `component/` folder is copied whole into `components/<library>/`, its LICENSE with it. The runtime runs them beside the program and links its imports to them. The folder holds the last build's only.
+A component runs on WASI 0.3: one that imports another WASI release (a `wasm32-wasip2` build) is refused, naming its library and the interface; build it with `--target wasm32-wasip3`.
 
 ## Usage
 

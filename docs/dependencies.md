@@ -224,10 +224,10 @@ A component your program does not call is not written.
 
 - Two components that export the same interface are refused: an import is linked to one. The same component carried by two libraries is one.
 - Only plain values cross, for now: a function that takes or gives a resource, a stream or a future is refused.
+- A component runs on WASI 0.3, any release of it. One that imports another WASI, such as a build for WASI 0.2, is refused, its library and the interface named: build it for WASI 0.3, with Rust's `--target wasm32-wasip3` for example.
 
 `rk test` runs them the same way.
 It writes them beside its own build, in `rk_build/test/components/`, and starts each one for each test, in a store of its own, with the WASI 0.3 your program gets: its clocks and its command line.
-Build a component for WASI 0.3, with Rust's `--target wasm32-wasip3` for example.
 A trap in a component fails the test that called it, named after its library, at your program's call:
 
 ```console
