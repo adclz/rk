@@ -197,10 +197,11 @@ fn resolve_all(
                     .into_iter()
                     .map(|problem| dependency_diagnostic(&source, problem)),
             );
-            // A program reads WIT through its libraries only.
+            // A program reads WIT and components through its libraries only.
             if config.project.kind == ProjectKind::Program {
                 file_errors.extend(
-                    crate::dependencies::wit_in_program(workspace, &source)
+                    crate::dependencies::library_folders_in_program(workspace, &source)
+                        .into_iter()
                         .map(|problem| dependency_diagnostic(&source, problem)),
                 );
             }

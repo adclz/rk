@@ -339,21 +339,37 @@ pub fn resolve(
     resolver.resolution
 }
 
-/// A program with a `wit/` folder, `workspace`: refused on the `[project]`
-/// line of its `config.toml`, `source`. A program calls a host's
-/// interfaces through a library, whose `wit/` types them.
-pub fn wit_in_program(workspace: &Path, source: &str) -> Option<Problem> {
-    if !workspace.join("wit").is_dir() {
-        return None;
+/// A library's folders that the program `workspace` holds, `wit/` and
+/// `component/`, each refused on the `[project]` line of its
+/// `config.toml`, `source`. A program calls a host's interfaces and a
+/// component through a library, which carries their WIT and the component.
+pub fn library_folders_in_program(workspace: &Path, source: &str) -> Vec<Problem> {
+    let project = line_of(source, |line| line == "[project]");
+    let mut problems = Vec::new();
+    if workspace.join("wit").is_dir() {
+        problems.push(
+            Problem::new(
+                &project,
+                "this program carries WIT text in `wit/`".to_string(),
+            )
+            .note("a program calls a host's interfaces through a library, which carries their WIT")
+            .help("move the WIT into the `wit/` of a library the program lists, and remove `wit/`"),
+        );
     }
-    Some(
-        Problem::new(
-            &line_of(source, |line| line == "[project]"),
-            "this program carries WIT text in `wit/`".to_string(),
-        )
-        .note("a program calls a host's interfaces through a library, which carries their WIT")
-        .help("move the WIT into the `wit/` of a library the program lists, and remove `wit/`"),
-    )
+    if workspace.join("component").is_dir() {
+        problems.push(
+            Problem::new(
+                &project,
+                "this program carries a component in `component/`".to_string(),
+            )
+            .note("a program calls a component through a library, which carries it")
+            .help(
+                "move the component into the `component/` of a library the program lists, and \
+                 remove `component/`",
+            ),
+        );
+    }
+    problems
 }
 
 /// The first line of `source` that `is` says is the one, trimmed, or the
