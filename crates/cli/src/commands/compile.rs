@@ -93,7 +93,10 @@ fn compile_once(
 /// the program and links each import to the one that exports it. The
 /// folder holds those of the last build only, so that none it no longer
 /// imports from is run.
-fn write_beside(output: &std::path::Path, beside: &[crate::component::Carried]) -> CliResult<()> {
+pub(crate) fn write_beside(
+    output: &std::path::Path,
+    beside: &[crate::component::Carried],
+) -> CliResult<()> {
     let folder = output
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))

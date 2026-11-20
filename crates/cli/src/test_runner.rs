@@ -103,8 +103,8 @@ fn fmt_duration(d: Duration) -> String {
     }
 }
 
-/// Run the tests of the component at `wasm_path` and report them. Returns
-/// the failure count.
+/// Run the tests of the component at `wasm_path`, with the components
+/// beside it, and report them. Returns the failure count.
 pub fn run_tests(
     wasm_path: &Path,
     roots: &SourceRoots,
@@ -112,10 +112,13 @@ pub fn run_tests(
     timeout: Option<Duration>,
     format: OutputFormat,
 ) -> usize {
-    let wasm = match std::fs::read(wasm_path) {
-        Ok(bytes) => bytes,
+    let read = std::fs::read(wasm_path)
+        .map_err(|e| format!("reading {}: {e}", wasm_path.display()))
+        .and_then(|wasm| Ok((wasm, beside_of(wasm_path)?)));
+    let (wasm, beside) = match read {
+        Ok(read) => read,
         Err(e) => {
-            ui::error(format!("reading {}: {e}", wasm_path.display()));
+            ui::error(e);
             return 1;
         }
     };
@@ -124,7 +127,7 @@ pub fn run_tests(
     let total_start = std::time::Instant::now();
     let mut failures = Vec::new();
     let mut passed = 0;
-    let run = crate::test_host::run_each(&wasm, filter, timeout, |record| {
+    let run = crate::test_host::run_each(&wasm, &beside, filter, timeout, |record| {
         let record = roots.named(record);
         report_one(&record, format);
         if record.status == Status::Fail {
@@ -151,6 +154,35 @@ pub fn run_tests(
             1
         }
     }
+}
+
+/// The libraries' components beside the component at `wasm_path`, in
+/// `components/`, each named after its library: those the build wrote
+/// there, which a runtime runs beside it.
+pub fn beside_of(wasm_path: &Path) -> Result<Vec<crate::test_host::Beside>, String> {
+    let folder = wasm_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("components");
+    let unread = |e: std::io::Error| format!("reading {}: {e}", folder.display());
+    if !folder.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut beside = Vec::new();
+    for entry in std::fs::read_dir(&folder).map_err(unread)? {
+        let path = entry.map_err(unread)?.path();
+        if path.extension().is_some_and(|ext| ext == "wasm") {
+            let library = path
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let bytes =
+                std::fs::read(&path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+            beside.push(crate::test_host::Beside { library, bytes });
+        }
+    }
+    beside.sort_by(|a, b| a.library.cmp(&b.library));
+    Ok(beside)
 }
 
 /// Say what is about to run, in the human format only.
