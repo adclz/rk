@@ -224,8 +224,9 @@ A component your program does not call is not written.
 
 - Two components that export the same interface are refused: an import is linked to one. The same component carried by two libraries is one.
 - A handle of a resource the component exports crosses: your program holds a proxy of it, and the component's store holds the resource. When your program drops the handle, the component's destructor runs, in the component's store.
-- A stream of bytes crosses, both ways, and so does a future of no value, a number, a bool or a char: what one side writes reaches the other while both run.
-- A stream or a future of anything else is refused, and so is a function that takes or gives a handle of a resource of an interface the component does not export.
+- A stream or a future of numbers, bools, chars or strings crosses, both ways, and so does a future of no value: what one side writes reaches the other while both run, and a writer far ahead of its reader waits for it. Your program reads a stream of bytes; one of anything else it can pass on to another call.
+- A stream or a future of anything else is refused, a record or a list for example, and so is a function that takes or gives a handle of a resource of an interface the component does not export.
+- A component cancels a copy that waits on your program from an `async func`: a `func` cannot wait for the other store.
 - A component runs on WASI 0.3, any release of it. One that imports another WASI, such as a build for WASI 0.2, is refused, its library and the interface named: build it for WASI 0.3, with Rust's `--target wasm32-wasip3` for example.
 
 `rk test` runs them the same way.
