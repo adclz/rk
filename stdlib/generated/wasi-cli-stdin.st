@@ -151,6 +151,34 @@ NAMESPACE INTERNAL Wasi
 				future : UDINT;
 			END_VAR
 			END_FUNCTION
+
+			/* Reads the value the future holds, which comes back after `DONE`, then
+			   lets go of the future's reading end: `future` is 0 from then on, and a
+			   call with `future` 0 does nothing. */
+			FUNCTION_BLOCK RESULT_FUTURE_GET
+			VAR_IN_OUT
+				future : UDINT;
+			END_VAR
+			VAR_OUTPUT
+				DONE : BOOL;
+				failed : BOOL;
+				error : Wasi.Cli.Types.ERROR_CODE;
+			END_VAR
+			VAR
+				call : RESULT_FUTURE_READ;
+			END_VAR
+				DONE := FALSE;
+				IF future <> 0 THEN
+					call(future := future);
+					IF call.DONE THEN
+						failed := call.failed;
+						error := call.error;
+						RESULT_FUTURE_DROP_READABLE(future := future);
+						future := 0;
+						DONE := TRUE;
+					END_IF;
+				END_IF;
+			END_FUNCTION_BLOCK
 		END_NAMESPACE
 	END_NAMESPACE
 END_NAMESPACE
