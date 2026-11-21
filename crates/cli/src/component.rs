@@ -905,8 +905,8 @@ fn outside_wasi_0_3(resolve: &wit_parser::Resolve, world: wit_parser::WorldId) -
 /// component's: a stream or a future whose items wasmtime's host API cannot
 /// carry as the host knows them, or a handle of a resource the component
 /// does not own. A handle of a resource of the component's own interfaces
-/// crosses as a proxy (`resource_bridge`); a stream of bytes, and a future
-/// of no value, a number, a bool or a char, through a pipe
+/// crosses as a proxy (`resource_bridge`); a stream or a future of numbers,
+/// bools, chars or strings, and a future of no value, through a channel
 /// (`stream_pump`). The built-ins of a stream or a future work on the
 /// program's own end.
 fn crosses_to_the_component(
@@ -959,8 +959,8 @@ fn crosses_to_the_component(
 }
 
 /// Why a stream or a future stays in its store.
-const STREAMS_STAY: &str = "only a stream of bytes and a future of no value, a number, a bool or a \
-                            char cross to a component beside the program, for now";
+const STREAMS_STAY: &str = "only a stream or a future of numbers, bools, chars or strings, and a \
+                            future of no value, cross to a component beside the program, for now";
 
 /// What `ty` holds that cannot cross to the component that exports the
 /// interfaces `exports`, anywhere inside it, and why: a stream, a future,
@@ -985,13 +985,13 @@ fn stays_in_its_store(
             wit_parser::Handle::Own(resource) | wit_parser::Handle::Borrow(resource),
         ) => foreign_resource(resolve, *resource, exports),
         TypeDefKind::Resource => foreign_resource(resolve, *id, exports),
-        TypeDefKind::Stream(Some(wit_parser::Type::U8)) => None,
+        TypeDefKind::Stream(Some(item)) if bridgeable(resolve, item) => None,
         TypeDefKind::Stream(item) => Some(format!(
             "a stream of {}: {STREAMS_STAY}",
             item_words(resolve, item.as_ref())
         )),
         TypeDefKind::Future(None) => None,
-        TypeDefKind::Future(Some(value)) if is_scalar(value) => None,
+        TypeDefKind::Future(Some(value)) if bridgeable(resolve, value) => None,
         TypeDefKind::Future(Some(value)) => Some(format!(
             "a future of {}: {STREAMS_STAY}",
             item_words(resolve, Some(value))
@@ -1017,25 +1017,32 @@ fn stays_in_its_store(
     }
 }
 
-/// Whether a future of `ty` crosses: a number, a bool or a char, which
-/// wasmtime's host API carries as a Rust value.
-fn is_scalar(ty: &wit_parser::Type) -> bool {
-    use wit_parser::Type;
-    matches!(
-        ty,
+/// Whether a stream of `ty` or a future of it crosses: a number, a bool, a
+/// char or a string, which wasmtime's host API carries as a Rust value
+/// (`relocate`'s `bridgeable_elements!`), under a name of its own too,
+/// since wasmtime sees through an alias.
+fn bridgeable(resolve: &wit_parser::Resolve, ty: &wit_parser::Type) -> bool {
+    use wit_parser::{Type, TypeDefKind};
+    match ty {
         Type::Bool
-            | Type::U8
-            | Type::S8
-            | Type::U16
-            | Type::S16
-            | Type::U32
-            | Type::S32
-            | Type::U64
-            | Type::S64
-            | Type::F32
-            | Type::F64
-            | Type::Char
-    )
+        | Type::U8
+        | Type::S8
+        | Type::U16
+        | Type::S16
+        | Type::U32
+        | Type::S32
+        | Type::U64
+        | Type::S64
+        | Type::F32
+        | Type::F64
+        | Type::Char
+        | Type::String => true,
+        Type::ErrorContext => false,
+        Type::Id(id) => matches!(
+            &resolve.types[*id].kind,
+            TypeDefKind::Type(aliased) if bridgeable(resolve, aliased)
+        ),
+    }
 }
 
 /// What a stream or a future carries, `item`, in WIT's words: `u16`,
@@ -1563,10 +1570,10 @@ mod tests {
     use super::*;
 
     /// What crosses to a component beside the program: a handle of a
-    /// resource of an interface it exports, at any depth, a stream of bytes,
-    /// a future of no value or of a scalar; not a handle of another
-    /// interface's resource, `use`d or nested, nor a stream or a future of
-    /// anything else.
+    /// resource of an interface it exports, at any depth, a stream or a
+    /// future of numbers, bools, chars or strings, under an alias too, a
+    /// future of no value; not a handle of another interface's resource,
+    /// `use`d or nested, nor a stream or a future of anything else.
     #[test]
     fn a_handle_crosses_to_the_component_whose_resource_it_is() {
         let mut resolve = wit_parser::Resolve::default();
@@ -1583,6 +1590,7 @@ mod tests {
                 interface net {
                     use types.{socket};
                     resource conn;
+                    type celsius = f32;
                     open: func() -> conn;
                     pair: func() -> option<tuple<u32, conn>>;
                     peek: func(s: borrow<socket>) -> u32;
@@ -1592,7 +1600,11 @@ mod tests {
                     done: func() -> future;
                     wide: func() -> stream<u16>;
                     text: func() -> future<string>;
+                    lines: func() -> stream<string>;
+                    heat: func() -> stream<celsius>;
                     status: func() -> future<result<u32, string>>;
+                    chunks: func() -> stream<list<u8>>;
+                    failed: func() -> future<error-context>;
                 }
                 "#,
             )
@@ -1623,17 +1635,21 @@ mod tests {
         assert_eq!(passes(&net_only, "tail"), None);
         assert_eq!(passes(&net_only, "later"), None);
         assert_eq!(passes(&net_only, "done"), None);
-        assert_eq!(
-            passes(&net_only, "wide").as_deref(),
-            Some(&*format!("a stream of `u16`: {STREAMS_STAY}"))
-        );
-        assert_eq!(
-            passes(&net_only, "text").as_deref(),
-            Some(&*format!("a future of `string`: {STREAMS_STAY}"))
-        );
+        assert_eq!(passes(&net_only, "wide"), None);
+        assert_eq!(passes(&net_only, "text"), None);
+        assert_eq!(passes(&net_only, "lines"), None);
+        assert_eq!(passes(&net_only, "heat"), None);
         assert_eq!(
             passes(&net_only, "status").as_deref(),
             Some(&*format!("a future of a result: {STREAMS_STAY}"))
+        );
+        assert_eq!(
+            passes(&net_only, "chunks").as_deref(),
+            Some(&*format!("a stream of a list: {STREAMS_STAY}"))
+        );
+        assert_eq!(
+            passes(&net_only, "failed").as_deref(),
+            Some(&*format!("a future of `error-context`: {STREAMS_STAY}"))
         );
         // A component that exports the interface of `socket` owns it.
         assert_eq!(

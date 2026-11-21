@@ -33,8 +33,9 @@
 //! task, where it runs beside the calls under way. Values cross through
 //! [`relocate`](crate::relocate): plain ones as they are, a handle of the
 //! component's resource as the [`resource_bridge`](crate::resource_bridge)'s
-//! proxy, a stream of bytes and a future of a scalar through a pipe
-//! ([`stream_pump`](crate::stream_pump)), which moves while both stores run.
+//! proxy, a stream or a future of numbers, bools, chars or strings through a
+//! channel ([`stream_pump`](crate::stream_pump)), which moves while both
+//! stores run.
 //! A handle the program drops is sent to the task, which drops the
 //! component's own in its store. A trap of the component fails the
 //! program's call, named after its library.
@@ -46,7 +47,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::control::{TestError, TestState};
-use crate::relocate::{self, Relocated};
+use crate::relocate;
 use crate::resource_bridge::{self, ProxyResource, ResourceRegistry};
 use anyhow::{Context, Result};
 use debug_format::DebugInfo;
@@ -608,6 +609,10 @@ impl resource_bridge::Bridged for ComponentHost {
         self.resource_registry.as_mut()
     }
 }
+
+/// A value on its way between the program's store and a component's, both
+/// holding a [`ComponentHost`].
+type Relocated = relocate::Relocated<ComponentHost>;
 
 /// A component beside the program, started for one test and driven by a
 /// task of its own ([`drive`]), as a runtime runs each component on a

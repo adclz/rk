@@ -46,9 +46,12 @@ wasmtime-wasi = { version = "50.0.1", default-features = false, features = ["p3"
 # test writes. wasmtime-wasi builds tokio already. Its runtime runs each call
 # of a component: a host function that waits, WASI's `wait-for`, waits on it.
 # `sync`: the channels a library's component, driven by a task of its own,
-# takes the program's calls and drops by, and a future's value goes through.
-# `io-util`: the in-memory pipe a stream crosses between two stores by.
-tokio = { version = "1", default-features = false, features = ["rt", "time", "sync", "io-util"] }
+# takes the program's calls and drops by.
+tokio = { version = "1", default-features = false, features = ["rt", "time", "sync"] }
+# The channels a stream's items and a future's value cross between two stores
+# by, as wasmCloud's runtime carries them: a bounded channel whose sender waits
+# for room (`poll_ready`) before it takes the writer's items.
+futures = { version = "0.3", default-features = false, features = ["std"] }
 # `rk compile` wraps the module into a component, with the WIT it is typed by.
 wit-component = { workspace = true }
 wit-parser = { workspace = true }
