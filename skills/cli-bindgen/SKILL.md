@@ -30,6 +30,9 @@ drives/
 The component's binary carries its types, so no WIT is shipped beside it.
 Run in the library's folder, `rk bindgen` reads the component and writes what it exports into `generated/`, as the program imports it: each interface it exports, and those they take types from.
 A `func` is a FUNCTION, an `async func` a FUNCTION_BLOCK called until its `DONE`.
+A future a function gives comes with a `_GET` block, `U32_FUTURE_GET` for a `future<u32>`, which reads it and lets go of its reading end in the call that sees `DONE`, setting the handle to 0.
+A function that takes a stream of bytes, and answers with a future or nothing, comes with a writer of its own, `SEND_WRITER` for `send`: at the first rising edge of `REQ` it makes the stream and calls the function with it and with the block's other inputs, then writes `IN` at each rising edge of `REQ`, ends the stream on a rising edge of `CLOSE`, and keeps the value of the future the function answers with, `ENDED` once it has come.
+It is built on two blocks a program may also use on their own: the stream's `BYTES_STREAM_WRITER`, which makes a stream and gives `readable`, the end to hand to a function, and the future's `_GET`.
 What the component imports itself is its own, and is not written.
 A `component/` folder with no `.wasm`, or with two, is refused.
 
