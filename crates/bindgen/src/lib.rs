@@ -557,6 +557,8 @@ struct Here<'a> {
     skipped: &'a mut Vec<Skipped>,
     taken: &'a mut HashMap<String, String>,
     sets: &'a mut Vec<(Carrier, String)>,
+    /// The blocks each set of the interface manages its ends with.
+    managers: &'a mut HashMap<(Carrier, String), Managers>,
     /// Set when a built-in's value is read out of words.
     converts: &'a mut bool,
     owner: Option<TypeOwner>,
@@ -980,8 +982,13 @@ impl Generator<'_> {
                 }),
             }
         }
-        // The sets of built-ins of this interface's own types, by type.
+        // The sets of built-ins of this interface's own types, by type, and
+        // the blocks each manages its ends with.
         let mut own_sets: Vec<(Carrier, String)> = Vec::new();
+        let mut managers: HashMap<(Carrier, String), Managers> = HashMap::new();
+        // The FUNCTIONs that are their import as it is, which a writer may
+        // call.
+        let mut plain: Vec<(&Function, Declared)> = Vec::new();
         // Whether a result is read out of words, with `Std.Convert`.
         let mut converts = false;
         for function in interface.functions.values() {
@@ -997,7 +1004,10 @@ impl Generator<'_> {
                 ),
             };
             match written {
-                Ok(converted) => converts |= converted,
+                Ok((converted, declared)) => {
+                    converts |= converted;
+                    plain.extend(declared.map(|declared| (function, declared)));
+                }
                 Err(reason) => skipped.push(Skipped {
                     item: format!("`{}`", function.name),
                     reason,
@@ -1008,10 +1018,16 @@ impl Generator<'_> {
                 skipped: &mut skipped,
                 taken: &mut taken,
                 sets: &mut own_sets,
+                managers: &mut managers,
                 converts: &mut converts,
                 owner: here,
             };
             self.built_ins(&module, function, &mut here_out);
+        }
+        // Each function that takes a stream of bytes from the program, made,
+        // written and ended by a block of its own.
+        for (function, declared) in &plain {
+            function_writer(resolve, &mut out, &mut taken, &managers, function, declared);
         }
 
         let mut text = header(&[package.to_string()]);
@@ -1068,7 +1084,7 @@ impl Generator<'_> {
         pou: Option<&String>,
         here: Option<TypeOwner>,
         taken: &mut HashMap<String, String>,
-    ) -> Result<bool, String> {
+    ) -> Result<(bool, Option<Declared>), String> {
         let resolve = self.resolve;
         let Some(pou) = pou.cloned() else {
             return Err("it is a property, which rk does not import".to_string());
@@ -1380,7 +1396,20 @@ impl Generator<'_> {
         }
         out.line("");
         if !apart {
-            return Ok(false);
+            // A FUNCTION that is its import as it is, each parameter an input
+            // of it, in order: what a writer calls.
+            let plain = !asynchronous
+                && in_outs.is_empty()
+                && given.is_empty()
+                && texts.is_empty()
+                && lowered.inputs.len() == function.params.len();
+            return Ok((
+                false,
+                plain.then(|| Declared {
+                    pou: pou.clone(),
+                    inputs: lowered.inputs.clone(),
+                }),
+            ));
         }
 
         // What a call names: the values themselves, packed into the
@@ -1471,7 +1500,10 @@ impl Generator<'_> {
             }
         }
         out.line("");
-        Ok(lowered.converts() || matches!(&returned, Returned::Words(lifted) if lifted.converts()))
+        Ok((
+            lowered.converts() || matches!(&returned, Returned::Words(lifted) if lifted.converts()),
+            None,
+        ))
     }
 
     /// The built-ins of each stream and future `function` takes or gives
@@ -1497,7 +1529,7 @@ impl Generator<'_> {
                 continue;
             }
             let fed = taken_from_the_program(resolve, here.owner, carrier, &key.1);
-            here.sets.push(key);
+            here.sets.push(key.clone());
             // A set says what it is: `BYTES_STREAM`, `RESULT_FUTURE`.
             let name = format!(
                 "{}_{}",
@@ -1509,7 +1541,7 @@ impl Generator<'_> {
                 carrier.prefix(),
                 function.name
             );
-            let written = built_in_set(
+            let (written, managers) = built_in_set(
                 resolve,
                 &self.sizes,
                 here.out,
@@ -1527,6 +1559,7 @@ impl Generator<'_> {
             for pou in written {
                 here.taken.insert(pou.to_ascii_uppercase(), what.clone());
             }
+            here.managers.insert(key, managers);
         }
     }
 }
@@ -1566,6 +1599,466 @@ fn reader(out: &mut Out, raw: &str, passed: &str, lifted: &lift::Lifted, copied:
     out.depth -= 1;
     out.line("END_IF;");
     out.depth -= 1;
+}
+
+/// `get`, the block that reads a future and lets go of its reading end:
+/// `read`, the future's read, then `drop` in the call that sees `DONE`,
+/// which sets `end` to 0, so that a later call reads nothing twice. Its
+/// outputs are the read's, `outputs` past its `DONE`.
+fn future_get(out: &mut Out, get: &str, read: &str, drop: &str, end: &str, outputs: &[Var]) {
+    // The read keeps clear of the outputs' names and of the end's.
+    let mut call = "call".to_string();
+    while call.eq_ignore_ascii_case(end)
+        || outputs
+            .iter()
+            .any(|var| var.name.eq_ignore_ascii_case(&call))
+    {
+        call.push('_');
+    }
+    let var = |name: &str, ty: &str| Var {
+        name: name.to_string(),
+        ty: ty.to_string(),
+        flat: 1,
+        start: None,
+    };
+    out.prose(&format!(
+        "Reads the value the future holds, which comes back after `DONE`, then lets go of the future's reading end: `{end}` is 0 from then on, and a call with `{end}` 0 does nothing."
+    ));
+    out.line(&format!("FUNCTION_BLOCK {get}"));
+    out.vars("VAR_IN_OUT", &[var(end, "UDINT")]);
+    out.vars("VAR_OUTPUT", &[vec![done()], outputs.to_vec()].concat());
+    out.vars("VAR", &[var(&call, read)]);
+    out.depth += 1;
+    out.line("DONE := FALSE;");
+    out.line(&format!("IF {end} <> 0 THEN"));
+    out.depth += 1;
+    out.line(&format!("{call}({end} := {end});"));
+    out.line(&format!("IF {call}.DONE THEN"));
+    out.depth += 1;
+    for output in outputs {
+        out.line(&format!("{0} := {call}.{0};", output.name));
+    }
+    out.line(&format!("{drop}({end} := {end});"));
+    out.line(&format!("{end} := 0;"));
+    out.line("DONE := TRUE;");
+    out.depth -= 1;
+    out.line("END_IF;");
+    out.depth -= 1;
+    out.line("END_IF;");
+    out.depth -= 1;
+    out.line("END_FUNCTION_BLOCK");
+    out.line("");
+}
+
+/// A FUNCTION that is its import as it is: its name, and its inputs, one
+/// per parameter of its function, in order.
+struct Declared {
+    pou: String,
+    inputs: Vec<Var>,
+}
+
+/// What `ty` is when it is a stream or a future, under aliases too: which,
+/// and what it carries.
+fn carried(resolve: &Resolve, ty: Type) -> Option<(Carrier, Option<Type>)> {
+    let Type::Id(id) = ty else { return None };
+    match &resolve.types[id].kind {
+        TypeDefKind::Type(inner) => carried(resolve, *inner),
+        TypeDefKind::Stream(payload) => Some((Carrier::Stream, *payload)),
+        TypeDefKind::Future(payload) => Some((Carrier::Future, *payload)),
+        _ => None,
+    }
+}
+
+/// The block that writes to `function`, `<NAME>_WRITER`, when the function
+/// takes one stream of bytes from the program and gives back a future or
+/// nothing: it makes the stream, calls `declared` with its reading end and
+/// writes with the stream's `BYTES_STREAM_WRITER` (`managers`), and reads
+/// the future with its `_GET`, keeping its value, or lets go of it unread
+/// when no read gives it back. A function that takes another stream or
+/// future has none.
+fn function_writer(
+    resolve: &Resolve,
+    out: &mut Out,
+    taken: &mut HashMap<String, String>,
+    managers: &HashMap<(Carrier, String), Managers>,
+    function: &Function,
+    declared: &Declared,
+) {
+    let mut streams = function
+        .params
+        .iter()
+        .enumerate()
+        .filter(|(_, param)| carried(resolve, param.ty).is_some());
+    let (Some((at, param)), None) = (streams.next(), streams.next()) else {
+        return;
+    };
+    if carried(resolve, param.ty) != Some((Carrier::Stream, Some(Type::U8))) {
+        return;
+    }
+    let Some(writer) = managers
+        .get(&(Carrier::Stream, type_key(resolve, Some(Type::U8))))
+        .and_then(|managers| managers.writer.clone())
+    else {
+        return;
+    };
+    // The function's answer: a future, read or let go, or nothing.
+    let answer = match function.result {
+        None => None,
+        Some(ty) => match carried(resolve, ty) {
+            Some((Carrier::Future, payload)) => {
+                match managers.get(&(Carrier::Future, type_key(resolve, payload))) {
+                    Some(managers) => Some(managers.clone()),
+                    None => return,
+                }
+            }
+            _ => return,
+        },
+    };
+    let block = spare(taken, format!("{}_WRITER", declared.pou));
+    taken.insert(
+        block.to_ascii_uppercase(),
+        format!("the writer of `{}`", function.name),
+    );
+
+    // The block's own names come first; a WIT name that would be one of
+    // them, or one taken before it, takes a `_`.
+    let own = [
+        "REQ", "IN", "CLOSE", "BUSY", "DONE", "ERROR", "ENDED", "open", "future", "stream",
+        "answer",
+    ];
+    let mut held: Vec<String> = own.iter().map(|name| name.to_string()).collect();
+    let mut apart = |name: &str| {
+        let mut name = name.to_string();
+        while held.iter().any(|other| other.eq_ignore_ascii_case(&name)) {
+            name.push('_');
+        }
+        held.push(name.clone());
+        name
+    };
+    let var = |name: &str, ty: &str| Var {
+        name: name.to_string(),
+        ty: ty.to_string(),
+        flat: 1,
+        start: None,
+    };
+    // The function's other inputs, each passed at the opening request.
+    let inputs: Vec<(Var, String)> = declared
+        .inputs
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != at)
+        .map(|(_, input)| {
+            let name = apart(&input.name);
+            (
+                Var {
+                    name: name.clone(),
+                    ..input.clone()
+                },
+                format!("{} := {name}", input.name),
+            )
+        })
+        .collect();
+    let read = answer.as_ref().and_then(|answer| answer.get.clone());
+    let values: Vec<(Var, String)> = read
+        .iter()
+        .flat_map(|(_, outputs)| outputs)
+        .map(|output| {
+            let name = apart(&output.name);
+            (
+                Var {
+                    name,
+                    ..output.clone()
+                },
+                output.name.clone(),
+            )
+        })
+        .collect();
+
+    let pou = &declared.pou;
+    let opening = inputs
+        .iter()
+        .map(|(var, _)| format!("`{}`", var.name))
+        .collect::<Vec<_>>();
+    let opening = match opening.as_slice() {
+        [] => String::new(),
+        names => format!(
+            ", and its other inputs, {}, as they are then",
+            names.join(", ")
+        ),
+    };
+    let ended = match (&answer, &read) {
+        (None, _) => String::new(),
+        (Some(_), None) => format!(
+            " What `{pou}` answers with is let go of unread: no read gives its value back yet."
+        ),
+        (Some(_), Some(_)) if values.is_empty() => {
+            format!(" `ENDED` is TRUE once the future `{pou}` answers with has come.")
+        }
+        (Some(_), Some(_)) => format!(
+            " `ENDED` is TRUE once the future `{pou}` answers with has come, its value in {}.",
+            values
+                .iter()
+                .map(|(var, _)| format!("`{}`", var.name))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    };
+    out.prose(&format!(
+        "Writes to `{pou}` through a stream of bytes it makes at the first rising edge of `REQ`, when it calls `{pou}` with the stream's reading end{opening}. A rising edge of `REQ` writes `IN`, handing what the reader has not taken until it has all of it: `BUSY` meanwhile, then `DONE` in the call where it has all of it, at once for an empty text. An edge while `BUSY` is ignored. A rising edge of `CLOSE` ends the stream once no write is under way. `ERROR` is TRUE once the stream is closed, by `CLOSE` or by the reader letting go: each later request is an error at once.{ended}"
+    ));
+    out.line(&format!("FUNCTION_BLOCK {block}"));
+    let text = format!("STRING[{STRING_LIMIT}]");
+    out.vars(
+        "VAR_INPUT",
+        &[
+            vec![var("REQ", "BOOL"), var("IN", &text), var("CLOSE", "BOOL")],
+            inputs.iter().map(|(var, _)| var.clone()).collect(),
+        ]
+        .concat(),
+    );
+    let mut outputs = vec![
+        var("BUSY", "BOOL"),
+        var("DONE", "BOOL"),
+        var("ERROR", "BOOL"),
+    ];
+    if read.is_some() {
+        outputs.push(var("ENDED", "BOOL"));
+        outputs.extend(values.iter().map(|(var, _)| var.clone()));
+    }
+    out.vars("VAR_OUTPUT", &outputs);
+    let mut locals = vec![var("open", "BOOL"), var("stream", &writer)];
+    if let Some((get, _)) = &read {
+        locals.push(var("future", "UDINT"));
+        locals.push(var("answer", get));
+    }
+    out.vars("VAR", &locals);
+    out.depth += 1;
+    let arguments = std::iter::once(format!("{} := stream.readable", declared.inputs[at].name))
+        .chain(inputs.iter().map(|(_, passed)| passed.clone()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let call = format!("{pou}({arguments})");
+    out.line("// The stream, made at the first request and handed to the function.");
+    out.line("IF REQ AND NOT open THEN");
+    out.depth += 1;
+    out.line("stream();");
+    match (&answer, &read) {
+        (None, _) => out.line(&format!("{call};")),
+        (Some(managers), None) => {
+            out.line(&format!("{}(future := {call});", managers.drop_readable))
+        }
+        (Some(_), Some(_)) => out.line(&format!("future := {call};")),
+    }
+    out.line("open := TRUE;");
+    out.depth -= 1;
+    out.line("END_IF;");
+    out.line("IF open THEN");
+    out.depth += 1;
+    out.line("stream(REQ := REQ, IN := IN, CLOSE := CLOSE);");
+    out.line("BUSY := stream.BUSY;");
+    out.line("DONE := stream.DONE;");
+    out.line("ERROR := stream.ERROR;");
+    if read.is_some() {
+        out.line("// The answer, read once it comes, and kept.");
+        out.line("answer(future := future);");
+        out.line("IF answer.DONE THEN");
+        out.depth += 1;
+        for (var, field) in &values {
+            out.line(&format!("{} := answer.{field};", var.name));
+        }
+        out.line("ENDED := TRUE;");
+        out.depth -= 1;
+        out.line("END_IF;");
+    }
+    out.depth -= 1;
+    out.line("END_IF;");
+    out.depth -= 1;
+    out.line("END_FUNCTION_BLOCK");
+    out.line("");
+}
+
+/// The names a stream's writer uses: its own, those of its two helpers, a
+/// text's length in bytes and what is left of it, and those of the
+/// built-ins it calls.
+struct Writer {
+    writer: String,
+    len: String,
+    after: String,
+    new: String,
+    write: String,
+    drop: String,
+}
+
+/// The block that writes a stream of bytes it makes itself, `names.writer`,
+/// and its two helpers, private to the interface's namespace: the work
+/// `Std.Console`'s blocks did by hand, a write handing the reader what it
+/// has not taken until it has all of it.
+fn stream_writer(out: &mut Out, names: &Writer) {
+    let Writer {
+        writer,
+        len,
+        after,
+        new,
+        write,
+        drop,
+    } = names;
+    let var = |name: &str, ty: &str| Var {
+        name: name.to_string(),
+        ty: ty.to_string(),
+        flat: 1,
+        start: None,
+    };
+    let text = format!("STRING[{STRING_LIMIT}]");
+
+    out.prose(&format!("The bytes `IN` holds, which `{writer}` counts."));
+    out.line(&format!("FUNCTION PRIVATE {len} : UDINT"));
+    out.vars("VAR_INPUT", &[var("IN", &text)]);
+    out.depth += 1;
+    out.line(&format!(
+        "{{wasm 'str.byte_len' (params IN) (result {len})}}"
+    ));
+    out.depth -= 1;
+    out.line("END_FUNCTION");
+    out.line("");
+
+    out.prose(&format!(
+        "`IN` without its first `L` bytes: what `{writer}` has left to write."
+    ));
+    out.line(&format!("FUNCTION PRIVATE {after} : {text}"));
+    out.vars("VAR_INPUT", &[var("IN", &text), var("L", "UDINT")]);
+    out.vars(
+        "VAR",
+        &[Var {
+            start: Some("1"),
+            ..var("P", "UDINT")
+        }],
+    );
+    out.depth += 1;
+    out.line(&format!(
+        "{{wasm 'str.byte_delete' (params IN L P) (result {after})}}"
+    ));
+    out.depth -= 1;
+    out.line("END_FUNCTION");
+    out.line("");
+
+    out.prose(
+        "Writes a stream of bytes it makes at its first call: `readable` is its reading end, to hand to the function that reads it. A rising edge of `REQ` writes `IN`, handing the reader what it has not taken until it has all of it: `BUSY` meanwhile, then `DONE` in the call where it has all of it, at once for an empty text. An edge while `BUSY` is ignored. A rising edge of `CLOSE` lets go of the writing end once no write is under way, which ends the stream for the reader. `ERROR` is TRUE once the stream is closed, by `CLOSE` or by the reader letting go: each later request is an error at once.",
+    );
+    out.line(&format!("FUNCTION_BLOCK {writer}"));
+    out.vars(
+        "VAR_INPUT",
+        &[var("REQ", "BOOL"), var("IN", &text), var("CLOSE", "BOOL")],
+    );
+    out.vars(
+        "VAR_OUTPUT",
+        &[
+            var("readable", "UDINT"),
+            var("BUSY", "BOOL"),
+            var("DONE", "BOOL"),
+            var("ERROR", "BOOL"),
+        ],
+    );
+    out.vars(
+        "VAR",
+        &[
+            var("writable", "UDINT"),
+            var("requested", "BOOL"),
+            var("closing", "BOOL"),
+            var("shut", "BOOL"),
+            var("closed", "BOOL"),
+            var("rest", &text),
+            var("write", write),
+        ],
+    );
+    out.vars("VAR_TEMP", &[var("again", "BOOL")]);
+    let body = [
+        (0, "IF writable = 0 AND NOT closed THEN".to_string()),
+        (
+            1,
+            format!("{new}(readable => readable, writable => writable);"),
+        ),
+        (0, "END_IF;".to_string()),
+        (0, "DONE := FALSE;".to_string()),
+        (0, "// An edge while BUSY is ignored.".to_string()),
+        (0, "IF REQ AND NOT requested AND NOT BUSY THEN".to_string()),
+        (1, "ERROR := closed;".to_string()),
+        (1, "IF NOT closed THEN".to_string()),
+        (
+            2,
+            "// A write of no bytes asks the reader whether it is ready,".to_string(),
+        ),
+        (
+            2,
+            "// which it may answer late: an empty text is done here.".to_string(),
+        ),
+        (2, format!("IF {len}(IN) = 0 THEN")),
+        (3, "DONE := TRUE;".to_string()),
+        (2, "ELSE".to_string()),
+        (3, "rest := IN;".to_string()),
+        (3, "BUSY := TRUE;".to_string()),
+        (2, "END_IF;".to_string()),
+        (1, "END_IF;".to_string()),
+        (0, "END_IF;".to_string()),
+        (0, "requested := REQ;".to_string()),
+        (0, "IF BUSY THEN".to_string()),
+        (
+            1,
+            "// Each pass after the first hands over a byte at least, so the".to_string(),
+        ),
+        (1, "// loop ends.".to_string()),
+        (1, "REPEAT".to_string()),
+        (2, "again := FALSE;".to_string()),
+        (
+            2,
+            "// Starts the write of the rest, or checks the one running.".to_string(),
+        ),
+        (2, "write(stream := writable, data := rest);".to_string()),
+        (2, "IF write.DONE THEN".to_string()),
+        (3, "IF write.closed THEN".to_string()),
+        (4, "closed := TRUE;".to_string()),
+        (4, "BUSY := FALSE;".to_string()),
+        (4, "ERROR := TRUE;".to_string()),
+        (3, format!("ELSIF write.written < {len}(rest) THEN")),
+        (
+            4,
+            "// The reader took a part: the rest goes next, at once while".to_string(),
+        ),
+        (4, "// it takes some.".to_string()),
+        (4, format!("rest := {after}(rest, write.written);")),
+        (4, "again := write.written > 0;".to_string()),
+        (3, "ELSE".to_string()),
+        (4, "BUSY := FALSE;".to_string()),
+        (4, "DONE := TRUE;".to_string()),
+        (3, "END_IF;".to_string()),
+        (2, "END_IF;".to_string()),
+        (1, "UNTIL NOT again".to_string()),
+        (1, "END_REPEAT;".to_string()),
+        (0, "END_IF;".to_string()),
+        (
+            0,
+            "// The writing end goes once no write is under way.".to_string(),
+        ),
+        (0, "IF CLOSE AND NOT closing THEN".to_string()),
+        (1, "shut := TRUE;".to_string()),
+        (0, "END_IF;".to_string()),
+        (0, "closing := CLOSE;".to_string()),
+        (0, "IF shut AND NOT BUSY THEN".to_string()),
+        (1, "IF writable <> 0 THEN".to_string()),
+        (2, format!("{drop}(stream := writable);")),
+        (2, "writable := 0;".to_string()),
+        (1, "END_IF;".to_string()),
+        (1, "closed := TRUE;".to_string()),
+        (1, "shut := FALSE;".to_string()),
+        (0, "END_IF;".to_string()),
+    ];
+    let depth = out.depth + 1;
+    for (indent, line) in body {
+        out.depth = depth + indent;
+        out.line(&line);
+    }
+    out.depth = depth - 1;
+    out.line("END_FUNCTION_BLOCK");
+    out.line("");
 }
 
 /// The POU `function` is declared as: a function by its name, a resource's
@@ -1934,7 +2427,7 @@ fn built_in_set(
     import: &str,
     owner: Option<TypeOwner>,
     fed: bool,
-) -> Vec<String> {
+) -> (Vec<String>, Managers) {
     let mut written = Vec::new();
     let pou = |built_in: &str| spare(taken, format!("{name}_{built_in}"));
     let pragma = |built_in: &str| format!("'{}'", import.replace("{}", built_in));
@@ -1976,6 +2469,8 @@ fn built_in_set(
         flat: 1,
         start: None,
     };
+    // A future's read: its outputs past its `DONE`, which `_GET` gives too.
+    let mut read_outputs: Option<Vec<Var>> = None;
     match carrier {
         Carrier::Stream if bytes => {
             for (block, data) in [
@@ -2132,6 +2627,7 @@ fn built_in_set(
                     if let Shape::Outputs(fields) = shape {
                         outputs.extend(fields);
                     }
+                    read_outputs = Some(outputs[1..].to_vec());
                     out.prose(reads);
                     out.line(&format!("{{extern async {}}}", pragma("read")));
                     let read = pou("READ");
@@ -2185,6 +2681,7 @@ fn built_in_set(
                     reader(out, &raw, &format!("{end} := {end}"), &lifted, &copied);
                     out.line("END_FUNCTION_BLOCK");
                     out.line("");
+                    read_outputs = Some(lifted.outputs.clone());
                     written.push(raw);
                     written.push(read);
                     *converts |= copied.is_empty() && lifted.converts();
@@ -2223,9 +2720,53 @@ fn built_in_set(
         out.line("END_FUNCTION");
         out.line("");
     }
+    let mut managers = Managers {
+        writer: None,
+        get: None,
+        drop_readable: pou("DROP_READABLE"),
+    };
+    if let Some(outputs) = read_outputs {
+        let get = pou("GET");
+        future_get(
+            out,
+            &get,
+            &pou("READ"),
+            &pou("DROP_READABLE"),
+            end,
+            &outputs,
+        );
+        written.push(get.clone());
+        managers.get = Some((get, outputs));
+    }
+    // A writer hands its stream's reading end to a function of the
+    // interface: there is none to take it unless one is `fed`.
+    if bytes && fed {
+        let names = Writer {
+            writer: pou("WRITER"),
+            len: pou("TEXT_LEN"),
+            after: pou("TEXT_AFTER"),
+            new: pou("NEW"),
+            write: pou("WRITE"),
+            drop: pou("DROP_WRITABLE"),
+        };
+        stream_writer(out, &names);
+        managers.writer = Some(names.writer.clone());
+        written.extend([names.len, names.after, names.writer]);
+    }
     skipped.push(Skipped {
         item: format!("`{name}_CANCEL_READ` and `{name}_CANCEL_WRITE`"),
         reason: "a cancel blocks the scan".to_string(),
     });
-    written
+    (written, managers)
+}
+
+/// The blocks of a set that manage an end for the program, which a
+/// function's writer holds: the stream's `BYTES_STREAM_WRITER`, the
+/// future's `_GET` with its outputs past `DONE`, and the drop of a future's
+/// reading end, for a future no read gives back.
+#[derive(Clone)]
+struct Managers {
+    writer: Option<String>,
+    get: Option<(String, Vec<Var>)>,
+    drop_readable: String,
 }
