@@ -446,10 +446,10 @@ fn a_component_runs_on_wasi_0_3() {
 }
 
 /// A component runs in a store of its own: a handle of its own resource
-/// crosses to it, as the host's proxy, but a stream or a future does not,
-/// for now.
+/// crosses to it, as the host's proxy, and so does a stream of bytes,
+/// through a pipe; a stream of anything else does not, for now.
 #[test]
-fn a_component_s_resources_cross_and_its_streams_do_not() {
+fn what_crosses_to_a_component() {
     super::disable_stdlib();
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().canonicalize().unwrap();
@@ -475,6 +475,7 @@ fn a_component_s_resources_cross_and_its_streams_do_not() {
 
         interface logs {
             tail: func() -> stream<u8>;
+            wide: func() -> stream<u16>;
         }
 
         world logger {
@@ -484,25 +485,251 @@ fn a_component_s_resources_cross_and_its_streams_do_not() {
     library(
         &root,
         "files",
-        "{extern 'acme:logs/logs@1.0.0' 'tail'}\nFUNCTION TAIL : UDINT\nEND_FUNCTION\n",
+        "{extern 'acme:logs/logs@1.0.0' 'tail'}\nFUNCTION TAIL : UDINT\nEND_FUNCTION\n\
+         {extern 'acme:logs/logs@1.0.0' 'wide'}\nFUNCTION WIDE : UDINT\nEND_FUNCTION\n",
         Some(&component_of_world(logs, "logger")),
     );
-    write(
-        &ws,
-        &[(
-            "main.st",
-            "{export}\nFUNCTION Run : UDINT\n    Run := Files.TAIL();\nEND_FUNCTION\n",
-        )],
-    );
+    let calls = |call: &str| {
+        write(
+            &ws,
+            &[(
+                "main.st",
+                &format!("{{export}}\nFUNCTION Run : UDINT\n    Run := {call};\nEND_FUNCTION\n"),
+            )],
+        );
+    };
+    calls("Files.TAIL()");
+    compiled(&ws).expect("a stream of bytes crosses");
+    calls("Files.WIDE()");
     let refused = refusal(&ws);
     assert!(
         refused.contains(
-            "`files.TAIL` imports `tail` of `acme:logs/logs@1.0.0`, which the component of \
-             'files' exports, and it passes a stream: a stream or a future does not cross to a \
-             component beside the program, for now"
+            "`files.WIDE` imports `wide` of `acme:logs/logs@1.0.0`, which the component of \
+             'files' exports, and it passes a stream of `u16`: only a stream of bytes and a \
+             future of no value, a number, a bool or a char cross to a component beside the \
+             program, for now"
         ),
         "{refused}"
     );
+}
+
+/// A component that feeds the program a stream of the bytes of `hello`, a
+/// future of 42 and a future of no value, and reads a stream the program
+/// feeds it: `first` is the first byte that came.
+const FEED: &str = r#"
+    package acme:feed@1.0.0;
+
+    interface feed {
+        tail: func() -> stream<u8>;
+        later: func() -> future<u32>;
+        ready: func() -> future;
+        sink: func(data: stream<u8>);
+        first: func() -> u8;
+        close: func() -> u32;
+    }
+
+    world feeder {
+        export feed;
+    }
+"#;
+
+/// [`FEED`]'s module: `tail`, `later` and `ready` make their stream or future, start
+/// the write of what it carries, which goes on once the function has
+/// returned, and give the reading end; `close` cancels the write and lets
+/// go of the stream's writing end, and gives what the write came to: the
+/// bytes taken, `status >> 4`, five once the program took them all; the low
+/// four bits say how it ended. `sink` starts a read of the stream it is
+/// given into its memory, where `first` looks.
+const FEED_WAT: &str = r#"
+    (module
+        (import "[export]acme:feed/feed@1.0.0" "[stream-new-0]tail" (func $stream_new (result i64)))
+        (import "[export]acme:feed/feed@1.0.0" "[async-lower][stream-write-0]tail" (func $stream_write (param i32 i32 i32) (result i32)))
+        (import "[export]acme:feed/feed@1.0.0" "[future-new-0]later" (func $future_new (result i64)))
+        (import "[export]acme:feed/feed@1.0.0" "[async-lower][future-write-0]later" (func $future_write (param i32 i32) (result i32)))
+        (import "[export]acme:feed/feed@1.0.0" "[async-lower][stream-read-0]sink" (func $stream_read (param i32 i32 i32) (result i32)))
+        (import "[export]acme:feed/feed@1.0.0" "[stream-cancel-write-0]tail" (func $cancel_write (param i32) (result i32)))
+        (import "[export]acme:feed/feed@1.0.0" "[stream-drop-writable-0]tail" (func $drop_writable (param i32)))
+        (import "[export]acme:feed/feed@1.0.0" "[future-new-0]ready" (func $ready_new (result i64)))
+        (import "[export]acme:feed/feed@1.0.0" "[async-lower][future-write-0]ready" (func $ready_write (param i32 i32) (result i32)))
+        (memory (export "memory") 1)
+        (global $writable (mut i32) (i32.const 0))
+        (data (i32.const 32) "hello")
+        (data (i32.const 64) "\2a\00\00\00")
+        (func (export "acme:feed/feed@1.0.0#tail") (result i32)
+            (local $ends i64)
+            call $stream_new
+            local.set $ends
+            local.get $ends
+            i64.const 32
+            i64.shr_u
+            i32.wrap_i64
+            global.set $writable
+            global.get $writable
+            i32.const 32
+            i32.const 5
+            call $stream_write
+            drop
+            local.get $ends
+            i32.wrap_i64)
+        (func (export "acme:feed/feed@1.0.0#close") (result i32)
+            global.get $writable
+            call $cancel_write
+            global.get $writable
+            call $drop_writable)
+        (func (export "acme:feed/feed@1.0.0#later") (result i32)
+            (local $ends i64)
+            call $future_new
+            local.set $ends
+            local.get $ends
+            i64.const 32
+            i64.shr_u
+            i32.wrap_i64
+            i32.const 64
+            call $future_write
+            drop
+            local.get $ends
+            i32.wrap_i64)
+        (func (export "acme:feed/feed@1.0.0#ready") (result i32)
+            (local $ends i64)
+            call $ready_new
+            local.set $ends
+            local.get $ends
+            i64.const 32
+            i64.shr_u
+            i32.wrap_i64
+            i32.const 0
+            call $ready_write
+            drop
+            local.get $ends
+            i32.wrap_i64)
+        (func (export "acme:feed/feed@1.0.0#sink") (param $data i32)
+            local.get $data
+            i32.const 128
+            i32.const 16
+            call $stream_read
+            drop)
+        (func (export "acme:feed/feed@1.0.0#first") (result i32)
+            i32.const 128
+            i32.load8_u))
+"#;
+
+/// The program's tests of [`FEED`]: it reads the stream until it has the
+/// five bytes, and the futures, cycle by cycle, then has the component close
+/// the stream and reads on until it ends, with no byte more; it writes a
+/// stream of its own to the component, until the component has the first
+/// byte.
+const FEED_TESTS: &str = "
+{test}
+FUNCTION_BLOCK test_feed
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    started : BOOL;
+    tail : UDINT;
+    later : UDINT;
+    bytes : Acme.Feed.Feed.BYTES_STREAM_READ_ARRAY;
+    value : Acme.Feed.Feed.U32_FUTURE_READ;
+    received : ARRAY[0..15] OF BYTE;
+    got : UDINT;
+    i : UDINT;
+    counted : BOOL;
+    closing : BOOL;
+    ended : BOOL;
+    ready : UDINT;
+    signal : Acme.Feed.Feed.UNIT_FUTURE_READ;
+    signalled : BOOL;
+END_VAR
+    IF NOT started THEN
+        tail := Acme.Feed.Feed.TAIL();
+        later := Acme.Feed.Feed.LATER();
+        ready := Acme.Feed.Feed.READY();
+        started := TRUE;
+    END_IF;
+    IF got < 5 THEN
+        bytes(stream := tail);
+        IF bytes.DONE AND bytes.read > 0 THEN
+            IF got + bytes.read > 16 THEN
+                __RAISE('more bytes than hello');
+            END_IF;
+            FOR i := 0 TO bytes.read - 1 DO
+                received[got + i] := bytes.data[i];
+            END_FOR;
+            got := got + bytes.read;
+        END_IF;
+    END_IF;
+    IF NOT counted THEN
+        value(future := later);
+        IF value.DONE THEN
+            IF value.value <> 42 THEN
+                __RAISE('the future did not hold 42');
+            END_IF;
+            counted := TRUE;
+        END_IF;
+    END_IF;
+    IF got >= 5 AND NOT closing THEN
+        IF received[0] <> BYTE#16#68 OR received[1] <> BYTE#16#65 OR received[2] <> BYTE#16#6C
+            OR received[3] <> BYTE#16#6C OR received[4] <> BYTE#16#6F THEN
+            __RAISE('the bytes are not hello');
+        END_IF;
+        IF Acme.Feed.Feed.CLOSE() / 16 <> 5 THEN
+            __RAISE('the component did not see its five bytes taken');
+        END_IF;
+        closing := TRUE;
+    ELSIF closing AND NOT ended THEN
+        bytes(stream := tail);
+        IF bytes.DONE THEN
+            IF bytes.read > 0 THEN
+                __RAISE('bytes the component did not write');
+            END_IF;
+            ended := bytes.closed;
+        END_IF;
+    END_IF;
+    IF NOT signalled THEN
+        signal(future := ready);
+        signalled := signal.DONE;
+    END_IF;
+    DONE := ended AND counted AND signalled;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_sink
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    started : BOOL;
+    readable : UDINT;
+    writable : UDINT;
+    write : Acme.Feed.Feed.BYTES_STREAM_WRITE;
+    written : BOOL;
+END_VAR
+    IF NOT started THEN
+        Acme.Feed.Feed.BYTES_STREAM_NEW(readable => readable, writable => writable);
+        Acme.Feed.Feed.SINK(data := readable);
+        started := TRUE;
+    END_IF;
+    IF NOT written THEN
+        write(stream := writable, data := 'hello');
+        IF write.DONE THEN
+            written := TRUE;
+        END_IF;
+    END_IF;
+    DONE := Acme.Feed.Feed.FIRST() = USINT#16#68;
+END_FUNCTION_BLOCK
+";
+
+/// `rk test` carries a component's stream and future to the program, and
+/// the program's stream to the component: the writer writes in its store,
+/// each store's event loop runs, the component's in a task of its own, and
+/// the reader reads in its own store, over the program's cycles.
+#[test]
+fn rk_test_carries_a_component_s_stream_and_future() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let feed = component_of_wat(FEED, "feeder", FEED_WAT);
+    library(&root, "feed", &declarations(&feed), Some(&feed));
+    let ws = program(&root, "feed = { path = \"../feed\" }\n", "0");
+    write(&ws, &[("main.st", FEED_TESTS)]);
+    tested(&ws, Some("test_feed")).expect("the component's stream and future cross");
+    tested(&ws, Some("test_sink")).expect("the program's stream crosses");
 }
 
 /// A component that keeps files: each is a resource whose handle the
