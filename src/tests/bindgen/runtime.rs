@@ -459,6 +459,55 @@ fn the_errors_of_wasi_s_sockets_are_read_out_of_words(mut with_db: RootDatabase)
     assert_eq!(output, 1, "the number of the check that failed, negative");
 }
 
+/// The writer of WASI's `send`, on a socket that is not connected: the
+/// future `send` answers with fails, and its `error-code` is the writer's
+/// `ERROR` and `ERRORID`. 1 when it is, and otherwise the number of the
+/// check that failed, negative.
+#[rstest]
+fn a_writer_reports_the_error_of_the_future_it_reads(mut with_db: RootDatabase) {
+    let bindings = generated(&world_of(&["wasi:sockets/types@0.3.0"]));
+    let program = r#"
+        PROGRAM P
+        VAR_EXTERNAL output : DINT; END_VAR
+        VAR
+            step : INT;
+            failed : BOOL;
+            socket : UDINT;
+            error : Wasi.Sockets.Types.ERROR_CODE;
+            send : Wasi.Sockets.Types.TCP_SOCKET_SEND_WRITER;
+        END_VAR
+            CASE step OF
+            0:
+                Wasi.Sockets.Types.TCP_SOCKET_CREATE(
+                    address_family := Wasi.Sockets.Types.IP_ADDRESS_FAMILY#IPV4,
+                    failed => failed, value => socket, error => error);
+                IF failed THEN output := -1; RETURN; END_IF;
+                step := 1;
+            1:
+                send(REQ := TRUE, IN := 'x', self := socket);
+                IF send.ENDED THEN
+                    IF NOT send.ERROR
+                        OR send.ERRORID.kind <> Wasi.Sockets.Types.ERROR_CODE_KIND#INVALID_STATE
+                    THEN
+                        output := -2; RETURN;
+                    END_IF;
+                    output := 1;
+                END_IF;
+            END_CASE;
+        END_PROGRAM
+    "#;
+    let ctx = WasiCtxBuilder::new().allow_tcp(true).build();
+    let mut plc = plc_with(&mut with_db, &bindings, program, ctx);
+    let mut output = 0;
+    for _ in 0..50 {
+        output = plc.scan(0);
+        if output != 0 {
+            break;
+        }
+    }
+    assert_eq!(output, 1, "the number of the check that failed, negative");
+}
+
 /// An address, a variant, passed to WASI's sockets and read back from
 /// them: a UDP socket and a TCP socket bound to the loopback address, as
 /// values, the cases sharing them; a second TCP socket connected to the

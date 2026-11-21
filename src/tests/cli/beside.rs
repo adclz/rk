@@ -1937,6 +1937,119 @@ fn an_async_function_s_writer_starts_the_call_and_keeps_its_result() {
     tested(&ws, None).expect("the call returns what came, once");
 }
 
+/// [`UPLOAD`] whose `upload` returns a result: the error `many` once more
+/// than 5 bytes came, else none.
+fn result_uploader() -> Vec<u8> {
+    let returns = "upload: async func(data: stream<u8>, offset: u32) -> u32;";
+    assert_eq!(UPLOAD.matches(returns).count(), 1);
+    let wit = UPLOAD.replace(
+        returns,
+        "enum fault { few, many }
+        upload: async func(data: stream<u8>, offset: u32) -> result<_, fault>;",
+    );
+    let total = "global.get $total
+                global.get $offset
+                i32.add
+                call $return";
+    assert_eq!(UPLOAD_WAT.matches(total).count(), 1);
+    // A result is its case, 1 for an error, then the error's.
+    let wat = UPLOAD_WAT
+        .replace(
+            "(func $return (param i32))",
+            "(func $return (param i32 i32))",
+        )
+        .replace(
+            total,
+            "global.get $total
+                i32.const 5
+                i32.gt_u
+                if (result i32 i32)
+                    i32.const 1
+                    i32.const 1
+                else
+                    i32.const 0
+                    i32.const 0
+                end
+                call $return",
+        );
+    component_of_wat(&wit, "uploader", &wat)
+}
+
+/// The program's tests of [`result_uploader`]'s writer: the error of the
+/// result the call returns is the writer's `ERROR` and `ERRORID`, and a
+/// result of no error leaves `ERROR` FALSE.
+const RESULT_WRITER_TESTS: &str = "
+FUNCTION_BLOCK send
+VAR_INPUT text : STRING; END_VAR
+VAR_OUTPUT ENDED, ERROR : BOOL; ERRORID : Acme.Upload.Upload.FAULT; END_VAR
+VAR
+    step : INT;
+    w : Acme.Upload.Upload.UPLOAD_WRITER;
+END_VAR
+    CASE step OF
+        0:
+            w(REQ := TRUE, IN := text, offset := 100);
+            step := 1;
+        1:
+            w(REQ := TRUE);
+            IF NOT w.BUSY THEN
+                w(REQ := FALSE, CLOSE := TRUE);
+                step := 2;
+            END_IF;
+        2:
+            w(CLOSE := TRUE);
+    END_CASE;
+    IF w.ERROR AND NOT w.ENDED THEN
+        __RAISE('ERROR before the call returned');
+    END_IF;
+    ENDED := w.ENDED;
+    ERROR := w.ERROR;
+    ERRORID := w.ERRORID;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_result_writer_reports_the_error
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR s : send; END_VAR
+    s(text := 'hello world');
+    IF s.ENDED THEN
+        IF NOT s.ERROR OR s.ERRORID <> Acme.Upload.Upload.FAULT#MANY THEN
+            __RAISE('the error is not ERROR with ERRORID many');
+        END_IF;
+        DONE := TRUE;
+    END_IF;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_result_writer_without_an_error
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR s : send; END_VAR
+    s(text := 'hi');
+    IF s.ENDED THEN
+        IF s.ERROR THEN
+            __RAISE('an answer of no error is an ERROR');
+        END_IF;
+        DONE := TRUE;
+    END_IF;
+END_FUNCTION_BLOCK
+";
+
+/// A function's writer folds the error of the result it answers with into
+/// `ERROR` and `ERRORID`.
+#[test]
+fn a_function_s_writer_reports_the_error_it_answers_with() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let upload = result_uploader();
+    library(&root, "upload", &declarations(&upload), Some(&upload));
+    let ws = program(&root, "upload = { path = \"../upload\" }\n", "0");
+    write(&ws, &[("main.st", RESULT_WRITER_TESTS)]);
+    tested(&ws, Some("test_result_writer_reports_the_error"))
+        .expect("the error is ERROR and ERRORID");
+    tested(&ws, Some("test_result_writer_without_an_error")).expect("no error, no ERROR");
+}
+
 /// A `BYTES_STREAM_WRITER` makes its stream at its first call and writes
 /// it to the reader it is handed to, a component here; `CLOSE` ends the
 /// stream once no write is under way, and a request after it, or after the
