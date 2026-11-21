@@ -336,6 +336,7 @@ A stream of bytes that a function takes from the program has a `BYTES_STREAM_WRI
 A function that takes such a stream has a writer of its own, `WRITE_VIA_STREAM_WRITER` for `write-via-stream`, which holds both: at the first rising edge of `REQ` it makes the stream and calls the function with its reading end and with its other inputs, and writes as the stream's writer does.
 A `func` that answers with a future or nothing is called once, and its future read with its `_GET`, the writer keeping its value; a future no read gives back is let go of unread.
 The call of an `async func` is started the same way and its block called until it returns, once, the writer keeping its result.
+When what it keeps is a `result`, an error turns the writer's `ERROR` TRUE and its value is `ERRORID`, as a stream the reader left does: `WRITE_VIA_STREAM_WRITER` gives the `error-code` of the `result<_, error-code>` that `write-via-stream`'s future holds.
 
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:
 
