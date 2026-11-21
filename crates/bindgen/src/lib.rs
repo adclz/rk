@@ -1555,7 +1555,7 @@ impl Generator<'_> {
             if here.sets.contains(&key) {
                 continue;
             }
-            let fed = taken_from_the_program(resolve, here.owner, carrier, &key.1);
+            let (fed, given) = directions(resolve, here.owner, carrier, &key.1);
             here.sets.push(key.clone());
             // A set says what it is: `BYTES_STREAM`, `RESULT_FUTURE`.
             let name = format!(
@@ -1581,6 +1581,7 @@ impl Generator<'_> {
                 &anchor,
                 here.owner,
                 fed,
+                given,
             );
             let what = format!("a built-in of `{}`", wit_text(resolve, payload));
             for pou in written {
@@ -2281,6 +2282,12 @@ fn stream_writer(out: &mut Out, names: &Writer) {
         (2, "write(stream := writable, data := rest);".to_string()),
         (2, "IF write.DONE THEN".to_string()),
         (3, "IF write.closed THEN".to_string()),
+        (
+            4,
+            "// The reader left: the writing end goes too.".to_string(),
+        ),
+        (4, format!("{drop}(stream := writable);")),
+        (4, "writable := 0;".to_string()),
         (4, "closed := TRUE;".to_string()),
         (4, "BUSY := FALSE;".to_string()),
         (4, "ERROR := TRUE;".to_string()),
@@ -2580,37 +2587,44 @@ fn wit_name(ty: Type) -> &'static str {
     }
 }
 
-/// Whether a function of the interface `owner` takes a stream or a future,
-/// as `carrier` says, of the payload `key` names from the program: one of
-/// its parameters holds one, which a write of the program's would feed.
-fn taken_from_the_program(
+/// The directions a stream or a future of `key` crosses in the functions
+/// of `owner`'s interface: from the program, which one of them takes as a
+/// parameter, and to it, which one gives in its result.
+fn directions(
     resolve: &Resolve,
     owner: Option<TypeOwner>,
     carrier: Carrier,
     key: &str,
-) -> bool {
+) -> (bool, bool) {
     let Some(TypeOwner::Interface(interface)) = owner else {
-        return false;
+        return (false, false);
     };
-    resolve.interfaces[interface]
-        .functions
-        .values()
-        .any(|function| {
-            let mut params = function.clone();
-            params.result = None;
-            params
-                .find_futures_and_streams(resolve)
-                .into_iter()
-                .any(|ty| match &resolve.types[ty].kind {
-                    TypeDefKind::Stream(payload) => {
-                        carrier == Carrier::Stream && type_key(resolve, *payload) == key
-                    }
-                    TypeDefKind::Future(payload) => {
-                        carrier == Carrier::Future && type_key(resolve, *payload) == key
-                    }
-                    _ => false,
-                })
-        })
+    let holds = |function: &Function| {
+        function
+            .find_futures_and_streams(resolve)
+            .into_iter()
+            .any(|ty| match &resolve.types[ty].kind {
+                TypeDefKind::Stream(payload) => {
+                    carrier == Carrier::Stream && type_key(resolve, *payload) == key
+                }
+                TypeDefKind::Future(payload) => {
+                    carrier == Carrier::Future && type_key(resolve, *payload) == key
+                }
+                _ => false,
+            })
+    };
+    let functions = &resolve.interfaces[interface].functions;
+    let fed = functions.values().any(|function| {
+        let mut params = function.clone();
+        params.result = None;
+        holds(&params)
+    });
+    let given = functions.values().any(|function| {
+        let mut result = function.clone();
+        result.params.clear();
+        holds(&result)
+    });
+    (fed, given)
 }
 
 /// The name of the built-ins of a stream or a future of `payload`: a
@@ -2676,7 +2690,8 @@ fn capitals(name: &str) -> String {
 /// `out`, what is left out of them to `skipped`; the types they name, from
 /// `owner`. `converts` is set when a future's value is read out of words.
 /// `fed` says whether a function of the interface takes one from the
-/// program, without which a write would have no reader.
+/// program, which the built-ins that make and write one are for, and
+/// `given` whether one gives one to it, which those that read one are for.
 /// The names of the POUs written: `name` and the built-in's own, with a
 /// `_` after it where `taken` holds that already.
 #[allow(clippy::too_many_arguments)]
@@ -2693,6 +2708,7 @@ fn built_in_set(
     import: &str,
     owner: Option<TypeOwner>,
     fed: bool,
+    given: bool,
 ) -> (Vec<String>, Managers) {
     let mut written = Vec::new();
     let pou = |built_in: &str| spare(taken, format!("{name}_{built_in}"));
@@ -2713,16 +2729,18 @@ fn built_in_set(
         None => "nothing".to_string(),
     };
 
-    out.prose(&format!(
-        "Makes a {kind} of {of}, and gives its reading end, then its writing end."
-    ));
-    out.line(&format!("{{extern {}}}", pragma("new")));
-    let new = pou("NEW");
-    out.line(&format!("FUNCTION {new}"));
-    written.push(new);
-    out.vars("VAR_OUTPUT", &[handle("readable"), handle("writable")]);
-    out.line("END_FUNCTION");
-    out.line("");
+    if fed {
+        out.prose(&format!(
+            "Makes a {kind} of {of}, and gives its reading end, then its writing end."
+        ));
+        out.line(&format!("{{extern {}}}", pragma("new")));
+        let new = pou("NEW");
+        out.line(&format!("FUNCTION {new}"));
+        written.push(new);
+        out.vars("VAR_OUTPUT", &[handle("readable"), handle("writable")]);
+        out.line("END_FUNCTION");
+        out.line("");
+    }
 
     let bytes = carrier == Carrier::Stream && payload == Some(Type::U8);
     let handles = match payload {
@@ -2739,13 +2757,14 @@ fn built_in_set(
     let mut read_outputs: Option<Vec<Var>> = None;
     match carrier {
         Carrier::Stream if bytes => {
-            for (block, data) in [
+            let reads = [
                 ("READ", format!("STRING[{STRING_LIMIT}]")),
                 (
                     "READ_ARRAY",
                     format!("ARRAY[0..{}] OF BYTE", BYTES_AT_ONCE - 1),
                 ),
-            ] {
+            ];
+            for (block, data) in reads.into_iter().filter(|_| given) {
                 out.prose(
                     "Reads the bytes that come next into `data`, as many as it holds at most: `read` of them, after `DONE`. `closed` is TRUE once the writer has let go.",
                 );
@@ -2771,53 +2790,55 @@ fn built_in_set(
                 out.line("END_FUNCTION_BLOCK");
                 out.line("");
             }
-            out.prose(
-                "Writes the bytes of `data`, as many as the reader takes: `written` of them, after `DONE`. `closed` is TRUE once the reader has let go.",
-            );
-            out.line(&format!("{{extern async {}}}", pragma("write")));
-            let write = pou("WRITE");
-            out.line(&format!("FUNCTION_BLOCK {write}"));
-            written.push(write);
-            out.vars(
-                "VAR_INPUT",
-                &[
-                    handle(end),
-                    Var {
-                        name: "data".to_string(),
-                        ty: format!("STRING[{STRING_LIMIT}]"),
-                        flat: 2,
-                        start: None,
-                    },
-                ],
-            );
-            out.vars("VAR_OUTPUT", &[done(), handle("written"), closed()]);
-            out.line("END_FUNCTION_BLOCK");
-            out.line("");
-            // Bytes that are no text, from where they are: the address of
-            // the first, as the canonical ABI passes a buffer, and how many.
-            out.prose(
-                "Writes the `count` bytes from the one `data` points at, as many as the reader takes: `written` of them, after `DONE`. The host reads them where they are while the write runs, so they stay there, unchanged, until `DONE`. `closed` is TRUE once the reader has let go.",
-            );
-            out.line(&format!("{{extern async {}}}", pragma("write")));
-            let write = pou("WRITE_ARRAY");
-            out.line(&format!("FUNCTION_BLOCK {write}"));
-            written.push(write);
-            out.vars(
-                "VAR_INPUT",
-                &[
-                    handle(end),
-                    Var {
-                        name: "data".to_string(),
-                        ty: "REF_TO BYTE".to_string(),
-                        flat: 1,
-                        start: None,
-                    },
-                    handle("count"),
-                ],
-            );
-            out.vars("VAR_OUTPUT", &[done(), handle("written"), closed()]);
-            out.line("END_FUNCTION_BLOCK");
-            out.line("");
+            if fed {
+                out.prose(
+                    "Writes the bytes of `data`, as many as the reader takes: `written` of them, after `DONE`. `closed` is TRUE once the reader has let go.",
+                );
+                out.line(&format!("{{extern async {}}}", pragma("write")));
+                let write = pou("WRITE");
+                out.line(&format!("FUNCTION_BLOCK {write}"));
+                written.push(write);
+                out.vars(
+                    "VAR_INPUT",
+                    &[
+                        handle(end),
+                        Var {
+                            name: "data".to_string(),
+                            ty: format!("STRING[{STRING_LIMIT}]"),
+                            flat: 2,
+                            start: None,
+                        },
+                    ],
+                );
+                out.vars("VAR_OUTPUT", &[done(), handle("written"), closed()]);
+                out.line("END_FUNCTION_BLOCK");
+                out.line("");
+                // Bytes that are no text, from where they are: the address of
+                // the first, as the canonical ABI passes a buffer, and how many.
+                out.prose(
+                    "Writes the `count` bytes from the one `data` points at, as many as the reader takes: `written` of them, after `DONE`. The host reads them where they are while the write runs, so they stay there, unchanged, until `DONE`. `closed` is TRUE once the reader has let go.",
+                );
+                out.line(&format!("{{extern async {}}}", pragma("write")));
+                let write = pou("WRITE_ARRAY");
+                out.line(&format!("FUNCTION_BLOCK {write}"));
+                written.push(write);
+                out.vars(
+                    "VAR_INPUT",
+                    &[
+                        handle(end),
+                        Var {
+                            name: "data".to_string(),
+                            ty: "REF_TO BYTE".to_string(),
+                            flat: 1,
+                            start: None,
+                        },
+                        handle("count"),
+                    ],
+                );
+                out.vars("VAR_OUTPUT", &[done(), handle("written"), closed()]);
+                out.line("END_FUNCTION_BLOCK");
+                out.line("");
+            }
         }
         // A resource's handles, read into an array of its type, a UDINT:
         // what a stream of them is for, a listener's connections. Nothing a
@@ -2828,46 +2849,54 @@ fn built_in_set(
             let element = payload
                 .and_then(|ty| shapes::scalar(resolve, ty, owner))
                 .unwrap_or_else(|| "UDINT".to_string());
-            out.prose(
+            if given {
+                out.prose(
                 "Reads the handles that come next into `data`, as many as it holds at most: `read` of them, after `DONE`, each the program's own to drop. `closed` is TRUE once the writer has let go.",
             );
-            out.line(&format!("{{extern async {}}}", pragma("read")));
-            let read = pou("READ");
-            out.line(&format!("FUNCTION_BLOCK {read}"));
-            written.push(read);
-            out.vars("VAR_INPUT", &[handle(end)]);
-            out.vars(
-                "VAR_OUTPUT",
-                &[
-                    done(),
-                    Var {
-                        name: "data".to_string(),
-                        ty: format!("ARRAY[0..{}] OF {element}", HANDLES_AT_ONCE - 1),
-                        flat: 1,
-                        start: None,
-                    },
-                    handle("read"),
-                    closed(),
-                ],
-            );
-            out.line("END_FUNCTION_BLOCK");
-            out.line("");
-            skipped.push(Skipped {
-                item: format!("`{name}_WRITE`"),
-                reason: match fed {
-                    true => "a stream's write moves bytes only".to_string(),
-                    false => format!(
-                        "no function of the interface takes a stream of {of} from the program"
-                    ),
-                },
-            });
+                out.line(&format!("{{extern async {}}}", pragma("read")));
+                let read = pou("READ");
+                out.line(&format!("FUNCTION_BLOCK {read}"));
+                written.push(read);
+                out.vars("VAR_INPUT", &[handle(end)]);
+                out.vars(
+                    "VAR_OUTPUT",
+                    &[
+                        done(),
+                        Var {
+                            name: "data".to_string(),
+                            ty: format!("ARRAY[0..{}] OF {element}", HANDLES_AT_ONCE - 1),
+                            flat: 1,
+                            start: None,
+                        },
+                        handle("read"),
+                        closed(),
+                    ],
+                );
+                out.line("END_FUNCTION_BLOCK");
+                out.line("");
+            }
+            if fed {
+                skipped.push(Skipped {
+                    item: format!("`{name}_WRITE`"),
+                    reason: "a stream's write moves bytes only".to_string(),
+                });
+            }
         }
-        Carrier::Stream => skipped.push(Skipped {
-            item: format!("`{name}_READ` and `{name}_WRITE`"),
-            reason: "a stream's read moves bytes or handles only, and its write bytes only"
-                .to_string(),
-        }),
-        Carrier::Future => {
+        Carrier::Stream => {
+            if given {
+                skipped.push(Skipped {
+                    item: format!("`{name}_READ`"),
+                    reason: "a stream's read moves bytes or handles only".to_string(),
+                });
+            }
+            if fed {
+                skipped.push(Skipped {
+                    item: format!("`{name}_WRITE`"),
+                    reason: "a stream's write moves bytes only".to_string(),
+                });
+            }
+        }
+        Carrier::Future if given => {
             let reads = "Reads the value the future holds, which comes back after `DONE`.";
             // A value no record of outputs is laid out as comes back in
             // words, which the block reads it out of.
@@ -2957,21 +2986,20 @@ fn built_in_set(
                     reason: format!("its value holds {what}, which a read cannot give back yet"),
                 }),
             }
-            skipped.push(Skipped {
-                item: format!("`{name}_WRITE`"),
-                reason: match (fed, payload) {
-                    (true, _) => "a future's write is not imported yet".to_string(),
-                    (false, Some(_)) => format!(
-                        "no function of the interface takes a future of {of} from the program"
-                    ),
-                    (false, None) => {
-                        "no function of the interface takes a future from the program".to_string()
-                    }
-                },
-            });
         }
+        Carrier::Future => {}
     }
-    for (built_in, which) in [("drop-readable", "READABLE"), ("drop-writable", "WRITABLE")] {
+    if carrier == Carrier::Future && fed {
+        skipped.push(Skipped {
+            item: format!("`{name}_WRITE`"),
+            reason: "a future's write is not imported yet".to_string(),
+        });
+    }
+    let drops = [
+        ("drop-readable", "READABLE", true),
+        ("drop-writable", "WRITABLE", fed),
+    ];
+    for (built_in, which, _) in drops.into_iter().filter(|(.., wanted)| *wanted) {
         let side = if which == "READABLE" {
             "reading"
         } else {
@@ -3019,10 +3047,17 @@ fn built_in_set(
         managers.writer = Some(names.writer.clone());
         written.extend([names.len, names.after, names.writer]);
     }
-    skipped.push(Skipped {
-        item: format!("`{name}_CANCEL_READ` and `{name}_CANCEL_WRITE`"),
-        reason: "a cancel blocks the scan".to_string(),
-    });
+    let cancels: Vec<String> = [("READ", given), ("WRITE", fed)]
+        .into_iter()
+        .filter(|(_, used)| *used)
+        .map(|(side, _)| format!("`{name}_CANCEL_{side}`"))
+        .collect();
+    if !cancels.is_empty() {
+        skipped.push(Skipped {
+            item: cancels.join(" and "),
+            reason: "a cancel blocks the scan".to_string(),
+        });
+    }
     (written, managers)
 }
 
