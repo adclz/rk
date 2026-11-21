@@ -128,25 +128,27 @@ NAMESPACE INTERNAL Wasi
 				{wasm 'str.byte_delete' (params IN L P) (result BYTES_STREAM_TEXT_AFTER)}
 			END_FUNCTION
 
-			/* Writes a stream of bytes it makes at its first call: `readable` is its
-			   reading end, to hand to the function that reads it. A rising edge of
-			   `REQ` writes `IN`, handing the reader what it has not taken until it has
-			   all of it: `BUSY` meanwhile, then `DONE` in the call where it has all of
-			   it, at once for an empty text. An edge while `BUSY` is ignored. A rising
-			   edge of `CLOSE` lets go of the writing end once no write is under way,
-			   which ends the stream for the reader. `ERROR` is TRUE once the stream is
-			   closed, by `CLOSE` or by the reader letting go: each later request is an
-			   error at once. */
+			/* Writes text to a stream of bytes it makes at its first call, for the
+			   function `readable` is handed to. */
 			FUNCTION_BLOCK BYTES_STREAM_WRITER
 			VAR_INPUT
+				/* A rising edge writes `IN`. An edge while `BUSY` is ignored. */
 				REQ : BOOL;
+				/* The text to write. */
 				IN : STRING[4096];
+				/* A rising edge ends the stream, once no write is under way. */
 				CLOSE : BOOL;
 			END_VAR
 			VAR_OUTPUT
+				/* The stream's reading end, to hand to the function that reads it. */
 				readable : UDINT;
+				/* TRUE while the reader has not taken all of `IN`. */
 				BUSY : BOOL;
+				/* TRUE in the call where the reader has taken all of `IN`, at once for an
+				   empty text. */
 				DONE : BOOL;
+				/* TRUE once a write finds the reader gone, or a request comes after
+				   `CLOSE`: the stream does not open again. */
 				ERROR : BOOL;
 			END_VAR
 			VAR
@@ -287,29 +289,34 @@ NAMESPACE INTERNAL Wasi
 				END_IF;
 			END_FUNCTION_BLOCK
 
-			/* Writes to `WRITE_VIA_STREAM` through a stream of bytes it makes at the
-			   first rising edge of `REQ`, when it calls `WRITE_VIA_STREAM` with the
-			   stream's reading end. A rising edge of `REQ` writes `IN`, handing what
-			   the reader has not taken until it has all of it: `BUSY` meanwhile, then
-			   `DONE` in the call where it has all of it, at once for an empty text. An
-			   edge while `BUSY` is ignored. A rising edge of `CLOSE` ends the stream
-			   once no write is under way. `ERROR` is TRUE once the stream is closed,
-			   by `CLOSE` or by the reader letting go: each later request is an error
-			   at once. `ENDED` is TRUE once the future `WRITE_VIA_STREAM` answers with
-			   has come, its value in `failed`, `error_`. */
+			/* Writes text to `write-via-stream` through a stream of bytes it opens at
+			   the first request. */
 			FUNCTION_BLOCK WRITE_VIA_STREAM_WRITER
 			VAR_INPUT
+				/* A rising edge writes `IN`; the first opens the stream and calls
+				   `write-via-stream` with it. An edge while `BUSY` is ignored. */
 				REQ : BOOL;
+				/* The text to write. */
 				IN : STRING[4096];
+				/* A rising edge ends the stream, once no write is under way. */
 				CLOSE : BOOL;
 			END_VAR
 			VAR_OUTPUT
+				/* TRUE while the reader has not taken all of `IN`. */
 				BUSY : BOOL;
+				/* TRUE in the call where the reader has taken all of `IN`, at once for an
+				   empty text. */
 				DONE : BOOL;
+				/* TRUE once a write finds the reader gone, a request comes after `CLOSE`,
+				   or the `result<_, error-code>` from `write-via-stream` is an error,
+				   whose `error-code` is in `ERRORID`. */
 				ERROR : BOOL;
+				/* The `error-code` of the `result<_, error-code>` from `write-via-stream`,
+				   when it is an error, which turns `ERROR` TRUE. */
+				ERRORID : Wasi.Cli.Types.ERROR_CODE;
+				/* TRUE once the `future<result<_, error-code>>` from `write-via-stream`
+				   has its value. */
 				ENDED : BOOL;
-				failed : BOOL;
-				error_ : Wasi.Cli.Types.ERROR_CODE;
 			END_VAR
 			VAR
 				open : BOOL;
@@ -327,14 +334,13 @@ NAMESPACE INTERNAL Wasi
 					stream(REQ := REQ, IN := IN, CLOSE := CLOSE);
 					BUSY := stream.BUSY;
 					DONE := stream.DONE;
-					ERROR := stream.ERROR;
 					// The answer, read once it comes, and kept.
 					answer(future := future);
 					IF answer.DONE THEN
-						failed := answer.failed;
-						error_ := answer.error;
+						ERRORID := answer.error;
 						ENDED := TRUE;
 					END_IF;
+					ERROR := stream.ERROR OR answer.failed;
 				END_IF;
 			END_FUNCTION_BLOCK
 		END_NAMESPACE
