@@ -1395,21 +1395,28 @@ impl Generator<'_> {
             }
         }
         out.line("");
+        // What a writer calls: a FUNCTION that is its import as it is and
+        // gives back no output, or the block of an `async func`, each
+        // parameter an input of it, in order, and none in and out.
+        let one_to_one = in_outs.is_empty()
+            && lowered.in_outs.is_empty()
+            && texts.is_empty()
+            && lowered.inputs.len() == function.params.len();
+        let declared = match (asynchronous, apart) {
+            (false, false) if one_to_one && given.is_empty() => Some(Declared {
+                pou: pou.clone(),
+                inputs: lowered.inputs.clone(),
+                block: None,
+            }),
+            (true, _) if one_to_one => Some(Declared {
+                pou: pou.clone(),
+                inputs: lowered.inputs.clone(),
+                block: Some(outputs.to_vec()),
+            }),
+            _ => None,
+        };
         if !apart {
-            // A FUNCTION that is its import as it is, each parameter an input
-            // of it, in order: what a writer calls.
-            let plain = !asynchronous
-                && in_outs.is_empty()
-                && given.is_empty()
-                && texts.is_empty()
-                && lowered.inputs.len() == function.params.len();
-            return Ok((
-                false,
-                plain.then(|| Declared {
-                    pou: pou.clone(),
-                    inputs: lowered.inputs.clone(),
-                }),
-            ));
+            return Ok((false, declared));
         }
 
         // What a call names: the values themselves, packed into the
@@ -1502,7 +1509,7 @@ impl Generator<'_> {
         out.line("");
         Ok((
             lowered.converts() || matches!(&returned, Returned::Words(lifted) if lifted.converts()),
-            None,
+            declared,
         ))
     }
 
@@ -1650,11 +1657,13 @@ fn future_get(out: &mut Out, get: &str, read: &str, drop: &str, end: &str, outpu
     out.line("");
 }
 
-/// A FUNCTION that is its import as it is: its name, and its inputs, one
-/// per parameter of its function, in order.
+/// What a writer calls: its name, and its inputs, one per parameter of its
+/// function, in order; for the block of an `async func`, the outputs it
+/// gives past its `DONE`, and for a FUNCTION, `None`.
 struct Declared {
     pou: String,
     inputs: Vec<Var>,
+    block: Option<Vec<Var>>,
 }
 
 /// What `ty` is when it is a stream or a future, under aliases too: which,
@@ -1669,13 +1678,26 @@ fn carried(resolve: &Resolve, ty: Type) -> Option<(Carrier, Option<Type>)> {
     }
 }
 
+/// What the function a writer calls answers with.
+enum Answer {
+    /// Nothing.
+    Nothing,
+    /// A future no read gives back, let go of unread with this drop.
+    Unread(String),
+    /// A future, read by this `_GET`, whose outputs past `DONE` are these.
+    Future(String, Vec<Var>),
+    /// The result of an `async func`, the outputs of its block past `DONE`.
+    Call(Vec<Var>),
+}
+
 /// The block that writes to `function`, `<NAME>_WRITER`, when the function
-/// takes one stream of bytes from the program and gives back a future or
-/// nothing: it makes the stream, calls `declared` with its reading end and
-/// writes with the stream's `BYTES_STREAM_WRITER` (`managers`), and reads
-/// the future with its `_GET`, keeping its value, or lets go of it unread
-/// when no read gives it back. A function that takes another stream or
-/// future has none.
+/// takes one stream of bytes from the program, and no other stream or
+/// future: it makes the stream and writes it with the stream's
+/// `BYTES_STREAM_WRITER` (`managers`). A `func` that answers with a future
+/// or nothing is called with the stream's reading end, and its future read
+/// with its `_GET`, keeping its value, or let go of unread when no read
+/// gives it back; the call of an `async func` is started with it and
+/// followed to its end once, keeping its result.
 fn function_writer(
     resolve: &Resolve,
     out: &mut Out,
@@ -1701,13 +1723,21 @@ fn function_writer(
     else {
         return;
     };
-    // The function's answer: a future, read or let go, or nothing.
-    let answer = match function.result {
-        None => None,
-        Some(ty) => match carried(resolve, ty) {
+    let answer = match (&declared.block, function.result) {
+        // An `async func` whose result carries no stream or future.
+        (Some(outputs), _) if function.find_futures_and_streams(resolve).len() == 1 => {
+            Answer::Call(outputs.clone())
+        }
+        (Some(_), _) => return,
+        (None, None) => Answer::Nothing,
+        (None, Some(ty)) => match carried(resolve, ty) {
             Some((Carrier::Future, payload)) => {
                 match managers.get(&(Carrier::Future, type_key(resolve, payload))) {
-                    Some(managers) => Some(managers.clone()),
+                    Some(Managers {
+                        get: Some((get, outputs)),
+                        ..
+                    }) => Answer::Future(get.clone(), outputs.clone()),
+                    Some(managers) => Answer::Unread(managers.drop_readable.clone()),
                     None => return,
                 }
             }
@@ -1724,7 +1754,7 @@ fn function_writer(
     // them, or one taken before it, takes a `_`.
     let own = [
         "REQ", "IN", "CLOSE", "BUSY", "DONE", "ERROR", "ENDED", "open", "future", "stream",
-        "answer",
+        "answer", "call",
     ];
     let mut held: Vec<String> = own.iter().map(|name| name.to_string()).collect();
     let mut apart = |name: &str| {
@@ -1741,7 +1771,7 @@ fn function_writer(
         flat: 1,
         start: None,
     };
-    // The function's other inputs, each passed at the opening request.
+    // The function's other inputs, each passed when the block opens.
     let inputs: Vec<(Var, String)> = declared
         .inputs
         .iter()
@@ -1758,10 +1788,14 @@ fn function_writer(
             )
         })
         .collect();
-    let read = answer.as_ref().and_then(|answer| answer.get.clone());
-    let values: Vec<(Var, String)> = read
+    // What the block keeps of the answer, and where it reads each value.
+    let (kept, from): (&[Var], &str) = match &answer {
+        Answer::Future(_, outputs) => (outputs, "answer"),
+        Answer::Call(outputs) => (outputs, "call"),
+        Answer::Nothing | Answer::Unread(_) => (&[], ""),
+    };
+    let values: Vec<(Var, String)> = kept
         .iter()
-        .flat_map(|(_, outputs)| outputs)
         .map(|output| {
             let name = apart(&output.name);
             (
@@ -1775,36 +1809,43 @@ fn function_writer(
         .collect();
 
     let pou = &declared.pou;
-    let opening = inputs
-        .iter()
-        .map(|(var, _)| format!("`{}`", var.name))
-        .collect::<Vec<_>>();
-    let opening = match opening.as_slice() {
-        [] => String::new(),
-        names => format!(
+    let named = |vars: &[(Var, String)]| {
+        vars.iter()
+            .map(|(var, _)| format!("`{}`", var.name))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let opening = match inputs.is_empty() {
+        true => String::new(),
+        false => format!(
             ", and its other inputs, {}, as they are then",
-            names.join(", ")
+            named(&inputs)
         ),
     };
-    let ended = match (&answer, &read) {
-        (None, _) => String::new(),
-        (Some(_), None) => format!(
+    let calls = match answer {
+        Answer::Call(_) => format!("starts the call of `{pou}`"),
+        _ => format!("calls `{pou}`"),
+    };
+    let ended = match (&answer, values.is_empty()) {
+        (Answer::Nothing, _) => String::new(),
+        (Answer::Unread(_), _) => format!(
             " What `{pou}` answers with is let go of unread: no read gives its value back yet."
         ),
-        (Some(_), Some(_)) if values.is_empty() => {
+        (Answer::Future(..), true) => {
             format!(" `ENDED` is TRUE once the future `{pou}` answers with has come.")
         }
-        (Some(_), Some(_)) => format!(
+        (Answer::Future(..), false) => format!(
             " `ENDED` is TRUE once the future `{pou}` answers with has come, its value in {}.",
-            values
-                .iter()
-                .map(|(var, _)| format!("`{}`", var.name))
-                .collect::<Vec<_>>()
-                .join(", ")
+            named(&values)
+        ),
+        (Answer::Call(_), true) => " `ENDED` is TRUE once the call has returned.".to_string(),
+        (Answer::Call(_), false) => format!(
+            " `ENDED` is TRUE once the call has returned, its result in {}.",
+            named(&values)
         ),
     };
     out.prose(&format!(
-        "Writes to `{pou}` through a stream of bytes it makes at the first rising edge of `REQ`, when it calls `{pou}` with the stream's reading end{opening}. A rising edge of `REQ` writes `IN`, handing what the reader has not taken until it has all of it: `BUSY` meanwhile, then `DONE` in the call where it has all of it, at once for an empty text. An edge while `BUSY` is ignored. A rising edge of `CLOSE` ends the stream once no write is under way. `ERROR` is TRUE once the stream is closed, by `CLOSE` or by the reader letting go: each later request is an error at once.{ended}"
+        "Writes to `{pou}` through a stream of bytes it makes at the first rising edge of `REQ`, when it {calls} with the stream's reading end{opening}. A rising edge of `REQ` writes `IN`, handing what the reader has not taken until it has all of it: `BUSY` meanwhile, then `DONE` in the call where it has all of it, at once for an empty text. An edge while `BUSY` is ignored. A rising edge of `CLOSE` ends the stream once no write is under way. `ERROR` is TRUE once the stream is closed, by `CLOSE` or by the reader letting go: each later request is an error at once.{ended}"
     ));
     out.line(&format!("FUNCTION_BLOCK {block}"));
     let text = format!("STRING[{STRING_LIMIT}]");
@@ -1821,15 +1862,19 @@ fn function_writer(
         var("DONE", "BOOL"),
         var("ERROR", "BOOL"),
     ];
-    if read.is_some() {
+    if let Answer::Future(..) | Answer::Call(_) = answer {
         outputs.push(var("ENDED", "BOOL"));
         outputs.extend(values.iter().map(|(var, _)| var.clone()));
     }
     out.vars("VAR_OUTPUT", &outputs);
     let mut locals = vec![var("open", "BOOL"), var("stream", &writer)];
-    if let Some((get, _)) = &read {
-        locals.push(var("future", "UDINT"));
-        locals.push(var("answer", get));
+    match &answer {
+        Answer::Future(get, _) => {
+            locals.push(var("future", "UDINT"));
+            locals.push(var("answer", get));
+        }
+        Answer::Call(_) => locals.push(var("call", pou)),
+        Answer::Nothing | Answer::Unread(_) => {}
     }
     out.vars("VAR", &locals);
     out.depth += 1;
@@ -1837,36 +1882,55 @@ fn function_writer(
         .chain(inputs.iter().map(|(_, passed)| passed.clone()))
         .collect::<Vec<_>>()
         .join(", ");
-    let call = format!("{pou}({arguments})");
-    out.line("// The stream, made at the first request and handed to the function.");
+    let keep = |out: &mut Out| {
+        for (var, field) in &values {
+            out.line(&format!("{} := {from}.{field};", var.name));
+        }
+        out.line("ENDED := TRUE;");
+    };
+    match answer {
+        Answer::Call(_) => out.line("// The stream, made at the first request."),
+        _ => out.line("// The stream, made at the first request and handed to the function."),
+    }
     out.line("IF REQ AND NOT open THEN");
     out.depth += 1;
     out.line("stream();");
-    match (&answer, &read) {
-        (None, _) => out.line(&format!("{call};")),
-        (Some(managers), None) => {
-            out.line(&format!("{}(future := {call});", managers.drop_readable))
-        }
-        (Some(_), Some(_)) => out.line(&format!("future := {call};")),
+    match &answer {
+        Answer::Nothing => out.line(&format!("{pou}({arguments});")),
+        Answer::Unread(drop) => out.line(&format!("{drop}(future := {pou}({arguments}));")),
+        Answer::Future(..) => out.line(&format!("future := {pou}({arguments});")),
+        Answer::Call(_) => {}
     }
     out.line("open := TRUE;");
     out.depth -= 1;
     out.line("END_IF;");
     out.line("IF open THEN");
     out.depth += 1;
+    if let Answer::Call(_) = answer {
+        // A call of the block once it has returned would start another.
+        out.line("// The call, started with the stream's reading end at the first");
+        out.line("// request and followed to its end, once.");
+        out.line("IF NOT ENDED THEN");
+        out.depth += 1;
+        out.line(&format!("call({arguments});"));
+        out.line("IF call.DONE THEN");
+        out.depth += 1;
+        keep(out);
+        out.depth -= 1;
+        out.line("END_IF;");
+        out.depth -= 1;
+        out.line("END_IF;");
+    }
     out.line("stream(REQ := REQ, IN := IN, CLOSE := CLOSE);");
     out.line("BUSY := stream.BUSY;");
     out.line("DONE := stream.DONE;");
     out.line("ERROR := stream.ERROR;");
-    if read.is_some() {
+    if let Answer::Future(..) = answer {
         out.line("// The answer, read once it comes, and kept.");
         out.line("answer(future := future);");
         out.line("IF answer.DONE THEN");
         out.depth += 1;
-        for (var, field) in &values {
-            out.line(&format!("{} := answer.{field};", var.name));
-        }
-        out.line("ENDED := TRUE;");
+        keep(out);
         out.depth -= 1;
         out.line("END_IF;");
     }
