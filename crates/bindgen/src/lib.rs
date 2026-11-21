@@ -1047,7 +1047,13 @@ impl Generator<'_> {
         // Each function that takes a stream of bytes from the program, made,
         // written and ended by a block of its own.
         for (function, declared) in &plain {
-            function_writer(resolve, &mut out, &mut taken, &managers, function, declared);
+            let blocks = Blocks {
+                resolve,
+                managers: &managers,
+                namespace: &namespace,
+            };
+            function_writer(&blocks, &mut out, &mut taken, function, declared);
+            function_reader(&blocks, &mut out, &mut taken, function, declared);
         }
 
         let mut text = header(&[package.to_string()]);
@@ -1423,15 +1429,17 @@ impl Generator<'_> {
             && texts.is_empty()
             && lowered.inputs.len() == function.params.len();
         let declared = match (asynchronous, apart) {
-            (false, false) if one_to_one && given.is_empty() => Some(Declared {
+            (false, false) if one_to_one => Some(Declared {
                 pou: pou.clone(),
                 inputs: lowered.inputs.clone(),
                 block: None,
+                given: given.clone(),
             }),
             (true, _) if one_to_one => Some(Declared {
                 pou: pou.clone(),
                 inputs: lowered.inputs.clone(),
                 block: Some(outputs.to_vec()),
+                given: Vec::new(),
             }),
             _ => None,
         };
@@ -1678,13 +1686,15 @@ fn future_get(out: &mut Out, get: &str, read: &str, drop: &str, end: &str, outpu
     out.line("");
 }
 
-/// What a writer calls: its name, and its inputs, one per parameter of its
-/// function, in order; for the block of an `async func`, the outputs it
-/// gives past its `DONE`, and for a FUNCTION, `None`.
+/// What a writer or a reader calls: its name, and its inputs, one per
+/// parameter of its function, in order; for the block of an `async func`,
+/// the outputs it gives past its `DONE`, and for a FUNCTION, `None`; a
+/// FUNCTION's outputs, where it gives its values as outputs.
 struct Declared {
     pou: String,
     inputs: Vec<Var>,
     block: Option<Vec<Var>>,
+    given: Vec<Var>,
 }
 
 /// What `ty` is when it is a stream or a future, under aliases too: which,
@@ -1720,13 +1730,15 @@ enum Answer {
 /// gives it back; the call of an `async func` is started with it and
 /// followed to its end once, keeping its result.
 fn function_writer(
-    resolve: &Resolve,
+    blocks: &Blocks<'_>,
     out: &mut Out,
     taken: &mut HashMap<String, String>,
-    managers: &HashMap<(Carrier, String), Managers>,
     function: &Function,
     declared: &Declared,
 ) {
+    let Blocks {
+        resolve, managers, ..
+    } = *blocks;
     let mut streams = function
         .params
         .iter()
@@ -1771,77 +1783,24 @@ fn function_writer(
         format!("the writer of `{}`", function.name),
     );
 
-    let pou = &declared.pou;
-    // The function as WIT names it: a resource's `send` is `channel.send`.
-    let shown = match function.kind {
-        FunctionKind::Method(id)
-        | FunctionKind::AsyncMethod(id)
-        | FunctionKind::Static(id)
-        | FunctionKind::AsyncStatic(id) => format!(
-            "{}.{}",
-            wit_text(resolve, Some(Type::Id(id))),
-            function.item_name()
-        ),
-        _ => function.item_name().to_string(),
-    };
-    // The block's own names come first; a WIT name that would be one of
-    // them, or one taken before it, takes a `_`, and the documentation of
-    // each of the two names the other.
-    let own = [
-        "REQ", "IN", "CLOSE", "BUSY", "DONE", "ERROR", "ERRORID", "ENDED", "open", "future",
-        "stream", "answer", "call",
-    ];
-    let mut held: Vec<String> = own.iter().map(|name| name.to_string()).collect();
-    // Each name taken apart, here or by the function's own declaration
-    // (`done_` of an `async func`'s block, beside its `DONE`): the name it
-    // met, its own, and where it comes from.
-    let mut met: Vec<(String, String, String)> = Vec::new();
-    let mut apart = |name: &str, from: String| {
-        let first = held
-            .iter()
-            .find(|other| other.eq_ignore_ascii_case(name.trim_end_matches('_')))
-            .cloned();
-        let mut new = name.to_string();
-        while held.iter().any(|other| other.eq_ignore_ascii_case(&new)) {
-            new.push('_');
-        }
-        held.push(new.clone());
-        if let Some(first) = first {
-            met.push((first, new.clone(), from));
-        }
-        new
-    };
+    // The function by its namespace's path, which no name of the block's
+    // own can hide: `OPEN`, beside the block's `open`.
+    let pou = &blocks.called(&declared.pou);
+    let shown = shown_name(resolve, function);
+    let mut held = Held::new(
+        &[
+            "REQ", "IN", "CLOSE", "BUSY", "DONE", "ERROR", "ERRORID", "ENDED", "open", "future",
+            "stream", "answer", "call",
+        ],
+        "writer",
+    );
     let var = |name: &str, ty: &str| Var {
         name: name.to_string(),
         ty: ty.to_string(),
         flat: 1,
         start: None,
     };
-    // The function's other inputs, each passed when the block opens: the
-    // block's input, the function's name of it, and what it is in WIT.
-    let inputs: Vec<(Var, String, String)> = declared
-        .inputs
-        .iter()
-        .zip(&function.params)
-        .enumerate()
-        .filter(|(index, _)| *index != at)
-        .map(|(_, (input, param))| {
-            let name = apart(&input.name, format!("a parameter of `{shown}`"));
-            let doc = format!(
-                "`{}: {}` of `{shown}`, passed when the stream opens.",
-                param.name,
-                wit_text(resolve, Some(param.ty))
-            );
-            (
-                Var {
-                    name,
-                    ..input.clone()
-                },
-                input.name.clone(),
-                doc,
-            )
-        })
-        .collect();
+    let inputs = passed_inputs(resolve, declared, function, Some(at), &shown, &mut held);
     // What the block keeps of the answer, where it reads each value, and
     // the value's type in WIT.
     let (kept, from, answered): (&[Var], &str, Option<Type>) = match &answer {
@@ -1856,61 +1815,12 @@ fn function_writer(
         Answer::Call(outputs) => (outputs, "call", function.result),
         Answer::Nothing | Answer::Unread(_) => (&[], "", None),
     };
-    // A result's flag and error are the block's own `ERROR` and `ERRORID`:
-    // the flag, read where the answer is, turns `ERROR` TRUE.
-    let result = answered.and_then(|ty| match defined(resolve, ty) {
-        Some(TypeDefKind::Result(result)) => Some((ty, result.err)),
-        _ => None,
-    });
-    let is = |output: &Var, name: &str| {
-        result.is_some() && output.name.trim_end_matches('_').eq_ignore_ascii_case(name)
-    };
-    let flag = kept.iter().find(|output| is(output, "failed"));
-    let values: Vec<(Var, String, String)> = kept
-        .iter()
-        .filter(|output| !is(output, "failed"))
-        .map(|output| {
-            let doc = match answered {
-                Some(ty) => part_of(resolve, ty, &output.name, &shown),
-                None => String::new(),
-            };
-            let name = match is(output, "error") {
-                true => "ERRORID".to_string(),
-                false => apart(&output.name, format!("from `{shown}`")),
-            };
-            (
-                Var {
-                    name,
-                    ..output.clone()
-                },
-                output.name.clone(),
-                doc,
-            )
-        })
-        .collect();
-
-    // What an input or an output is, shown on hover, and for a name taken
-    // apart, the other of the two.
-    let documented = |var: Var, text: String| {
-        let mut text = text;
-        for (first, new, from) in &met {
-            if *first == var.name {
-                text.push_str(&format!(" `{new}` is {from}."));
-            }
-            if *new == var.name {
-                let other = match own.contains(&first.as_str()) {
-                    true => "the writer's own".to_string(),
-                    false => met
-                        .iter()
-                        .find(|(_, new, _)| new == first)
-                        .map(|(.., from)| from.clone())
-                        .unwrap_or_else(|| format!("a parameter of `{shown}`")),
-                };
-                text.push_str(&format!(" Not `{first}`, {other}."));
-            }
-        }
-        (var, text)
-    };
+    let Kept {
+        values,
+        flag,
+        result,
+    } = kept_values(resolve, kept, answered, &shown, &mut held);
+    let documented = |var: Var, text: String| held.documented(var, text, &shown);
     let starts = match answer {
         Answer::Call(_) => "starts",
         _ => "calls",
@@ -1941,18 +1851,13 @@ fn function_writer(
         documented(var("DONE", "BOOL"), WRITER_DONE.to_string()),
         documented(
             var("ERROR", "BOOL"),
-            match result {
-                Some((ty, err)) => format!(
-                    "TRUE once a write finds the reader gone, a request comes after `CLOSE`, or the `{}` from `{shown}` is an error{}.",
-                    wit_text(resolve, Some(ty)),
-                    match err {
-                        Some(err) =>
-                            format!(", whose `{}` is in `ERRORID`", wit_text(resolve, Some(err))),
-                        None => String::new(),
-                    }
-                ),
-                None => WRITER_ERROR.to_string(),
-            },
+            error_doc(
+                resolve,
+                Some("TRUE once a write finds the reader gone, a request comes after `CLOSE`"),
+                result,
+                &shown,
+            )
+            .unwrap_or_else(|| WRITER_ERROR.to_string()),
         ),
     ];
     // `ERRORID` beside `ERROR`, the answer's other values after `ENDED`.
@@ -2057,6 +1962,542 @@ fn function_writer(
     match flag {
         Some(flag) => out.line(&format!("ERROR := stream.ERROR OR {from}.{};", flag.name)),
         None => out.line("ERROR := stream.ERROR;"),
+    }
+    out.depth -= 1;
+    out.line("END_IF;");
+    out.depth -= 1;
+    out.line("END_FUNCTION_BLOCK");
+    out.line("");
+}
+
+/// What the blocks written for an interface's functions read: its WIT,
+/// the blocks of each set of built-ins, and the path of its namespace.
+struct Blocks<'a> {
+    resolve: &'a Resolve,
+    managers: &'a HashMap<(Carrier, String), Managers>,
+    namespace: &'a str,
+}
+
+impl Blocks<'_> {
+    /// `pou`, a POU of the interface, named by its namespace's path.
+    fn called(&self, pou: &str) -> String {
+        format!("{}.{pou}", self.namespace)
+    }
+}
+
+/// The function as WIT names it: a resource's `send` is `channel.send`.
+fn shown_name(resolve: &Resolve, function: &Function) -> String {
+    match function.kind {
+        FunctionKind::Method(id)
+        | FunctionKind::AsyncMethod(id)
+        | FunctionKind::Static(id)
+        | FunctionKind::AsyncStatic(id) => format!(
+            "{}.{}",
+            wit_text(resolve, Some(Type::Id(id))),
+            function.item_name()
+        ),
+        _ => function.item_name().to_string(),
+    }
+}
+
+/// The names a block written for a function declares, its own first: a
+/// WIT name that would be one of them, or one taken before it, takes a
+/// `_`, and the documentation of each of the two names the other. A name
+/// the function's own declaration took apart counts too: `done_` of an
+/// `async func`'s block, beside its `DONE`.
+struct Held {
+    own: &'static [&'static str],
+    /// What the block is, `writer` or `reader`.
+    whose: &'static str,
+    held: Vec<String>,
+    /// Each name taken apart: the name it met, its own, and where it comes
+    /// from.
+    met: Vec<(String, String, String)>,
+}
+
+impl Held {
+    fn new(own: &'static [&'static str], whose: &'static str) -> Self {
+        Held {
+            own,
+            whose,
+            held: own.iter().map(|name| name.to_string()).collect(),
+            met: Vec::new(),
+        }
+    }
+
+    /// `name` as the block declares it, apart from the names held; `from`
+    /// says where it comes from.
+    fn apart(&mut self, name: &str, from: String) -> String {
+        let first = self
+            .held
+            .iter()
+            .find(|other| other.eq_ignore_ascii_case(name.trim_end_matches('_')))
+            .cloned();
+        let mut new = name.to_string();
+        while self
+            .held
+            .iter()
+            .any(|other| other.eq_ignore_ascii_case(&new))
+        {
+            new.push('_');
+        }
+        self.held.push(new.clone());
+        if let Some(first) = first {
+            self.met.push((first, new.clone(), from));
+        }
+        new
+    }
+
+    /// `var` with its documentation, `text`, shown on hover, and for a name
+    /// taken apart, the other of the two.
+    fn documented(&self, var: Var, text: String, shown: &str) -> (Var, String) {
+        let mut text = text;
+        for (first, new, from) in &self.met {
+            if *first == var.name {
+                text.push_str(&format!(" `{new}` is {from}."));
+            }
+            if *new == var.name {
+                let other = match self.own.contains(&first.as_str()) {
+                    true => format!("the {}'s own", self.whose),
+                    false => self
+                        .met
+                        .iter()
+                        .find(|(_, new, _)| new == first)
+                        .map(|(.., from)| from.clone())
+                        .unwrap_or_else(|| format!("a parameter of `{shown}`")),
+                };
+                text.push_str(&format!(" Not `{first}`, {other}."));
+            }
+        }
+        (var, text)
+    }
+}
+
+/// The function's inputs, but the one at `skip`, which a block passes it
+/// when it opens its stream: the block's input, the function's name of
+/// it, and what it is in WIT.
+fn passed_inputs(
+    resolve: &Resolve,
+    declared: &Declared,
+    function: &Function,
+    skip: Option<usize>,
+    shown: &str,
+    held: &mut Held,
+) -> Vec<(Var, String, String)> {
+    declared
+        .inputs
+        .iter()
+        .zip(&function.params)
+        .enumerate()
+        .filter(|(index, _)| Some(*index) != skip)
+        .map(|(_, (input, param))| {
+            let name = held.apart(&input.name, format!("a parameter of `{shown}`"));
+            let doc = format!(
+                "`{}: {}` of `{shown}`, passed when the stream opens.",
+                param.name,
+                wit_text(resolve, Some(param.ty))
+            );
+            (
+                Var {
+                    name,
+                    ..input.clone()
+                },
+                input.name.clone(),
+                doc,
+            )
+        })
+        .collect()
+}
+
+/// What a block keeps of a function's answer: each value, with the name
+/// the block gives it, its name where the answer is, and what it is in
+/// WIT; a result's flag, which turns the block's `ERROR` TRUE; and the
+/// result, with its error, the block's `ERRORID`.
+struct Kept {
+    values: Vec<(Var, String, String)>,
+    flag: Option<Var>,
+    result: Option<(Type, Option<Type>)>,
+}
+
+/// What a block keeps of `kept`, the outputs a function's answer comes
+/// back in, a value of `answered`.
+fn kept_values(
+    resolve: &Resolve,
+    kept: &[Var],
+    answered: Option<Type>,
+    shown: &str,
+    held: &mut Held,
+) -> Kept {
+    let result = answered.and_then(|ty| match defined(resolve, ty) {
+        Some(TypeDefKind::Result(result)) => Some((ty, result.err)),
+        _ => None,
+    });
+    let is = |output: &Var, name: &str| {
+        result.is_some() && output.name.trim_end_matches('_').eq_ignore_ascii_case(name)
+    };
+    let flag = kept.iter().find(|output| is(output, "failed")).cloned();
+    let values = kept
+        .iter()
+        .filter(|output| !is(output, "failed"))
+        .map(|output| {
+            let doc = match answered {
+                Some(ty) => part_of(resolve, ty, &output.name, shown),
+                None => String::new(),
+            };
+            let name = match is(output, "error") {
+                true => "ERRORID".to_string(),
+                false => held.apart(&output.name, format!("from `{shown}`")),
+            };
+            (
+                Var {
+                    name,
+                    ..output.clone()
+                },
+                output.name.clone(),
+                doc,
+            )
+        })
+        .collect();
+    Kept {
+        values,
+        flag,
+        result,
+    }
+}
+
+/// What a block's `ERROR` says when the answer is a result: its own
+/// `causes`, if any, then the result's error.
+fn error_doc(
+    resolve: &Resolve,
+    causes: Option<&str>,
+    result: Option<(Type, Option<Type>)>,
+    shown: &str,
+) -> Option<String> {
+    let (ty, err) = result?;
+    let causes = match causes {
+        Some(causes) => format!("{causes}, or"),
+        None => "TRUE once".to_string(),
+    };
+    Some(format!(
+        "{causes} the `{}` from `{shown}` is an error{}.",
+        wit_text(resolve, Some(ty)),
+        match err {
+            Some(err) => format!(", whose `{}` is in `ERRORID`", wit_text(resolve, Some(err))),
+            None => String::new(),
+        }
+    ))
+}
+
+/// The block that reads what `function` gives, `<NAME>_READER`, when the
+/// function is a `func` that takes no stream or future and gives one
+/// stream of bytes, alone or in a tuple beside one future, which `managers`
+/// read: at the first request it calls the function, then reads at each
+/// rising edge of `REQ` with the stream's `_READ`, into a STRING, and lets
+/// go of the reading end once the writer left or on `CLOSE`. The future is
+/// read with its `_GET`, keeping its value, a result's error in `ERROR`
+/// and `ERRORID`, or let go of unread when no read gives it back.
+fn function_reader(
+    blocks: &Blocks<'_>,
+    out: &mut Out,
+    taken: &mut HashMap<String, String>,
+    function: &Function,
+    declared: &Declared,
+) {
+    let Blocks {
+        resolve, managers, ..
+    } = *blocks;
+    if declared.block.is_some() {
+        return;
+    }
+    let mut params = function.clone();
+    params.result = None;
+    if !params.find_futures_and_streams(resolve).is_empty() {
+        return;
+    }
+    let Some(result) = function.result else {
+        return;
+    };
+    let bytes = Some((Carrier::Stream, Some(Type::U8)));
+    // Where the stream and the future come back: the FUNCTION's own value,
+    // or two of its outputs, as the tuple orders them.
+    let (call_gives, future): (Option<(String, String)>, Option<Option<Type>>) =
+        if carried(resolve, result) == bytes {
+            (None, None)
+        } else {
+            let Some(TypeDefKind::Tuple(tuple)) = defined(resolve, result) else {
+                return;
+            };
+            let [first, second] = tuple.types[..] else {
+                return;
+            };
+            let (at, payload) = match (carried(resolve, first), carried(resolve, second)) {
+                (stream, Some((Carrier::Future, payload))) if stream == bytes => ((0, 1), payload),
+                (Some((Carrier::Future, payload)), stream) if stream == bytes => ((1, 0), payload),
+                _ => return,
+            };
+            let (Some(stream), Some(future)) = (declared.given.get(at.0), declared.given.get(at.1))
+            else {
+                return;
+            };
+            (
+                Some((stream.name.clone(), future.name.clone())),
+                Some(payload),
+            )
+        };
+    let Some((read, drop)) = managers
+        .get(&(Carrier::Stream, type_key(resolve, Some(Type::U8))))
+        .and_then(|managers| Some((managers.read.clone()?, managers.drop_readable.clone())))
+    else {
+        return;
+    };
+    let answer = match future {
+        None => Answer::Nothing,
+        Some(payload) => match managers.get(&(Carrier::Future, type_key(resolve, payload))) {
+            Some(Managers {
+                get: Some((get, outputs)),
+                ..
+            }) => Answer::Future(get.clone(), outputs.clone()),
+            Some(managers) => Answer::Unread(managers.drop_readable.clone()),
+            None => return,
+        },
+    };
+    let block = spare(taken, format!("{}_READER", declared.pou));
+    taken.insert(
+        block.to_ascii_uppercase(),
+        format!("the reader of `{}`", function.name),
+    );
+
+    // The function by its namespace's path, which no name of the block's
+    // own can hide: `OPEN`, beside the block's `open`.
+    let pou = &blocks.called(&declared.pou);
+    let shown = shown_name(resolve, function);
+    let mut held = Held::new(
+        &[
+            "REQ",
+            "CLOSE",
+            "BUSY",
+            "DONE",
+            "OUT",
+            "ERROR",
+            "ERRORID",
+            "ENDED",
+            "open",
+            "requested",
+            "closing",
+            "shut",
+            "came",
+            "stream",
+            "future",
+            "read",
+            "answer",
+        ],
+        "reader",
+    );
+    let var = |name: &str, ty: &str| Var {
+        name: name.to_string(),
+        ty: ty.to_string(),
+        flat: 1,
+        start: None,
+    };
+    let inputs = passed_inputs(resolve, declared, function, None, &shown, &mut held);
+    let (kept, answered): (&[Var], Option<Type>) = match &answer {
+        Answer::Future(_, outputs) => (outputs, future.flatten()),
+        _ => (&[], None),
+    };
+    let Kept {
+        values,
+        flag,
+        result,
+    } = kept_values(resolve, kept, answered, &shown, &mut held);
+    let documented = |var: Var, text: String| held.documented(var, text, &shown);
+
+    out.prose(&format!(
+        "Reads what `{shown}` gives through a stream of bytes, a request at a time."
+    ));
+    out.line(&format!("FUNCTION_BLOCK {block}"));
+    let mut inputs_documented = vec![
+        documented(
+            var("REQ", "BOOL"),
+            format!(
+                "A rising edge reads what comes next, {STRING_LIMIT} bytes at most; the first calls `{shown}`. An edge while `BUSY` is ignored, and one after the stream ended is `DONE` at once, `OUT` empty."
+            ),
+        ),
+        documented(
+            var("CLOSE", "BOOL"),
+            "A rising edge lets go of the stream, once no read is under way.".to_string(),
+        ),
+    ];
+    inputs_documented.extend(
+        inputs
+            .iter()
+            .map(|(var, _, doc)| documented(var.clone(), doc.clone())),
+    );
+    out.documented_vars("VAR_INPUT", &inputs_documented);
+    let mut outputs = vec![
+        documented(
+            var("BUSY", "BOOL"),
+            "TRUE while a read waits for bytes.".to_string(),
+        ),
+        documented(
+            var("DONE", "BOOL"),
+            "TRUE in the call where a read has given what came, in `OUT`.".to_string(),
+        ),
+        documented(
+            var("OUT", &format!("STRING[{STRING_LIMIT}]")),
+            "What the last read gave: empty once the stream has ended, nothing more coming."
+                .to_string(),
+        ),
+    ];
+    // A result's error, the one the reader reports.
+    if let Some(doc) = error_doc(resolve, None, result, &shown) {
+        outputs.push(documented(var("ERROR", "BOOL"), doc));
+    }
+    // `ERRORID` beside `ERROR`, the answer's other values after `ENDED`.
+    let (errorid, values_after): (Vec<_>, Vec<_>) =
+        values.iter().partition(|(var, ..)| var.name == "ERRORID");
+    outputs.extend(
+        errorid
+            .into_iter()
+            .map(|(var, _, doc)| documented(var.clone(), doc.clone())),
+    );
+    outputs.push(documented(
+        var("ENDED", "BOOL"),
+        match (&answer, answered) {
+            (Answer::Future(..), Some(ty)) => format!(
+                "TRUE once the stream has ended and the `future<{}>` from `{shown}` has its value.",
+                wit_text(resolve, Some(ty))
+            ),
+            (Answer::Future(..), None) => {
+                format!("TRUE once the stream has ended and the `future` from `{shown}` has come.")
+            }
+            _ => "TRUE once the stream has ended: the writer let go, or `CLOSE`.".to_string(),
+        },
+    ));
+    outputs.extend(
+        values_after
+            .into_iter()
+            .map(|(var, _, doc)| documented(var.clone(), doc.clone())),
+    );
+    out.documented_vars("VAR_OUTPUT", &outputs);
+    let mut locals = vec![
+        var("open", "BOOL"),
+        var("requested", "BOOL"),
+        var("closing", "BOOL"),
+        var("shut", "BOOL"),
+        var("stream", "UDINT"),
+    ];
+    if call_gives.is_some() {
+        locals.push(var("future", "UDINT"));
+    }
+    locals.push(var("read", &read));
+    if let Answer::Future(get, _) = &answer {
+        locals.push(var("answer", get));
+        locals.push(var("came", "BOOL"));
+    }
+    out.vars("VAR", &locals);
+    out.depth += 1;
+    let mut arguments: Vec<String> = inputs
+        .iter()
+        .map(|(var, field, _)| format!("{field} := {}", var.name))
+        .collect();
+    out.line("DONE := FALSE;");
+    out.line("// The stream, given by the function at the first request.");
+    out.line("IF REQ AND NOT open THEN");
+    out.depth += 1;
+    match &call_gives {
+        None => out.line(&format!("stream := {pou}({});", arguments.join(", "))),
+        Some((stream, future)) => {
+            arguments.push(format!("{stream} => stream"));
+            arguments.push(format!("{future} => future"));
+            out.line(&format!("{pou}({});", arguments.join(", ")));
+        }
+    }
+    if let Answer::Unread(drop) = &answer {
+        out.line("// No read gives the future's value back: it goes unread.");
+        out.line(&format!("{drop}(future := future);"));
+    }
+    out.line("open := TRUE;");
+    out.depth -= 1;
+    out.line("END_IF;");
+    out.line("IF open THEN");
+    out.depth += 1;
+    let lines = [
+        (0, "// An edge while BUSY is ignored."),
+        (0, "IF REQ AND NOT requested AND NOT BUSY THEN"),
+        (1, "IF stream <> 0 THEN"),
+        (2, "BUSY := TRUE;"),
+        (1, "ELSE"),
+        (2, "// The stream has ended: nothing more comes."),
+        (2, "OUT := '';"),
+        (2, "DONE := TRUE;"),
+        (1, "END_IF;"),
+        (0, "END_IF;"),
+        (0, "requested := REQ;"),
+        (0, "IF BUSY THEN"),
+        (1, "// Starts the read, or checks the one running."),
+        (1, "read(stream := stream);"),
+        (1, "IF read.DONE THEN"),
+        (2, "OUT := read.data;"),
+        (2, "BUSY := FALSE;"),
+        (2, "DONE := TRUE;"),
+        (2, "IF read.closed THEN"),
+        (3, "// The writer left: the reading end goes too."),
+    ];
+    for (depth, line) in lines {
+        out.depth += depth;
+        out.line(line);
+        out.depth -= depth;
+    }
+    out.depth += 3;
+    out.line(&format!("{drop}(stream := stream);"));
+    out.line("stream := 0;");
+    out.depth -= 3;
+    let lines = [
+        (2, "END_IF;"),
+        (1, "END_IF;"),
+        (0, "END_IF;"),
+        (
+            0,
+            "// The reading end goes on CLOSE, once no read is under way.",
+        ),
+        (0, "IF CLOSE AND NOT closing THEN"),
+        (1, "shut := TRUE;"),
+        (0, "END_IF;"),
+        (0, "closing := CLOSE;"),
+        (0, "IF shut AND NOT BUSY THEN"),
+        (1, "IF stream <> 0 THEN"),
+    ];
+    for (depth, line) in lines {
+        out.depth += depth;
+        out.line(line);
+        out.depth -= depth;
+    }
+    out.depth += 2;
+    out.line(&format!("{drop}(stream := stream);"));
+    out.line("stream := 0;");
+    out.depth -= 2;
+    for (depth, line) in [(1, "END_IF;"), (1, "shut := FALSE;"), (0, "END_IF;")] {
+        out.depth += depth;
+        out.line(line);
+        out.depth -= depth;
+    }
+    if let Answer::Future(..) = answer {
+        out.line("// The answer, read once it comes, and kept.");
+        out.line("answer(future := future);");
+        out.line("IF answer.DONE THEN");
+        out.depth += 1;
+        for (var, field, _) in &values {
+            out.line(&format!("{} := answer.{field};", var.name));
+        }
+        out.line("came := TRUE;");
+        out.depth -= 1;
+        out.line("END_IF;");
+        out.line("ENDED := stream = 0 AND came;");
+    } else {
+        out.line("ENDED := stream = 0;");
+    }
+    if let Some(flag) = flag {
+        out.line(&format!("ERROR := answer.{};", flag.name));
     }
     out.depth -= 1;
     out.line("END_IF;");
@@ -3018,6 +3459,7 @@ fn built_in_set(
         writer: None,
         get: None,
         drop_readable: pou("DROP_READABLE"),
+        read: (bytes && given).then(|| pou("READ")),
     };
     if let Some(outputs) = read_outputs {
         let get = pou("GET");
@@ -3070,4 +3512,6 @@ struct Managers {
     writer: Option<String>,
     get: Option<(String, Vec<Var>)>,
     drop_readable: String,
+    /// A stream of bytes' read into a STRING, which a reader reads with.
+    read: Option<String>,
 }
