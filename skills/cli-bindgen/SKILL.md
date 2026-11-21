@@ -35,6 +35,8 @@ A future a function gives comes with a `_GET` block, `U32_FUTURE_GET` for a `fut
 A function that takes a stream of bytes comes with a writer of its own, `SEND_WRITER` for `send`: at the first rising edge of `REQ` it makes the stream and calls the function with it and with the block's other inputs, then writes `IN` at each rising edge of `REQ` and ends the stream on a rising edge of `CLOSE`.
 A `func` that answers with a future or nothing is called once, and the writer keeps the future's value, `ENDED` once it has come; an `async func` is called until it returns, and the writer keeps its result, `ENDED` once it has returned.
 When that value is a `result`, an error turns the writer's `ERROR` TRUE and its value is `ERRORID`, to read when `ERROR` is TRUE.
+A function that gives a stream of bytes, alone or beside a future as WASI's `read-via-stream` does, comes with a reader, `READ_VIA_STREAM_READER`: at the first rising edge of `REQ` it calls the function, then each rising edge reads what comes next into `OUT`, 4096 bytes at most, `DONE` once it came; once the stream has ended a request is `DONE` at once with `OUT` empty, and `ENDED` is TRUE once the future has its value too, a `result`'s error in `ERROR` and `ERRORID` as for a writer.
+`CLOSE` lets go of the stream before its end.
 Each input and output of a writer says on hover what it is, in WIT's terms.
 It is built on two blocks a program may also use on their own: the stream's `BYTES_STREAM_WRITER`, which makes a stream and gives `readable`, the end to hand to a function, and the future's `_GET`.
 What the component imports itself is its own, and is not written.
