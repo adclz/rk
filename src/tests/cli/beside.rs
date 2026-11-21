@@ -445,6 +445,106 @@ fn a_component_runs_on_wasi_0_3() {
     }
 }
 
+/// The scalars a future crosses with, as WIT names them, how
+/// [`a_future_of_each_scalar_crosses`]'s module stores one, the read the
+/// program declares for it, and the value, as ST writes it. A char is not
+/// here: no read gives one back yet.
+const SCALARS: [(&str, &str, &str, &str); 11] = [
+    ("bool", "i32.const 1 i32.store8", "BOOL", "TRUE"),
+    ("u8", "i32.const 7 i32.store8", "U8", "7"),
+    ("s8", "i32.const -7 i32.store8", "S8", "-7"),
+    ("u16", "i32.const 700 i32.store16", "U16", "700"),
+    ("s16", "i32.const -700 i32.store16", "S16", "-700"),
+    ("u32", "i32.const 70000 i32.store", "U32", "70000"),
+    ("s32", "i32.const -70000 i32.store", "S32", "-70000"),
+    ("u64", "i64.const 7000000000 i64.store", "U64", "7000000000"),
+    (
+        "s64",
+        "i64.const -7000000000 i64.store",
+        "S64",
+        "-7000000000",
+    ),
+    ("f32", "f32.const 2.5 f32.store", "F32", "2.5"),
+    ("f64", "f64.const 2.5 f64.store", "F64", "2.5"),
+];
+
+/// A future of each of the [`SCALARS`] crosses from a component to the
+/// program, its value as the component wrote it: wasmtime's host API carries
+/// each as its own Rust type.
+#[test]
+fn a_future_of_each_scalar_crosses() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let interface = "acme:values/values@1.0.0";
+    let functions: String = SCALARS
+        .iter()
+        .map(|(ty, ..)| format!("    f-{ty}: func() -> future<{ty}>;\n"))
+        .collect();
+    let wit = format!(
+        "package acme:values@1.0.0;\n\ninterface values {{\n{functions}}}\n\n\
+         world valued {{\n    export values;\n}}\n"
+    );
+    let imports: String = SCALARS
+        .iter()
+        .enumerate()
+        .map(|(i, (ty, ..))| {
+            format!(
+                "(import \"[export]{interface}\" \"[future-new-0]f-{ty}\" \
+                 (func $new_{i} (result i64)))\n\
+                 (import \"[export]{interface}\" \"[async-lower][future-write-0]f-{ty}\" \
+                 (func $write_{i} (param i32 i32) (result i32)))\n"
+            )
+        })
+        .collect();
+    let bodies: String = SCALARS
+        .iter()
+        .enumerate()
+        .map(|(i, (ty, store, ..))| {
+            let at = 256 + i * 8;
+            format!(
+                "(func (export \"{interface}#f-{ty}\") (result i32) (local $ends i64)\n\
+                 i32.const {at} {store}\n\
+                 call $new_{i} local.set $ends\n\
+                 local.get $ends i64.const 32 i64.shr_u i32.wrap_i64\n\
+                 i32.const {at} call $write_{i} drop\n\
+                 local.get $ends i32.wrap_i64)\n"
+            )
+        })
+        .collect();
+    let wat = format!("(module\n{imports}(memory (export \"memory\") 1)\n{bodies})");
+    let values = component_of_wat(&wit, "valued", &wat);
+    library(&root, "values", &declarations(&values), Some(&values));
+    let ws = program(&root, "values = { path = \"../values\" }\n", "0");
+    let (mut vars, mut starts, mut reads, mut all) =
+        (String::new(), String::new(), String::new(), Vec::new());
+    for (ty, _, read, value) in SCALARS {
+        vars.push_str(&format!(
+            "    h_{ty} : UDINT;\n    r_{ty} : Acme.Values.Values.{read}_FUTURE_READ;\n    \
+             ok_{ty} : BOOL;\n"
+        ));
+        starts.push_str(&format!(
+            "        h_{ty} := Acme.Values.Values.F_{}();\n",
+            ty.to_uppercase()
+        ));
+        reads.push_str(&format!(
+            "    IF NOT ok_{ty} THEN\n        r_{ty}(future := h_{ty});\n        \
+             IF r_{ty}.DONE THEN\n            IF r_{ty}.value <> {value} THEN\n                \
+             __RAISE('the future of {ty}');\n            END_IF;\n            \
+             ok_{ty} := TRUE;\n        END_IF;\n    END_IF;\n"
+        ));
+        all.push(format!("ok_{ty}"));
+    }
+    let test = format!(
+        "{{test}}\nFUNCTION_BLOCK test_values\nVAR_OUTPUT DONE : BOOL; END_VAR\nVAR\n    \
+         started : BOOL;\n{vars}END_VAR\n    IF NOT started THEN\n{starts}        \
+         started := TRUE;\n    END_IF;\n{reads}    DONE := {};\nEND_FUNCTION_BLOCK\n",
+        all.join(" AND ")
+    );
+    write(&ws, &[("main.st", &test)]);
+    tested(&ws, None).expect("each future's value crosses");
+}
+
 /// A component runs in a store of its own: a handle of its own resource
 /// crosses to it, as the host's proxy, and so does a stream of bytes,
 /// through a pipe; a stream of anything else does not, for now.
@@ -515,7 +615,8 @@ fn what_crosses_to_a_component() {
 
 /// A component that feeds the program a stream of the bytes of `hello`, a
 /// future of 42 and a future of no value, and reads a stream the program
-/// feeds it: `first` is the first byte that came.
+/// feeds it: `first` is the first byte that came; and a future the program
+/// passes on to it: `relayed` is its value.
 const FEED: &str = r#"
     package acme:feed@1.0.0;
 
@@ -526,6 +627,8 @@ const FEED: &str = r#"
         sink: func(data: stream<u8>);
         first: func() -> u8;
         close: func() -> u32;
+        relay: func(f: future<u32>);
+        relayed: func() -> u32;
     }
 
     world feeder {
@@ -533,13 +636,14 @@ const FEED: &str = r#"
     }
 "#;
 
-/// [`FEED`]'s module: `tail`, `later` and `ready` make their stream or future, start
-/// the write of what it carries, which goes on once the function has
-/// returned, and give the reading end; `close` cancels the write and lets
-/// go of the stream's writing end, and gives what the write came to: the
-/// bytes taken, `status >> 4`, five once the program took them all; the low
-/// four bits say how it ended. `sink` starts a read of the stream it is
-/// given into its memory, where `first` looks.
+/// [`FEED`]'s module: `tail`, `later` and `ready` make their stream or
+/// future, start the write of what it carries, which goes on once the
+/// function has returned, and give the reading end; `close` cancels the
+/// write and lets go of the stream's writing end, and gives what the write
+/// came to: the bytes taken, `status >> 4`, five once the program took them
+/// all; the low four bits say how it ended. `sink` starts a read of the
+/// stream it is given into its memory, where `first` looks; `relay` the
+/// read of the future it is given, where `relayed` looks.
 const FEED_WAT: &str = r#"
     (module
         (import "[export]acme:feed/feed@1.0.0" "[stream-new-0]tail" (func $stream_new (result i64)))
@@ -551,6 +655,7 @@ const FEED_WAT: &str = r#"
         (import "[export]acme:feed/feed@1.0.0" "[stream-drop-writable-0]tail" (func $drop_writable (param i32)))
         (import "[export]acme:feed/feed@1.0.0" "[future-new-0]ready" (func $ready_new (result i64)))
         (import "[export]acme:feed/feed@1.0.0" "[async-lower][future-write-0]ready" (func $ready_write (param i32 i32) (result i32)))
+        (import "[export]acme:feed/feed@1.0.0" "[async-lower][future-read-0]relay" (func $future_read (param i32 i32) (result i32)))
         (memory (export "memory") 1)
         (global $writable (mut i32) (i32.const 0))
         (data (i32.const 32) "hello")
@@ -610,14 +715,23 @@ const FEED_WAT: &str = r#"
             drop)
         (func (export "acme:feed/feed@1.0.0#first") (result i32)
             i32.const 128
-            i32.load8_u))
+            i32.load8_u)
+        (func (export "acme:feed/feed@1.0.0#relay") (param $f i32)
+            local.get $f
+            i32.const 192
+            call $future_read
+            drop)
+        (func (export "acme:feed/feed@1.0.0#relayed") (result i32)
+            i32.const 192
+            i32.load))
 "#;
 
 /// The program's tests of [`FEED`]: it reads the stream until it has the
 /// five bytes, and the futures, cycle by cycle, then has the component close
 /// the stream and reads on until it ends, with no byte more; it writes a
 /// stream of its own to the component, until the component has the first
-/// byte.
+/// byte; it passes the component's future of 42 back to it, which reads it
+/// there, from the program's store.
 const FEED_TESTS: &str = "
 {test}
 FUNCTION_BLOCK test_feed
@@ -713,10 +827,22 @@ END_VAR
     END_IF;
     DONE := Acme.Feed.Feed.FIRST() = USINT#16#68;
 END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_relay
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR started : BOOL; END_VAR
+    IF NOT started THEN
+        Acme.Feed.Feed.RELAY(f := Acme.Feed.Feed.LATER());
+        started := TRUE;
+    END_IF;
+    DONE := Acme.Feed.Feed.RELAYED() = 42;
+END_FUNCTION_BLOCK
 ";
 
-/// `rk test` carries a component's stream and future to the program, and
-/// the program's stream to the component: the writer writes in its store,
+/// `rk test` carries a component's stream and futures to the program, and
+/// the program's stream and a future it passes on to the component: the
+/// writer writes in its store,
 /// each store's event loop runs, the component's in a task of its own, and
 /// the reader reads in its own store, over the program's cycles.
 #[test]
@@ -730,6 +856,7 @@ fn rk_test_carries_a_component_s_stream_and_future() {
     write(&ws, &[("main.st", FEED_TESTS)]);
     tested(&ws, Some("test_feed")).expect("the component's stream and future cross");
     tested(&ws, Some("test_sink")).expect("the program's stream crosses");
+    tested(&ws, Some("test_relay")).expect("a future the program passes on crosses");
 }
 
 /// A component that keeps files: each is a resource whose handle the
