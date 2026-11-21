@@ -307,6 +307,65 @@ fn standard_input_copied_to_standard_output(mut with_db: RootDatabase) {
     assert_eq!(String::from_utf8(copied).unwrap(), text);
 }
 
+/// Standard input copied to standard output through the generated reader
+/// and writer alone: a chunk read at each request, written, and the next
+/// read; an empty read is the end, after which the writer ends its stream
+/// and both futures say all went well. 1 when the copy ended well, a
+/// negative number saying what went wrong otherwise.
+#[rstest]
+fn standard_input_copied_by_the_reader_and_the_writer(mut with_db: RootDatabase) {
+    let bindings = generated(&world_of(&[
+        "wasi:cli/stdin@0.3.0",
+        "wasi:cli/stdout@0.3.0",
+    ]));
+    let program = r#"
+        PROGRAM P
+        VAR_EXTERNAL output : DINT; END_VAR
+        VAR
+            step : INT;
+            reader : Wasi.Cli.Stdin.READ_VIA_STREAM_READER;
+            writer : Wasi.Cli.Stdout.WRITE_VIA_STREAM_WRITER;
+        END_VAR
+            CASE step OF
+            0:
+                reader(REQ := TRUE);
+                IF reader.DONE THEN
+                    IF reader.OUT = '' THEN
+                        step := 3;
+                    ELSE
+                        step := 1;
+                    END_IF;
+                END_IF;
+            1:
+                reader(REQ := FALSE);
+                writer(REQ := TRUE, IN := reader.OUT);
+                IF writer.ERROR THEN output := -1; RETURN; END_IF;
+                IF writer.DONE THEN step := 2; END_IF;
+            2:
+                writer(REQ := FALSE);
+                step := 0;
+            3:
+                reader(REQ := FALSE);
+                writer(REQ := FALSE, CLOSE := TRUE);
+                IF reader.ENDED AND writer.ENDED THEN
+                    IF reader.ERROR OR writer.ERROR THEN
+                        output := -2;
+                    ELSE
+                        output := 1;
+                    END_IF;
+                END_IF;
+            END_CASE;
+        END_PROGRAM
+    "#;
+    let text = "hello, rk: through the generated reader and writer\n".repeat(200);
+    let stdin = Pipe(Arc::new(Mutex::new(text.bytes().collect())));
+    let stdout = Pipe::default();
+    let mut plc = plc(&mut with_db, &bindings, program, stdin, stdout.clone());
+    assert_eq!(scan_until(&mut plc, 1, 300), 1);
+    let copied: Vec<u8> = stdout.0.lock().unwrap().iter().copied().collect();
+    assert_eq!(String::from_utf8(copied).unwrap(), text);
+}
+
 /// Bytes that are no text, zeros and invalid UTF-8 among them, copied from
 /// standard input to standard output through an array: each chunk read into
 /// it, then written from it by reference, the count saying how many.

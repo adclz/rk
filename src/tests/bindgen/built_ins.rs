@@ -369,7 +369,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     				// The stream, made at the first request and handed to the function.
     				IF REQ AND NOT open THEN
     					stream();
-    					future := SEND(data := stream.readable);
+    					future := Acme.Example.Pipe.SEND(data := stream.readable);
     					open := TRUE;
     				END_IF;
     				IF open THEN
@@ -383,6 +383,101 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     						ENDED := TRUE;
     					END_IF;
     					ERROR := stream.ERROR OR answer.failed;
+    				END_IF;
+    			END_FUNCTION_BLOCK
+
+    			/* Reads what `receive` gives through a stream of bytes, a request at a
+    			   time. */
+    			FUNCTION_BLOCK RECEIVE_READER
+    			VAR_INPUT
+    				/* A rising edge reads what comes next, 4096 bytes at most; the first calls
+    				   `receive`. An edge while `BUSY` is ignored, and one after the stream
+    				   ended is `DONE` at once, `OUT` empty. */
+    				REQ : BOOL;
+    				/* A rising edge lets go of the stream, once no read is under way. */
+    				CLOSE : BOOL;
+    			END_VAR
+    			VAR_OUTPUT
+    				/* TRUE while a read waits for bytes. */
+    				BUSY : BOOL;
+    				/* TRUE in the call where a read has given what came, in `OUT`. */
+    				DONE : BOOL;
+    				/* What the last read gave: empty once the stream has ended, nothing more
+    				   coming. */
+    				OUT : STRING[4096];
+    				/* TRUE once the `result<_, error-code>` from `receive` is an error, whose
+    				   `error-code` is in `ERRORID`. */
+    				ERROR : BOOL;
+    				/* The `error-code` of the `result<_, error-code>` from `receive`, when it
+    				   is an error, which turns `ERROR` TRUE. */
+    				ERRORID : ERROR_CODE;
+    				/* TRUE once the stream has ended and the `future<result<_, error-code>>`
+    				   from `receive` has its value. */
+    				ENDED : BOOL;
+    			END_VAR
+    			VAR
+    				open : BOOL;
+    				requested : BOOL;
+    				closing : BOOL;
+    				shut : BOOL;
+    				stream : UDINT;
+    				future : UDINT;
+    				read : BYTES_STREAM_READ;
+    				answer : RESULT_FUTURE_GET;
+    				came : BOOL;
+    			END_VAR
+    				DONE := FALSE;
+    				// The stream, given by the function at the first request.
+    				IF REQ AND NOT open THEN
+    					Acme.Example.Pipe.RECEIVE(item0 => stream, item1 => future);
+    					open := TRUE;
+    				END_IF;
+    				IF open THEN
+    					// An edge while BUSY is ignored.
+    					IF REQ AND NOT requested AND NOT BUSY THEN
+    						IF stream <> 0 THEN
+    							BUSY := TRUE;
+    						ELSE
+    							// The stream has ended: nothing more comes.
+    							OUT := '';
+    							DONE := TRUE;
+    						END_IF;
+    					END_IF;
+    					requested := REQ;
+    					IF BUSY THEN
+    						// Starts the read, or checks the one running.
+    						read(stream := stream);
+    						IF read.DONE THEN
+    							OUT := read.data;
+    							BUSY := FALSE;
+    							DONE := TRUE;
+    							IF read.closed THEN
+    								// The writer left: the reading end goes too.
+    								BYTES_STREAM_DROP_READABLE(stream := stream);
+    								stream := 0;
+    							END_IF;
+    						END_IF;
+    					END_IF;
+    					// The reading end goes on CLOSE, once no read is under way.
+    					IF CLOSE AND NOT closing THEN
+    						shut := TRUE;
+    					END_IF;
+    					closing := CLOSE;
+    					IF shut AND NOT BUSY THEN
+    						IF stream <> 0 THEN
+    							BYTES_STREAM_DROP_READABLE(stream := stream);
+    							stream := 0;
+    						END_IF;
+    						shut := FALSE;
+    					END_IF;
+    					// The answer, read once it comes, and kept.
+    					answer(future := future);
+    					IF answer.DONE THEN
+    						ERRORID := answer.error;
+    						came := TRUE;
+    					END_IF;
+    					ENDED := stream = 0 AND came;
+    					ERROR := answer.failed;
     				END_IF;
     			END_FUNCTION_BLOCK
     		END_NAMESPACE
@@ -667,7 +762,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     				// The stream, made at the first request and handed to the function.
     				IF REQ AND NOT open THEN
     					stream();
-    					future := RELAY(data := stream.readable);
+    					future := Acme.Example.Other.RELAY(data := stream.readable);
     					open := TRUE;
     				END_IF;
     				IF open THEN
@@ -1281,7 +1376,8 @@ fn a_write_left_out_says_why(mut with_db: RootDatabase) {
 /// the block's own taking a `_`. A `func` that answers with a future or
 /// nothing is called: a future no read gives back is let go of unread, and
 /// one that is read gives its value as outputs. The call of an `async func`
-/// is started and followed to its end, its result kept as outputs. A
+/// is started and followed to its end, its result kept as outputs. `done`,
+/// named as the writer's own `DONE`, is called by its namespace's path. A
 /// function that takes two streams, or a stream and a future, a `func` that
 /// answers with anything else, and an `async func` whose result carries a
 /// future, have none.
@@ -1297,6 +1393,7 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
             }
             post: func(data: stream<u8>) -> future<u32>;
             sink: func(data: stream<u8>);
+            done: func(data: stream<u8>);
             copy: func(a: stream<u8>, b: stream<u8>);
             relay: func(data: stream<u8>, later: future<u32>);
             count: func(data: stream<u8>) -> u32;
@@ -1357,7 +1454,7 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
     	// The stream, made at the first request and handed to the function.
     	IF REQ AND NOT open THEN
     		stream();
-    		RESULT_FUTURE_DROP_READABLE(future := CHANNEL_SEND(data := stream.readable, self := self, req := req_));
+    		RESULT_FUTURE_DROP_READABLE(future := Acme.Example.Pipe.CHANNEL_SEND(data := stream.readable, self := self, req := req_));
     		open := TRUE;
     	END_IF;
     	IF open THEN
@@ -1403,7 +1500,7 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
     	// The stream, made at the first request and handed to the function.
     	IF REQ AND NOT open THEN
     		stream();
-    		future := POST(data := stream.readable);
+    		future := Acme.Example.Pipe.POST(data := stream.readable);
     		open := TRUE;
     	END_IF;
     	IF open THEN
@@ -1449,7 +1546,47 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
     	// The stream, made at the first request and handed to the function.
     	IF REQ AND NOT open THEN
     		stream();
-    		SINK(data := stream.readable);
+    		Acme.Example.Pipe.SINK(data := stream.readable);
+    		open := TRUE;
+    	END_IF;
+    	IF open THEN
+    		stream(REQ := REQ, IN := IN, CLOSE := CLOSE);
+    		BUSY := stream.BUSY;
+    		DONE := stream.DONE;
+    		ERROR := stream.ERROR;
+    	END_IF;
+    END_FUNCTION_BLOCK
+
+    /* Writes text to `done` through a stream of bytes it opens at the first
+       request. */
+    FUNCTION_BLOCK DONE_WRITER
+    VAR_INPUT
+    	/* A rising edge writes `IN`; the first opens the stream and calls `done`
+    	   with it. An edge while `BUSY` is ignored. */
+    	REQ : BOOL;
+    	/* The text to write. */
+    	IN : STRING[4096];
+    	/* A rising edge ends the stream, once no write is under way. */
+    	CLOSE : BOOL;
+    END_VAR
+    VAR_OUTPUT
+    	/* TRUE while the reader has not taken all of `IN`. */
+    	BUSY : BOOL;
+    	/* TRUE in the call where the reader has taken all of `IN`, at once for an
+    	   empty text. */
+    	DONE : BOOL;
+    	/* TRUE once a write finds the reader gone, or a request comes after
+    	   `CLOSE`: the stream does not open again. */
+    	ERROR : BOOL;
+    END_VAR
+    VAR
+    	open : BOOL;
+    	stream : BYTES_STREAM_WRITER;
+    END_VAR
+    	// The stream, made at the first request and handed to the function.
+    	IF REQ AND NOT open THEN
+    		stream();
+    		Acme.Example.Pipe.DONE(data := stream.readable);
     		open := TRUE;
     	END_IF;
     	IF open THEN
@@ -1492,7 +1629,7 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
     VAR
     	open : BOOL;
     	stream : BYTES_STREAM_WRITER;
-    	call : UPLOAD;
+    	call : Acme.Example.Pipe.UPLOAD;
     END_VAR
     	// The stream, made at the first request.
     	IF REQ AND NOT open THEN
@@ -1543,7 +1680,7 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
     VAR
     	open : BOOL;
     	stream : BYTES_STREAM_WRITER;
-    	call : PUSH;
+    	call : Acme.Example.Pipe.PUSH;
     END_VAR
     	// The stream, made at the first request.
     	IF REQ AND NOT open THEN
@@ -1675,6 +1812,477 @@ fn a_writer_s_outputs_say_what_they_hold_in_wit(mut with_db: RootDatabase) {
     	/* The `u64` of the `result<u64, error-code>` from `sized`, when it is no
     	   error. */
     	value : ULINT;
+    ");
+}
+
+/// A `func` that takes no stream or future and gives one stream of bytes,
+/// alone or in a tuple beside one future, has a reader: `tail`, `fetch`,
+/// whose tuple has its future first, a resource's `receive`, and stdin's
+/// shape, `read-via-stream`, a result's error its `ERROR` and `ERRORID`;
+/// the future of `receive` holds a string, which no read gives back, and
+/// goes unread; `open`, named as the reader's own `open`, is called by its
+/// namespace's path. Two streams, a future taken, a stream of numbers and
+/// an `async func` have none.
+#[rstest]
+fn a_function_that_gives_a_stream_has_a_reader(mut with_db: RootDatabase) {
+    let bindings = generated(
+        r#"
+        package acme:example@0.3.0;
+
+        interface source {
+            enum error-code { gone, full }
+            resource socket {
+                receive: func() -> tuple<stream<u8>, future<result<_, string>>>;
+            }
+            read-via-stream: func() -> tuple<stream<u8>, future<result<_, error-code>>>;
+            tail: func() -> stream<u8>;
+            open: func() -> stream<u8>;
+            fetch: func(offset: u64) -> tuple<future<u32>, stream<u8>>;
+            split: func() -> tuple<stream<u8>, stream<u8>>;
+            relay: func(later: future<u32>) -> stream<u8>;
+            numbers: func() -> stream<u32>;
+            later: async func() -> stream<u8>;
+        }
+
+        world example {
+            import source;
+        }
+    "#,
+    );
+    let (mir, module) = built(&mut with_db, &bindings.files, &[]);
+    assert_abi(&bindings, &mir, &module);
+    let readers: String = bindings
+        .files
+        .iter()
+        .flat_map(|file| file.text.split("\n\n"))
+        .filter(|block| block.contains("_READER\n"))
+        .filter_map(|block| block.split_inclusive("END_FUNCTION_BLOCK").next())
+        .map(|block| format!("{}\n\n", block.trim_matches('\n')))
+        .collect();
+    assert_snapshot!(readers, @r"
+    /* Reads what `socket.receive` gives through a stream of bytes, a request
+       at a time. */
+    FUNCTION_BLOCK SOCKET_RECEIVE_READER
+    VAR_INPUT
+    	/* A rising edge reads what comes next, 4096 bytes at most; the first calls
+    	   `socket.receive`. An edge while `BUSY` is ignored, and one after the
+    	   stream ended is `DONE` at once, `OUT` empty. */
+    	REQ : BOOL;
+    	/* A rising edge lets go of the stream, once no read is under way. */
+    	CLOSE : BOOL;
+    	/* `self: borrow<socket>` of `socket.receive`, passed when the stream
+    	   opens. */
+    	self : SOCKET;
+    END_VAR
+    VAR_OUTPUT
+    	/* TRUE while a read waits for bytes. */
+    	BUSY : BOOL;
+    	/* TRUE in the call where a read has given what came, in `OUT`. */
+    	DONE : BOOL;
+    	/* What the last read gave: empty once the stream has ended, nothing more
+    	   coming. */
+    	OUT : STRING[4096];
+    	/* TRUE once the stream has ended: the writer let go, or `CLOSE`. */
+    	ENDED : BOOL;
+    END_VAR
+    VAR
+    	open : BOOL;
+    	requested : BOOL;
+    	closing : BOOL;
+    	shut : BOOL;
+    	stream : UDINT;
+    	future : UDINT;
+    	read : BYTES_STREAM_READ;
+    END_VAR
+    	DONE := FALSE;
+    	// The stream, given by the function at the first request.
+    	IF REQ AND NOT open THEN
+    		Acme.Example.Source.SOCKET_RECEIVE(self := self, item0 => stream, item1 => future);
+    		// No read gives the future's value back: it goes unread.
+    		RESULT_FUTURE_DROP_READABLE(future := future);
+    		open := TRUE;
+    	END_IF;
+    	IF open THEN
+    		// An edge while BUSY is ignored.
+    		IF REQ AND NOT requested AND NOT BUSY THEN
+    			IF stream <> 0 THEN
+    				BUSY := TRUE;
+    			ELSE
+    				// The stream has ended: nothing more comes.
+    				OUT := '';
+    				DONE := TRUE;
+    			END_IF;
+    		END_IF;
+    		requested := REQ;
+    		IF BUSY THEN
+    			// Starts the read, or checks the one running.
+    			read(stream := stream);
+    			IF read.DONE THEN
+    				OUT := read.data;
+    				BUSY := FALSE;
+    				DONE := TRUE;
+    				IF read.closed THEN
+    					// The writer left: the reading end goes too.
+    					BYTES_STREAM_DROP_READABLE(stream := stream);
+    					stream := 0;
+    				END_IF;
+    			END_IF;
+    		END_IF;
+    		// The reading end goes on CLOSE, once no read is under way.
+    		IF CLOSE AND NOT closing THEN
+    			shut := TRUE;
+    		END_IF;
+    		closing := CLOSE;
+    		IF shut AND NOT BUSY THEN
+    			IF stream <> 0 THEN
+    				BYTES_STREAM_DROP_READABLE(stream := stream);
+    				stream := 0;
+    			END_IF;
+    			shut := FALSE;
+    		END_IF;
+    		ENDED := stream = 0;
+    	END_IF;
+    END_FUNCTION_BLOCK
+
+    /* Reads what `read-via-stream` gives through a stream of bytes, a request
+       at a time. */
+    FUNCTION_BLOCK READ_VIA_STREAM_READER
+    VAR_INPUT
+    	/* A rising edge reads what comes next, 4096 bytes at most; the first calls
+    	   `read-via-stream`. An edge while `BUSY` is ignored, and one after the
+    	   stream ended is `DONE` at once, `OUT` empty. */
+    	REQ : BOOL;
+    	/* A rising edge lets go of the stream, once no read is under way. */
+    	CLOSE : BOOL;
+    END_VAR
+    VAR_OUTPUT
+    	/* TRUE while a read waits for bytes. */
+    	BUSY : BOOL;
+    	/* TRUE in the call where a read has given what came, in `OUT`. */
+    	DONE : BOOL;
+    	/* What the last read gave: empty once the stream has ended, nothing more
+    	   coming. */
+    	OUT : STRING[4096];
+    	/* TRUE once the `result<_, error-code>` from `read-via-stream` is an
+    	   error, whose `error-code` is in `ERRORID`. */
+    	ERROR : BOOL;
+    	/* The `error-code` of the `result<_, error-code>` from `read-via-stream`,
+    	   when it is an error, which turns `ERROR` TRUE. */
+    	ERRORID : ERROR_CODE;
+    	/* TRUE once the stream has ended and the `future<result<_, error-code>>`
+    	   from `read-via-stream` has its value. */
+    	ENDED : BOOL;
+    END_VAR
+    VAR
+    	open : BOOL;
+    	requested : BOOL;
+    	closing : BOOL;
+    	shut : BOOL;
+    	stream : UDINT;
+    	future : UDINT;
+    	read : BYTES_STREAM_READ;
+    	answer : RESULT_FUTURE_GET;
+    	came : BOOL;
+    END_VAR
+    	DONE := FALSE;
+    	// The stream, given by the function at the first request.
+    	IF REQ AND NOT open THEN
+    		Acme.Example.Source.READ_VIA_STREAM(item0 => stream, item1 => future);
+    		open := TRUE;
+    	END_IF;
+    	IF open THEN
+    		// An edge while BUSY is ignored.
+    		IF REQ AND NOT requested AND NOT BUSY THEN
+    			IF stream <> 0 THEN
+    				BUSY := TRUE;
+    			ELSE
+    				// The stream has ended: nothing more comes.
+    				OUT := '';
+    				DONE := TRUE;
+    			END_IF;
+    		END_IF;
+    		requested := REQ;
+    		IF BUSY THEN
+    			// Starts the read, or checks the one running.
+    			read(stream := stream);
+    			IF read.DONE THEN
+    				OUT := read.data;
+    				BUSY := FALSE;
+    				DONE := TRUE;
+    				IF read.closed THEN
+    					// The writer left: the reading end goes too.
+    					BYTES_STREAM_DROP_READABLE(stream := stream);
+    					stream := 0;
+    				END_IF;
+    			END_IF;
+    		END_IF;
+    		// The reading end goes on CLOSE, once no read is under way.
+    		IF CLOSE AND NOT closing THEN
+    			shut := TRUE;
+    		END_IF;
+    		closing := CLOSE;
+    		IF shut AND NOT BUSY THEN
+    			IF stream <> 0 THEN
+    				BYTES_STREAM_DROP_READABLE(stream := stream);
+    				stream := 0;
+    			END_IF;
+    			shut := FALSE;
+    		END_IF;
+    		// The answer, read once it comes, and kept.
+    		answer(future := future);
+    		IF answer.DONE THEN
+    			ERRORID := answer.error;
+    			came := TRUE;
+    		END_IF;
+    		ENDED := stream = 0 AND came;
+    		ERROR := answer.failed;
+    	END_IF;
+    END_FUNCTION_BLOCK
+
+    /* Reads what `tail` gives through a stream of bytes, a request at a time. */
+    FUNCTION_BLOCK TAIL_READER
+    VAR_INPUT
+    	/* A rising edge reads what comes next, 4096 bytes at most; the first calls
+    	   `tail`. An edge while `BUSY` is ignored, and one after the stream ended
+    	   is `DONE` at once, `OUT` empty. */
+    	REQ : BOOL;
+    	/* A rising edge lets go of the stream, once no read is under way. */
+    	CLOSE : BOOL;
+    END_VAR
+    VAR_OUTPUT
+    	/* TRUE while a read waits for bytes. */
+    	BUSY : BOOL;
+    	/* TRUE in the call where a read has given what came, in `OUT`. */
+    	DONE : BOOL;
+    	/* What the last read gave: empty once the stream has ended, nothing more
+    	   coming. */
+    	OUT : STRING[4096];
+    	/* TRUE once the stream has ended: the writer let go, or `CLOSE`. */
+    	ENDED : BOOL;
+    END_VAR
+    VAR
+    	open : BOOL;
+    	requested : BOOL;
+    	closing : BOOL;
+    	shut : BOOL;
+    	stream : UDINT;
+    	read : BYTES_STREAM_READ;
+    END_VAR
+    	DONE := FALSE;
+    	// The stream, given by the function at the first request.
+    	IF REQ AND NOT open THEN
+    		stream := Acme.Example.Source.TAIL();
+    		open := TRUE;
+    	END_IF;
+    	IF open THEN
+    		// An edge while BUSY is ignored.
+    		IF REQ AND NOT requested AND NOT BUSY THEN
+    			IF stream <> 0 THEN
+    				BUSY := TRUE;
+    			ELSE
+    				// The stream has ended: nothing more comes.
+    				OUT := '';
+    				DONE := TRUE;
+    			END_IF;
+    		END_IF;
+    		requested := REQ;
+    		IF BUSY THEN
+    			// Starts the read, or checks the one running.
+    			read(stream := stream);
+    			IF read.DONE THEN
+    				OUT := read.data;
+    				BUSY := FALSE;
+    				DONE := TRUE;
+    				IF read.closed THEN
+    					// The writer left: the reading end goes too.
+    					BYTES_STREAM_DROP_READABLE(stream := stream);
+    					stream := 0;
+    				END_IF;
+    			END_IF;
+    		END_IF;
+    		// The reading end goes on CLOSE, once no read is under way.
+    		IF CLOSE AND NOT closing THEN
+    			shut := TRUE;
+    		END_IF;
+    		closing := CLOSE;
+    		IF shut AND NOT BUSY THEN
+    			IF stream <> 0 THEN
+    				BYTES_STREAM_DROP_READABLE(stream := stream);
+    				stream := 0;
+    			END_IF;
+    			shut := FALSE;
+    		END_IF;
+    		ENDED := stream = 0;
+    	END_IF;
+    END_FUNCTION_BLOCK
+
+    /* Reads what `open` gives through a stream of bytes, a request at a time. */
+    FUNCTION_BLOCK OPEN_READER
+    VAR_INPUT
+    	/* A rising edge reads what comes next, 4096 bytes at most; the first calls
+    	   `open`. An edge while `BUSY` is ignored, and one after the stream ended
+    	   is `DONE` at once, `OUT` empty. */
+    	REQ : BOOL;
+    	/* A rising edge lets go of the stream, once no read is under way. */
+    	CLOSE : BOOL;
+    END_VAR
+    VAR_OUTPUT
+    	/* TRUE while a read waits for bytes. */
+    	BUSY : BOOL;
+    	/* TRUE in the call where a read has given what came, in `OUT`. */
+    	DONE : BOOL;
+    	/* What the last read gave: empty once the stream has ended, nothing more
+    	   coming. */
+    	OUT : STRING[4096];
+    	/* TRUE once the stream has ended: the writer let go, or `CLOSE`. */
+    	ENDED : BOOL;
+    END_VAR
+    VAR
+    	open : BOOL;
+    	requested : BOOL;
+    	closing : BOOL;
+    	shut : BOOL;
+    	stream : UDINT;
+    	read : BYTES_STREAM_READ;
+    END_VAR
+    	DONE := FALSE;
+    	// The stream, given by the function at the first request.
+    	IF REQ AND NOT open THEN
+    		stream := Acme.Example.Source.OPEN();
+    		open := TRUE;
+    	END_IF;
+    	IF open THEN
+    		// An edge while BUSY is ignored.
+    		IF REQ AND NOT requested AND NOT BUSY THEN
+    			IF stream <> 0 THEN
+    				BUSY := TRUE;
+    			ELSE
+    				// The stream has ended: nothing more comes.
+    				OUT := '';
+    				DONE := TRUE;
+    			END_IF;
+    		END_IF;
+    		requested := REQ;
+    		IF BUSY THEN
+    			// Starts the read, or checks the one running.
+    			read(stream := stream);
+    			IF read.DONE THEN
+    				OUT := read.data;
+    				BUSY := FALSE;
+    				DONE := TRUE;
+    				IF read.closed THEN
+    					// The writer left: the reading end goes too.
+    					BYTES_STREAM_DROP_READABLE(stream := stream);
+    					stream := 0;
+    				END_IF;
+    			END_IF;
+    		END_IF;
+    		// The reading end goes on CLOSE, once no read is under way.
+    		IF CLOSE AND NOT closing THEN
+    			shut := TRUE;
+    		END_IF;
+    		closing := CLOSE;
+    		IF shut AND NOT BUSY THEN
+    			IF stream <> 0 THEN
+    				BYTES_STREAM_DROP_READABLE(stream := stream);
+    				stream := 0;
+    			END_IF;
+    			shut := FALSE;
+    		END_IF;
+    		ENDED := stream = 0;
+    	END_IF;
+    END_FUNCTION_BLOCK
+
+    /* Reads what `fetch` gives through a stream of bytes, a request at a time. */
+    FUNCTION_BLOCK FETCH_READER
+    VAR_INPUT
+    	/* A rising edge reads what comes next, 4096 bytes at most; the first calls
+    	   `fetch`. An edge while `BUSY` is ignored, and one after the stream ended
+    	   is `DONE` at once, `OUT` empty. */
+    	REQ : BOOL;
+    	/* A rising edge lets go of the stream, once no read is under way. */
+    	CLOSE : BOOL;
+    	/* `offset: u64` of `fetch`, passed when the stream opens. */
+    	offset : ULINT;
+    END_VAR
+    VAR_OUTPUT
+    	/* TRUE while a read waits for bytes. */
+    	BUSY : BOOL;
+    	/* TRUE in the call where a read has given what came, in `OUT`. */
+    	DONE : BOOL;
+    	/* What the last read gave: empty once the stream has ended, nothing more
+    	   coming. */
+    	OUT : STRING[4096];
+    	/* TRUE once the stream has ended and the `future<u32>` from `fetch` has
+    	   its value. */
+    	ENDED : BOOL;
+    	/* The `u32` from `fetch`. */
+    	value : UDINT;
+    END_VAR
+    VAR
+    	open : BOOL;
+    	requested : BOOL;
+    	closing : BOOL;
+    	shut : BOOL;
+    	stream : UDINT;
+    	future : UDINT;
+    	read : BYTES_STREAM_READ;
+    	answer : U32_FUTURE_GET;
+    	came : BOOL;
+    END_VAR
+    	DONE := FALSE;
+    	// The stream, given by the function at the first request.
+    	IF REQ AND NOT open THEN
+    		Acme.Example.Source.FETCH(offset := offset, item1 => stream, item0 => future);
+    		open := TRUE;
+    	END_IF;
+    	IF open THEN
+    		// An edge while BUSY is ignored.
+    		IF REQ AND NOT requested AND NOT BUSY THEN
+    			IF stream <> 0 THEN
+    				BUSY := TRUE;
+    			ELSE
+    				// The stream has ended: nothing more comes.
+    				OUT := '';
+    				DONE := TRUE;
+    			END_IF;
+    		END_IF;
+    		requested := REQ;
+    		IF BUSY THEN
+    			// Starts the read, or checks the one running.
+    			read(stream := stream);
+    			IF read.DONE THEN
+    				OUT := read.data;
+    				BUSY := FALSE;
+    				DONE := TRUE;
+    				IF read.closed THEN
+    					// The writer left: the reading end goes too.
+    					BYTES_STREAM_DROP_READABLE(stream := stream);
+    					stream := 0;
+    				END_IF;
+    			END_IF;
+    		END_IF;
+    		// The reading end goes on CLOSE, once no read is under way.
+    		IF CLOSE AND NOT closing THEN
+    			shut := TRUE;
+    		END_IF;
+    		closing := CLOSE;
+    		IF shut AND NOT BUSY THEN
+    			IF stream <> 0 THEN
+    				BYTES_STREAM_DROP_READABLE(stream := stream);
+    				stream := 0;
+    			END_IF;
+    			shut := FALSE;
+    		END_IF;
+    		// The answer, read once it comes, and kept.
+    		answer(future := future);
+    		IF answer.DONE THEN
+    			value := answer.value;
+    			came := TRUE;
+    		END_IF;
+    		ENDED := stream = 0 AND came;
+    	END_IF;
+    END_FUNCTION_BLOCK
     ");
 }
 
@@ -2636,7 +3244,7 @@ fn std_s_built_ins() {
     				// The stream, made at the first request and handed to the function.
     				IF REQ AND NOT open THEN
     					stream();
-    					future := WRITE_VIA_STREAM(data := stream.readable);
+    					future := Wasi.Cli.Stdout.WRITE_VIA_STREAM(data := stream.readable);
     					open := TRUE;
     				END_IF;
     				IF open THEN

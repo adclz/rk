@@ -1388,6 +1388,138 @@ fn a_future_s_get_reads_it_and_lets_go() {
     );
 }
 
+/// The program's tests of the reader of [`FEED`]'s `tail`: a request reads
+/// the bytes of `hello`; once the component let go of its writing end, a
+/// read gives nothing and the stream has ended, as each later request
+/// says; the reader lets go of its end once the writer left, or on `CLOSE`.
+const READER_TESTS: &str = "
+{test}
+FUNCTION_BLOCK test_reader_reads_to_the_end
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    step : INT;
+    status : UDINT;
+    r : Acme.Feed.Feed.TAIL_READER;
+END_VAR
+    CASE step OF
+        0:
+            r(REQ := TRUE);
+            IF r.DONE THEN
+                IF r.OUT <> 'hello' OR r.ENDED THEN
+                    __RAISE('the first read is not hello');
+                END_IF;
+                // The component lets go of its writing end.
+                status := Acme.Feed.Feed.CLOSE();
+                step := 1;
+            END_IF;
+        1:
+            r(REQ := FALSE);
+            step := 2;
+        2:
+            r(REQ := TRUE);
+            IF r.DONE THEN
+                IF r.OUT <> '' OR NOT r.ENDED THEN
+                    __RAISE('the read after the writer left did not end the stream');
+                END_IF;
+                IF r.stream <> 0 THEN
+                    __RAISE('the reader kept its end once the writer left');
+                END_IF;
+                step := 3;
+            END_IF;
+        3:
+            r(REQ := FALSE);
+            step := 4;
+        4:
+            // A request after the end is DONE at once, with nothing.
+            r(REQ := TRUE);
+            IF NOT r.DONE OR r.OUT <> '' OR r.BUSY THEN
+                __RAISE('a request after the end is not DONE at once');
+            END_IF;
+            DONE := TRUE;
+    END_CASE;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_reader_lets_go_when_its_writer_left
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    step : INT;
+    status, held : UDINT;
+    r : Acme.Feed.Feed.TAIL_READER;
+END_VAR
+    CASE step OF
+        0:
+            r(REQ := TRUE);
+            held := r.stream;
+            IF r.DONE THEN
+                status := Acme.Feed.Feed.CLOSE();
+                step := 1;
+            END_IF;
+        1:
+            r(REQ := FALSE);
+            step := 2;
+        2:
+            r(REQ := TRUE);
+            IF r.ENDED THEN
+                // A second drop of the end the reader let go of traps.
+                Acme.Feed.Feed.BYTES_STREAM_DROP_READABLE(stream := held);
+                DONE := TRUE;
+            END_IF;
+    END_CASE;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_reader_lets_go_on_close
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    step : INT;
+    held : UDINT;
+    r : Acme.Feed.Feed.TAIL_READER;
+END_VAR
+    CASE step OF
+        0:
+            r(REQ := TRUE);
+            held := r.stream;
+            IF r.DONE THEN
+                step := 1;
+            END_IF;
+        1:
+            r(REQ := FALSE, CLOSE := TRUE);
+            IF NOT r.ENDED OR r.stream <> 0 THEN
+                __RAISE('CLOSE did not end the stream');
+            END_IF;
+            step := 2;
+        2:
+            // A second drop of the end the reader let go of traps.
+            Acme.Feed.Feed.BYTES_STREAM_DROP_READABLE(stream := held);
+            DONE := TRUE;
+    END_CASE;
+END_FUNCTION_BLOCK
+";
+
+/// A function's reader calls it at the first request and reads its stream
+/// a request at a time, to its end; it lets go of the reading end once the
+/// writer left, or on `CLOSE`.
+#[test]
+fn a_function_s_reader_reads_its_stream_to_the_end() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let feed = component_of_wat(FEED, "feeder", FEED_WAT);
+    library(&root, "feed", &declarations(&feed), Some(&feed));
+    let ws = program(&root, "feed = { path = \"../feed\" }\n", "0");
+    write(&ws, &[("main.st", READER_TESTS)]);
+    tested(&ws, Some("test_reader_reads_to_the_end")).expect("hello, then the end");
+    assert!(
+        tested(&ws, Some("test_reader_lets_go_when_its_writer_left")).is_err(),
+        "the reader let go of its end once the writer left: a second drop traps"
+    );
+    assert!(
+        tested(&ws, Some("test_reader_lets_go_on_close")).is_err(),
+        "the reader let go of its end on CLOSE: a second drop traps"
+    );
+}
+
 /// A component that reads the stream it is given until the writer lets go:
 /// `take` keeps the reading end, where the bytes land from `offset` on, and
 /// answers with a future of how many came; `ended` reads on, a read at a
