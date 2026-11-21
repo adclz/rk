@@ -26,14 +26,18 @@
 //!
 //! The components of the libraries the program calls run beside it, as a
 //! runtime runs them: each in a store of its own, fresh for each test, with
-//! the program's WASI 0.3. Each function the program imports from one is
-//! the host's, and makes the call in the component's store: plain values
-//! cross as they are, and a handle of the component's resource through the
-//! [`resource_bridge`](crate::resource_bridge), the program holding the
-//! host's proxy and the component's store the handle. A handle the program
-//! drops is dropped in the component's store before the program's next call
-//! into it. A trap of the component fails the program's call, named after
-//! its library.
+//! the program's WASI 0.3, driven by a task of its own that runs the
+//! store's event loop for the whole test ([`drive`], after wasmCloud's
+//! driver), as a runtime runs each on a thread of its own. Each function the
+//! program imports from one is the host's, which sends the call to that
+//! task, where it runs beside the calls under way. Values cross through
+//! [`relocate`](crate::relocate): plain ones as they are, a handle of the
+//! component's resource as the [`resource_bridge`](crate::resource_bridge)'s
+//! proxy, a stream of bytes and a future of a scalar through a pipe
+//! ([`stream_pump`](crate::stream_pump)), which moves while both stores run.
+//! A handle the program drops is sent to the task, which drops the
+//! component's own in its store. A trap of the component fails the
+//! program's call, named after its library.
 
 use std::future::Future;
 use std::ops::Range;
@@ -42,11 +46,13 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::control::{TestError, TestState};
-use crate::resource_bridge::{self, ProxyResource, Relocated, ResourceRegistry};
+use crate::relocate::{self, Relocated};
+use crate::resource_bridge::{self, ProxyResource, ResourceRegistry};
 use anyhow::{Context, Result};
 use debug_format::DebugInfo;
 use debug_format::test_manifest::{TEST_MANIFEST_SECTION, TestEntry, TestManifest};
 use debug_format::test_report::{Frame, Status, TestRecord};
+use tokio::sync::{mpsc, oneshot, watch};
 use wasmtime::component::types::{ComponentFunc, ComponentItem};
 use wasmtime::component::{Accessor, Component, Func, InstancePre, Resource, Val};
 use wasmtime::{
@@ -591,10 +597,6 @@ struct ComponentHost {
     /// A component's store: the handles of its resources the program
     /// holds ([`resource_bridge`]).
     resource_registry: Option<ResourceRegistry>,
-    /// The program's store: the handles it let go of, by the component
-    /// that owns each and the id its registry knows it by, which reach that
-    /// component's store before the program's next call into it.
-    undelivered_drops: Vec<(usize, u64)>,
 }
 
 impl resource_bridge::Bridged for ComponentHost {
@@ -607,12 +609,32 @@ impl resource_bridge::Bridged for ComponentHost {
     }
 }
 
-/// A component beside the program, started for one test. A call takes its
-/// store until it returns, an async one across the program's scans: a call
-/// the program makes meanwhile waits its turn.
+/// A component beside the program, started for one test and driven by a
+/// task of its own ([`drive`]), as a runtime runs each component on a
+/// thread of its own: the program sends it the calls it makes and the
+/// handles it drops, and the task runs the component's event loop all the
+/// while, so that what crosses as a stream or a future moves between the
+/// program's calls.
 struct Started {
     library: String,
-    store: Arc<tokio::sync::Mutex<Store<ComponentHost>>>,
+    jobs: mpsc::UnboundedSender<Job>,
+    /// How the component trapped, once it has: its task is gone, and each
+    /// call of the program's into it fails with it.
+    trapped: watch::Receiver<Option<String>>,
+}
+
+/// What the program sends the task of a component beside it.
+enum Job {
+    /// A call of `func`: its parameters put into the component's store, its
+    /// results taken out of it into `reply`.
+    Call {
+        func: Func,
+        params: Vec<Relocated>,
+        reply: oneshot::Sender<wasmtime::Result<Vec<Relocated>>>,
+    },
+    /// The program let go of the handle `proxy_id` names: the component's
+    /// own goes, in the component's store.
+    Drop { proxy_id: u64 },
 }
 
 /// Where a function the program imports runs: the component beside it, by
@@ -760,10 +782,12 @@ fn link_component(
                             .data_mut()
                             .table
                             .delete(Resource::<ProxyResource>::new_own(rep))?;
-                        store
-                            .data_mut()
-                            .undelivered_drops
-                            .push((beside, proxy.proxy_id));
+                        // Sent to the component's task, which drops its own
+                        // handle in its store; gone with the task once the
+                        // component trapped.
+                        let _ = store.data().beside[beside].jobs.send(Job::Drop {
+                            proxy_id: proxy.proxy_id,
+                        });
                         Ok(())
                     },
                 )
@@ -833,10 +857,10 @@ fn wires(engine: &Engine, program: &Component, beside: &[(String, Component)]) -
     wires
 }
 
-/// The program's call of the function at `wire`, a `func`, made in the
-/// store of the component beside it that exports it ([`call`]). The
-/// program waits for it, its turn on the component included: an async call
-/// of its own holds the component until that call returns.
+/// The program's call of the function at `wire`, a `func`, sent to the
+/// task of the component beside it that exports it ([`send_call`]). The
+/// program waits for it; the component runs it beside the calls it has
+/// under way.
 fn forward<'a>(
     mut store: StoreContextMut<'a, ComponentHost>,
     wire: usize,
@@ -847,12 +871,7 @@ fn forward<'a>(
     Box::new(async move {
         let Forward { beside, func } = store.data().forwards[wire];
         let params = taken_out(&mut store, &ty, params)?;
-        let drops = undelivered(store.data_mut(), beside);
-        let (library, component, budget) = started(store.data(), beside);
-        let got = {
-            let mut component = component.lock().await;
-            call(func, &mut component, &library, budget, drops, params).await?
-        };
+        let got = send_call(store.data(), beside, func, params).await?;
         put_in(&mut store, got, results)
     })
 }
@@ -866,23 +885,18 @@ fn forward_async<'a>(
     results: &'a mut [Val],
 ) -> Pin<Box<dyn Future<Output = wasmtime::Result<()>> + Send + 'a>> {
     Box::pin(async move {
-        let (func, params, drops, (library, component, budget)) =
-            accessor.with(|mut access| -> wasmtime::Result<_> {
-                let Forward { beside, func } = access.data_mut().forwards[wire];
-                let params = taken_out(&mut access, &ty, params)?;
-                let drops = undelivered(access.data_mut(), beside);
-                Ok((func, params, drops, started(access.data_mut(), beside)))
-            })?;
-        let got = {
-            let mut component = component.lock().await;
-            call(func, &mut component, &library, budget, drops, params).await?
-        };
+        let call = accessor.with(|mut access| -> wasmtime::Result<_> {
+            let Forward { beside, func } = access.data_mut().forwards[wire];
+            let params = taken_out(&mut access, &ty, params)?;
+            Ok(send_call(access.data_mut(), beside, func, params))
+        })?;
+        let got = call.await?;
         accessor.with(|mut access| put_in(&mut access, got, results))
     })
 }
 
 /// The program's `params`, typed by its import `ty`, taken out of its
-/// store: each handle in them an id ([`resource_bridge::extract`]).
+/// store ([`relocate::extract`]).
 fn taken_out(
     mut store: impl AsContextMut<Data = ComponentHost>,
     ty: &ComponentFunc,
@@ -890,102 +904,162 @@ fn taken_out(
 ) -> wasmtime::Result<Vec<Relocated>> {
     ty.params()
         .zip(params)
-        .map(|((_, ty), value)| resource_bridge::extract(&mut store, value, &ty))
+        .map(|((_, ty), value)| relocate::extract(&mut store, value, &ty))
         .collect()
 }
 
 /// What the component gave back, `got`, put into the program's store as
-/// the import's `results` ([`resource_bridge::inject`]).
+/// the import's `results` ([`relocate::inject`]).
 fn put_in(
     mut store: impl AsContextMut<Data = ComponentHost>,
     got: Vec<Relocated>,
     results: &mut [Val],
 ) -> wasmtime::Result<()> {
     for (slot, value) in results.iter_mut().zip(got) {
-        *slot = resource_bridge::inject(&mut store, value)?;
+        *slot = relocate::inject(&mut store, value)?;
     }
     Ok(())
 }
 
-/// The ids of the handles the program let go of that the component at
-/// `beside` owns, which have not reached its store yet.
-fn undelivered(host: &mut ComponentHost, beside: usize) -> Vec<u64> {
-    let (theirs, others): (Vec<_>, Vec<_>) = std::mem::take(&mut host.undelivered_drops)
-        .into_iter()
-        .partition(|(owner, _)| *owner == beside);
-    host.undelivered_drops = others;
-    theirs.into_iter().map(|(_, proxy_id)| proxy_id).collect()
-}
-
-/// The component at `beside`: its library, its store, and the program's
-/// budget.
-fn started(
+/// The call of `func` with `params`, sent at once to the task of the
+/// component at `beside`, and what it gives back when it comes. A trap of
+/// the component comes back as [`InComponent`], which traps the program's
+/// call where it made it.
+fn send_call(
     host: &ComponentHost,
     beside: usize,
-) -> (
-    String,
-    Arc<tokio::sync::Mutex<Store<ComponentHost>>>,
-    Duration,
-) {
-    let Started { library, store } = &host.beside[beside];
-    (library.clone(), store.clone(), host.budget)
+    func: Func,
+    params: Vec<Relocated>,
+) -> impl Future<Output = wasmtime::Result<Vec<Relocated>>> + Send + use<> {
+    let Started {
+        library,
+        jobs,
+        trapped,
+    } = &host.beside[beside];
+    let (library, mut trapped, budget) = (library.clone(), trapped.clone(), host.budget);
+    let (reply, answer) = oneshot::channel();
+    let sent = jobs.send(Job::Call {
+        func,
+        params,
+        reply,
+    });
+    async move {
+        let in_component = |words| {
+            wasmtime::Error::new(InComponent {
+                library: library.clone(),
+                words,
+            })
+        };
+        if sent.is_ok() {
+            match answer.await {
+                Ok(Ok(results)) => return Ok(results),
+                Ok(Err(e)) => return Err(in_component(stopped(&e, budget))),
+                Err(_) => {}
+            }
+        }
+        // The task is gone with the call: the component trapped.
+        let words = trapped
+            .wait_for(Option::is_some)
+            .await
+            .map(|words| words.clone().unwrap_or_default())
+            .unwrap_or_else(|_| "its task ended".to_string());
+        Err(in_component(words))
+    }
 }
 
-/// `func` called in the store of the component `library` carries, with the
-/// program's budget: the handles the program let go of, `drops`, dropped
-/// there first; `params` put into the store, and its results taken out of
-/// it ([`resource_bridge`]). A trap of the component comes back as
-/// [`InComponent`], which traps the program's call where it made it.
-async fn call(
-    func: Func,
-    store: &mut Store<ComponentHost>,
-    library: &str,
+/// The task of a component beside the program, which runs its store's
+/// event loop until the program lets go of `jobs`, the way wasmCloud's
+/// driver serves a component: each call runs in the store beside the
+/// others under way, with the program's budget, and each handle the program
+/// drops is staged in the store's registry and dropped there, in the order
+/// the program sent them. A trap ends the task: `trapped` says how, for
+/// the calls that come after.
+async fn drive(
+    mut store: Store<ComponentHost>,
+    mut jobs: mpsc::UnboundedReceiver<Job>,
     budget: Duration,
-    drops: Vec<u64>,
-    params: Vec<Relocated>,
-) -> wasmtime::Result<Vec<Relocated>> {
-    store.set_epoch_deadline(ticks(budget));
-    let in_component = |e: wasmtime::Error| {
-        wasmtime::Error::new(InComponent {
-            library: library.to_string(),
-            words: stopped(&e, budget),
+    trapped: watch::Sender<Option<String>>,
+) {
+    let served = store
+        .run_concurrent(async |accessor| -> wasmtime::Result<()> {
+            while let Some(job) = jobs.recv().await {
+                match job {
+                    Job::Call {
+                        func,
+                        params,
+                        reply,
+                    } => {
+                        accessor.spawn(async move |accessor: &Accessor<ComponentHost>| {
+                            let _ = reply.send(serve_call(accessor, func, params, budget).await);
+                            Ok(())
+                        })?;
+                    }
+                    Job::Drop { proxy_id } => {
+                        let pending = accessor.with(|mut access| {
+                            match access.data_mut().resource_registry.as_mut() {
+                                Some(registry) => {
+                                    registry.stage_drop(proxy_id);
+                                    registry.take_pending_drops()
+                                }
+                                None => Vec::new(),
+                            }
+                        });
+                        for real in pending {
+                            real.resource_drop_concurrent(accessor).await?;
+                        }
+                    }
+                }
+            }
+            Ok(())
         })
+        .await;
+    let error = match served {
+        Ok(Ok(())) => return,
+        Ok(Err(e)) | Err(e) => e,
     };
-    if let Some(registry) = store.data_mut().resource_registry.as_mut() {
-        for proxy_id in drops {
-            registry.stage_drop(proxy_id);
+    let _ = trapped.send(Some(stopped(&error, budget)));
+}
+
+/// A call the program sent, run in the component's store: its parameters
+/// put into the store, `func` called beside the calls under way, its
+/// results taken out ([`relocate`]).
+async fn serve_call(
+    accessor: &Accessor<ComponentHost>,
+    func: Func,
+    params: Vec<Relocated>,
+    budget: Duration,
+) -> wasmtime::Result<Vec<Relocated>> {
+    let (params, mut results) = accessor.with(|mut access| -> wasmtime::Result<_> {
+        access.as_context_mut().set_epoch_deadline(ticks(budget));
+        let params = params
+            .into_iter()
+            .map(|param| relocate::inject(&mut access, param))
+            .collect::<wasmtime::Result<Vec<_>>>()?;
+        let results = vec![Val::Bool(false); func.ty(&access).results().len()];
+        Ok((params, results))
+    })?;
+    func.call_concurrent(accessor, &params, &mut results)
+        .await?;
+    accessor.with(|mut access| {
+        let ty = func.ty(&access);
+        results
+            .iter()
+            .zip(ty.results())
+            .map(|(value, ty)| relocate::extract(&mut access, value, &ty))
+            .collect()
+    })
+}
+
+/// The tasks of the components beside the program, stopped when the test
+/// is over, whatever its end: none outlives its test.
+struct Drivers(Vec<tokio::task::JoinHandle<()>>);
+
+impl Drop for Drivers {
+    fn drop(&mut self) {
+        for driver in &self.0 {
+            driver.abort();
         }
     }
-    flush_pending_resource_drops(store)
-        .await
-        .map_err(in_component)?;
-    let params = params
-        .into_iter()
-        .map(|param| resource_bridge::inject(&mut *store, param))
-        .collect::<wasmtime::Result<Vec<_>>>()?;
-    let mut results = vec![Val::Bool(false); func.ty(&*store).results().len()];
-    func.call_async(&mut *store, &params, &mut results)
-        .await
-        .map_err(in_component)?;
-    let ty = func.ty(&*store);
-    results
-        .iter()
-        .zip(ty.results())
-        .map(|(value, ty)| resource_bridge::extract(&mut *store, value, &ty))
-        .collect()
-}
-
-/// The handles the program let go of that wait in `store`'s registry,
-/// dropped in that store, where the component's destructor runs.
-async fn flush_pending_resource_drops(store: &mut Store<ComponentHost>) -> wasmtime::Result<()> {
-    let pending = match store.data_mut().resource_registry.as_mut() {
-        Some(registry) => registry.take_pending_drops(),
-        None => Vec::new(),
-    };
-    for real in pending {
-        real.resource_drop_async(&mut *store).await?;
-    }
-    Ok(())
 }
 
 /// One test on a fresh instance of the component: `init`, then `run-test`
@@ -1022,7 +1096,6 @@ async fn run_test(
         beside: Vec::new(),
         forwards: Vec::new(),
         resource_registry: None,
-        undelivered_drops: Vec::new(),
     };
     let mut started = Vec::with_capacity(beside.len());
     for BesidePre { library, pre } in beside {
@@ -1065,11 +1138,20 @@ async fn run_test(
         });
     }
     let mut program = host(capture);
+    let mut drivers = Drivers(Vec::with_capacity(started.len()));
     program.beside = started
         .into_iter()
-        .map(|(library, store, _)| Started {
-            library,
-            store: Arc::new(tokio::sync::Mutex::new(store)),
+        .map(|(library, store, _)| {
+            let (jobs, inbox) = mpsc::unbounded_channel();
+            let (trap, trapped) = watch::channel(None);
+            drivers
+                .0
+                .push(tokio::spawn(drive(store, inbox, budget, trap)));
+            Started {
+                library,
+                jobs,
+                trapped,
+            }
         })
         .collect();
     program.forwards = forwards;

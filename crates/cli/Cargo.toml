@@ -45,9 +45,10 @@ wasmtime-wasi = { version = "50.0.1", default-features = false, features = ["p3"
 # The trait wasmtime-wasi takes a standard output by: `rk test` keeps what a
 # test writes. wasmtime-wasi builds tokio already. Its runtime runs each call
 # of a component: a host function that waits, WASI's `wait-for`, waits on it.
-# `sync`: the lock a library's component is called under, which an async
-# call holds across the program's scans.
-tokio = { version = "1", default-features = false, features = ["rt", "time", "sync"] }
+# `sync`: the channels a library's component, driven by a task of its own,
+# takes the program's calls and drops by, and a future's value goes through.
+# `io-util`: the in-memory pipe a stream crosses between two stores by.
+tokio = { version = "1", default-features = false, features = ["rt", "time", "sync", "io-util"] }
 # `rk compile` wraps the module into a component, with the WIT it is typed by.
 wit-component = { workspace = true }
 wit-parser = { workspace = true }
