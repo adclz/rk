@@ -1772,6 +1772,171 @@ fn a_function_s_writer_opens_writes_and_reads_the_answer() {
     tested(&ws, Some("test_function_writer_of_nothing")).expect("the bytes reach the component");
 }
 
+/// A component whose `upload`, an `async func`, reads the stream it is
+/// given until the writer lets go, then returns how many bytes came plus
+/// `offset`; `first` gives the first byte that came.
+const UPLOAD: &str = r#"
+    package acme:upload@1.0.0;
+
+    interface upload {
+        upload: async func(data: stream<u8>, offset: u32) -> u32;
+        first: func() -> u8;
+    }
+
+    world uploader {
+        export upload;
+    }
+"#;
+
+/// [`UPLOAD`]'s module: `upload` is lifted async, with a callback. It reads
+/// until a read waits, then waits on a set holding the stream; its callback
+/// takes what the read gave and reads on, and the writer leaving ends the
+/// call, through `task.return`. The bytes land from 256 on.
+const UPLOAD_WAT: &str = r#"
+    (module
+        (import "$root" "[waitable-set-new]" (func $set_new (result i32)))
+        (import "$root" "[waitable-join]" (func $join (param i32 i32)))
+        (import "[export]acme:upload/upload@1.0.0" "[async-lower][stream-read-0]upload" (func $read (param i32 i32 i32) (result i32)))
+        (import "[export]acme:upload/upload@1.0.0" "[stream-drop-readable-0]upload" (func $drop (param i32)))
+        (import "[export]acme:upload/upload@1.0.0" "[task-return]upload" (func $return (param i32)))
+        (memory (export "memory") 1)
+        (global $readable (mut i32) (i32.const 0))
+        (global $set (mut i32) (i32.const 0))
+        (global $total (mut i32) (i32.const 0))
+        (global $offset (mut i32) (i32.const 0))
+        ;; Takes what a read gave: the bytes that came, status >> 4, then
+        ;; whether the writer let go, 1 in the low bits, which ends the call.
+        (func $took (param $status i32) (result i32)
+            global.get $total
+            local.get $status
+            i32.const 4
+            i32.shr_u
+            i32.add
+            global.set $total
+            local.get $status
+            i32.const 15
+            i32.and
+            i32.const 1
+            i32.eq
+            if
+                global.get $readable
+                call $drop
+                global.get $total
+                global.get $offset
+                i32.add
+                call $return
+                ;; EXIT: the call is over.
+                i32.const 0
+                return
+            end
+            call $more)
+        ;; Reads on until a read waits, then WAITs on the set.
+        (func $more (result i32)
+            (local $status i32)
+            global.get $readable
+            i32.const 256
+            global.get $total
+            i32.add
+            i32.const 64
+            call $read
+            local.tee $status
+            i32.const -1
+            i32.eq
+            if
+                global.get $set
+                i32.const 4
+                i32.shl
+                i32.const 2
+                i32.or
+                return
+            end
+            local.get $status
+            call $took)
+        (func (export "[async-lift]acme:upload/upload@1.0.0#upload") (param $data i32) (param $offset i32) (result i32)
+            local.get $data
+            global.set $readable
+            local.get $offset
+            global.set $offset
+            call $set_new
+            global.set $set
+            global.get $readable
+            global.get $set
+            call $join
+            call $more)
+        (func (export "[callback][async-lift]acme:upload/upload@1.0.0#upload") (param $event i32) (param $handle i32) (param $payload i32) (result i32)
+            local.get $payload
+            call $took)
+        (func (export "acme:upload/upload@1.0.0#first") (result i32)
+            i32.const 256
+            i32.load8_u))
+"#;
+
+/// The program's test of [`UPLOAD`]'s writer: the call starts with the
+/// stream at the first request, with `offset` as it is then, runs while the
+/// block writes, returns once `CLOSE` ended the stream, and is not started
+/// again after.
+const ASYNC_WRITER_TESTS: &str = "
+{test}
+FUNCTION_BLOCK test_async_writer_returns
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    step : INT;
+    w : Acme.Upload.Upload.UPLOAD_WRITER;
+    wrote : BOOL;
+    after : INT;
+END_VAR
+    CASE step OF
+        0:
+            w(CLOSE := FALSE, offset := 100);
+            w(REQ := TRUE, IN := 'hello');
+            wrote := w.DONE;
+            step := 1;
+        1:
+            w(REQ := TRUE, IN := 'hello');
+            wrote := wrote OR w.DONE;
+            IF w.ENDED THEN
+                __RAISE('the call returned before the stream ended');
+            END_IF;
+            IF wrote AND NOT w.BUSY THEN
+                w(REQ := FALSE, CLOSE := TRUE);
+                step := 2;
+            END_IF;
+        2:
+            w(CLOSE := TRUE);
+            IF w.ENDED THEN
+                IF w.value <> 105 OR Acme.Upload.Upload.FIRST() <> 16#68 THEN
+                    __RAISE('the call did not return the 5 bytes of hello and the offset');
+                END_IF;
+                step := 3;
+            END_IF;
+        3:
+            // The call returned: later calls of the block start none.
+            w(REQ := TRUE, IN := 'more');
+            IF NOT w.ERROR OR NOT w.ENDED OR w.value <> 105 THEN
+                __RAISE('a request after CLOSE is no error, or the result went');
+            END_IF;
+            after := after + 1;
+            DONE := after > 3;
+    END_CASE;
+END_FUNCTION_BLOCK
+";
+
+/// The writer of an `async func` that takes a stream starts the call with
+/// the stream it makes at the first request, writes while the call runs,
+/// and keeps what the call returns once `CLOSE` ended the stream; it starts
+/// no second call.
+#[test]
+fn an_async_function_s_writer_starts_the_call_and_keeps_its_result() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let upload = component_of_wat(UPLOAD, "uploader", UPLOAD_WAT);
+    library(&root, "upload", &declarations(&upload), Some(&upload));
+    let ws = program(&root, "upload = { path = \"../upload\" }\n", "0");
+    write(&ws, &[("main.st", ASYNC_WRITER_TESTS)]);
+    tested(&ws, None).expect("the call returns what came, once");
+}
+
 /// A `BYTES_STREAM_WRITER` makes its stream at its first call and writes
 /// it to the reader it is handed to, a component here; `CLOSE` ends the
 /// stream once no write is under way, and a request after it, or after the

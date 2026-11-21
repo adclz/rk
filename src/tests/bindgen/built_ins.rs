@@ -1406,13 +1406,15 @@ fn a_write_left_out_says_why(mut with_db: RootDatabase) {
     ");
 }
 
-/// A function that takes one stream of bytes from the program and answers
-/// with a future or nothing has a writer of its own, `<NAME>_WRITER`: its
-/// other inputs are the block's, a name of the block's own taking a `_`, a
-/// future no read gives back is let go of unread, and one that is read
-/// gives its value as outputs. A function that takes two streams, a stream
-/// and a future, or answers with anything else, and an `async func`, have
-/// none.
+/// A function that takes one stream of bytes from the program has a writer
+/// of its own, `<NAME>_WRITER`: its other inputs are the block's, a name of
+/// the block's own taking a `_`. A `func` that answers with a future or
+/// nothing is called: a future no read gives back is let go of unread, and
+/// one that is read gives its value as outputs. The call of an `async func`
+/// is started and followed to its end, its result kept as outputs. A
+/// function that takes two streams, or a stream and a future, a `func` that
+/// answers with anything else, and an `async func` whose result carries a
+/// future, have none.
 #[rstest]
 fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
     let bindings = generated(
@@ -1428,7 +1430,9 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
             copy: func(a: stream<u8>, b: stream<u8>);
             relay: func(data: stream<u8>, later: future<u32>);
             count: func(data: stream<u8>) -> u32;
-            upload: async func(data: stream<u8>) -> u32;
+            upload: async func(data: stream<u8>, done: u32) -> u32;
+            push: async func(data: stream<u8>);
+            defer: async func(data: stream<u8>) -> future<u32>;
         }
 
         world example {
@@ -1568,6 +1572,104 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
     		open := TRUE;
     	END_IF;
     	IF open THEN
+    		stream(REQ := REQ, IN := IN, CLOSE := CLOSE);
+    		BUSY := stream.BUSY;
+    		DONE := stream.DONE;
+    		ERROR := stream.ERROR;
+    	END_IF;
+    END_FUNCTION_BLOCK
+
+    /* Writes to `UPLOAD` through a stream of bytes it makes at the first
+       rising edge of `REQ`, when it starts the call of `UPLOAD` with the
+       stream's reading end, and its other inputs, `done_`, as they are then. A
+       rising edge of `REQ` writes `IN`, handing what the reader has not taken
+       until it has all of it: `BUSY` meanwhile, then `DONE` in the call where
+       it has all of it, at once for an empty text. An edge while `BUSY` is
+       ignored. A rising edge of `CLOSE` ends the stream once no write is under
+       way. `ERROR` is TRUE once the stream is closed, by `CLOSE` or by the
+       reader letting go: each later request is an error at once. `ENDED` is
+       TRUE once the call has returned, its result in `value`. */
+    FUNCTION_BLOCK UPLOAD_WRITER
+    VAR_INPUT
+    	REQ : BOOL;
+    	IN : STRING[4096];
+    	CLOSE : BOOL;
+    	done_ : UDINT;
+    END_VAR
+    VAR_OUTPUT
+    	BUSY : BOOL;
+    	DONE : BOOL;
+    	ERROR : BOOL;
+    	ENDED : BOOL;
+    	value : UDINT;
+    END_VAR
+    VAR
+    	open : BOOL;
+    	stream : BYTES_STREAM_WRITER;
+    	call : UPLOAD;
+    END_VAR
+    	// The stream, made at the first request.
+    	IF REQ AND NOT open THEN
+    		stream();
+    		open := TRUE;
+    	END_IF;
+    	IF open THEN
+    		// The call, started with the stream's reading end at the first
+    		// request and followed to its end, once.
+    		IF NOT ENDED THEN
+    			call(data := stream.readable, done_ := done_);
+    			IF call.DONE THEN
+    				value := call.value;
+    				ENDED := TRUE;
+    			END_IF;
+    		END_IF;
+    		stream(REQ := REQ, IN := IN, CLOSE := CLOSE);
+    		BUSY := stream.BUSY;
+    		DONE := stream.DONE;
+    		ERROR := stream.ERROR;
+    	END_IF;
+    END_FUNCTION_BLOCK
+
+    /* Writes to `PUSH` through a stream of bytes it makes at the first rising
+       edge of `REQ`, when it starts the call of `PUSH` with the stream's
+       reading end. A rising edge of `REQ` writes `IN`, handing what the reader
+       has not taken until it has all of it: `BUSY` meanwhile, then `DONE` in
+       the call where it has all of it, at once for an empty text. An edge
+       while `BUSY` is ignored. A rising edge of `CLOSE` ends the stream once
+       no write is under way. `ERROR` is TRUE once the stream is closed, by
+       `CLOSE` or by the reader letting go: each later request is an error at
+       once. `ENDED` is TRUE once the call has returned. */
+    FUNCTION_BLOCK PUSH_WRITER
+    VAR_INPUT
+    	REQ : BOOL;
+    	IN : STRING[4096];
+    	CLOSE : BOOL;
+    END_VAR
+    VAR_OUTPUT
+    	BUSY : BOOL;
+    	DONE : BOOL;
+    	ERROR : BOOL;
+    	ENDED : BOOL;
+    END_VAR
+    VAR
+    	open : BOOL;
+    	stream : BYTES_STREAM_WRITER;
+    	call : PUSH;
+    END_VAR
+    	// The stream, made at the first request.
+    	IF REQ AND NOT open THEN
+    		stream();
+    		open := TRUE;
+    	END_IF;
+    	IF open THEN
+    		// The call, started with the stream's reading end at the first
+    		// request and followed to its end, once.
+    		IF NOT ENDED THEN
+    			call(data := stream.readable);
+    			IF call.DONE THEN
+    				ENDED := TRUE;
+    			END_IF;
+    		END_IF;
     		stream(REQ := REQ, IN := IN, CLOSE := CLOSE);
     		BUSY := stream.BUSY;
     		DONE := stream.DONE;
