@@ -333,7 +333,9 @@ A future's write is not imported yet (`E1516`).
 Beside these imports, `rk bindgen` writes two blocks in ST that manage an end for the program.
 A future's `_GET`, `U32_FUTURE_GET` for a `future<u32>`, reads the future and lets go of its reading end in the call that sees `DONE`, setting the handle, an input and output, to 0: a later call does nothing.
 A stream of bytes that a function takes from the program has a `BYTES_STREAM_WRITER`, which makes the stream at its first call and gives `readable` to hand to the function, writes `IN` on a rising edge of `REQ`, handing over the rest when the reader takes a part, and lets go of the writing end on a rising edge of `CLOSE`, once no write is under way.
-A function that takes such a stream, and answers with a future or nothing, has a writer of its own, `WRITE_VIA_STREAM_WRITER` for `write-via-stream`, which holds both: at the first rising edge of `REQ` it makes the stream and calls the function with its reading end and with its other inputs, writes as the stream's writer does, and reads the future with its `_GET`, keeping its value; a future no read gives back is let go of unread.
+A function that takes such a stream has a writer of its own, `WRITE_VIA_STREAM_WRITER` for `write-via-stream`, which holds both: at the first rising edge of `REQ` it makes the stream and calls the function with its reading end and with its other inputs, and writes as the stream's writer does.
+A `func` that answers with a future or nothing is called once, and its future read with its `_GET`, the writer keeping its value; a future no read gives back is let go of unread.
+The call of an `async func` is started the same way and its block called until it returns, once, the writer keeping its result.
 
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:
 
