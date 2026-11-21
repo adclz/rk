@@ -241,6 +241,9 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     						write(stream := writable, data := rest);
     						IF write.DONE THEN
     							IF write.closed THEN
+    								// The reader left: the writing end goes too.
+    								BYTES_STREAM_DROP_WRITABLE(stream := writable);
+    								writable := 0;
     								closed := TRUE;
     								BUSY := FALSE;
     								ERROR := TRUE;
@@ -272,16 +275,6 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     				END_IF;
     			END_FUNCTION_BLOCK
 
-    			/* Makes a future of `result<_, error-code>`, and gives its reading end,
-    			   then its writing end. */
-    			{extern 'acme:example/pipe@0.3.0' '[future-new-1]send'}
-    			FUNCTION RESULT_FUTURE_NEW
-    			VAR_OUTPUT
-    				readable : UDINT;
-    				writable : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			/* Reads the value the future holds, which comes back after `DONE`. */
     			{extern async 'acme:example/pipe@0.3.0' '[future-read-1]send'}
     			FUNCTION_BLOCK RESULT_FUTURE_READ
@@ -298,14 +291,6 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			/* Lets go of the future's reading end, `future`. */
     			{extern 'acme:example/pipe@0.3.0' '[future-drop-readable-1]send'}
     			FUNCTION RESULT_FUTURE_DROP_READABLE
-    			VAR_INPUT
-    				future : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
-    			/* Lets go of the future's writing end, `future`. */
-    			{extern 'acme:example/pipe@0.3.0' '[future-drop-writable-1]send'}
-    			FUNCTION RESULT_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
@@ -406,10 +391,7 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     /* Not generated:
        - `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel
          blocks the scan.
-       - `RESULT_FUTURE_WRITE`: no function of the interface takes a future of
-         `result<_, error-code>` from the program.
-       - `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel
-         blocks the scan. */
+       - `RESULT_FUTURE_CANCEL_READ`: a cancel blocks the scan. */
 
     // acme-example-other.st
     NAMESPACE INTERNAL Acme
@@ -430,38 +412,6 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     				writable : UDINT;
     			END_VAR
     			END_FUNCTION
-
-    			/* Reads the bytes that come next into `data`, as many as it holds at most:
-    			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
-    			   go. */
-    			{extern async 'acme:example/other@0.3.0' '[stream-read-0]relay'}
-    			FUNCTION_BLOCK BYTES_STREAM_READ
-    			VAR_INPUT
-    				stream : UDINT;
-    			END_VAR
-    			VAR_OUTPUT
-    				DONE : BOOL;
-    				data : STRING[4096];
-    				read : UDINT;
-    				closed : BOOL;
-    			END_VAR
-    			END_FUNCTION_BLOCK
-
-    			/* Reads the bytes that come next into `data`, as many as it holds at most:
-    			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
-    			   go. */
-    			{extern async 'acme:example/other@0.3.0' '[stream-read-0]relay'}
-    			FUNCTION_BLOCK BYTES_STREAM_READ_ARRAY
-    			VAR_INPUT
-    				stream : UDINT;
-    			END_VAR
-    			VAR_OUTPUT
-    				DONE : BOOL;
-    				data : ARRAY[0..8191] OF BYTE;
-    				read : UDINT;
-    				closed : BOOL;
-    			END_VAR
-    			END_FUNCTION_BLOCK
 
     			/* Writes the bytes of `data`, as many as the reader takes: `written` of
     			   them, after `DONE`. `closed` is TRUE once the reader has let go. */
@@ -596,6 +546,9 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     						write(stream := writable, data := rest);
     						IF write.DONE THEN
     							IF write.closed THEN
+    								// The reader left: the writing end goes too.
+    								BYTES_STREAM_DROP_WRITABLE(stream := writable);
+    								writable := 0;
     								closed := TRUE;
     								BUSY := FALSE;
     								ERROR := TRUE;
@@ -627,16 +580,6 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     				END_IF;
     			END_FUNCTION_BLOCK
 
-    			/* Makes a future of `result<_, error-code>`, and gives its reading end,
-    			   then its writing end. */
-    			{extern 'acme:example/other@0.3.0' '[future-new-1]relay'}
-    			FUNCTION RESULT_FUTURE_NEW
-    			VAR_OUTPUT
-    				readable : UDINT;
-    				writable : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			/* Reads the value the future holds, which comes back after `DONE`. */
     			{extern async 'acme:example/other@0.3.0' '[future-read-1]relay'}
     			FUNCTION_BLOCK RESULT_FUTURE_READ
@@ -653,14 +596,6 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			/* Lets go of the future's reading end, `future`. */
     			{extern 'acme:example/other@0.3.0' '[future-drop-readable-1]relay'}
     			FUNCTION RESULT_FUTURE_DROP_READABLE
-    			VAR_INPUT
-    				future : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
-    			/* Lets go of the future's writing end, `future`. */
-    			{extern 'acme:example/other@0.3.0' '[future-drop-writable-1]relay'}
-    			FUNCTION RESULT_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
@@ -752,12 +687,8 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel
-         blocks the scan.
-       - `RESULT_FUTURE_WRITE`: no function of the interface takes a future of
-         `result<_, error-code>` from the program.
-       - `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel
-         blocks the scan. */
+       - `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan.
+       - `RESULT_FUTURE_CANCEL_READ`: a cancel blocks the scan. */
     ");
 }
 
@@ -812,18 +743,6 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			/* Reads the value the future holds, which comes back after `DONE`. */
-    			{extern async 'acme:example/copy@0.3.0' '[future-read-0][method]channel.transfer'}
-    			FUNCTION_BLOCK U32_FUTURE_READ
-    			VAR_INPUT
-    				future : UDINT;
-    			END_VAR
-    			VAR_OUTPUT
-    				DONE : BOOL;
-    				value : UDINT;
-    			END_VAR
-    			END_FUNCTION_BLOCK
-
     			/* Lets go of the future's reading end, `future`. */
     			{extern 'acme:example/copy@0.3.0' '[future-drop-readable-0][method]channel.transfer'}
     			FUNCTION U32_FUTURE_DROP_READABLE
@@ -840,32 +759,6 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			/* Reads the value the future holds, which comes back after `DONE`, then
-    			   lets go of the future's reading end: `future` is 0 from then on, and a
-    			   call with `future` 0 does nothing. */
-    			FUNCTION_BLOCK U32_FUTURE_GET
-    			VAR_IN_OUT
-    				future : UDINT;
-    			END_VAR
-    			VAR_OUTPUT
-    				DONE : BOOL;
-    				value : UDINT;
-    			END_VAR
-    			VAR
-    				call : U32_FUTURE_READ;
-    			END_VAR
-    				DONE := FALSE;
-    				IF future <> 0 THEN
-    					call(future := future);
-    					IF call.DONE THEN
-    						value := call.value;
-    						U32_FUTURE_DROP_READABLE(future := future);
-    						future := 0;
-    						DONE := TRUE;
-    					END_IF;
-    				END_IF;
-    			END_FUNCTION_BLOCK
-
     			/* Makes a stream of `u8`, and gives its reading end, then its writing end. */
     			{extern 'acme:example/copy@0.3.0' '[stream-new-1][method]channel.transfer'}
     			FUNCTION BYTES_STREAM_NEW
@@ -874,38 +767,6 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     				writable : UDINT;
     			END_VAR
     			END_FUNCTION
-
-    			/* Reads the bytes that come next into `data`, as many as it holds at most:
-    			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
-    			   go. */
-    			{extern async 'acme:example/copy@0.3.0' '[stream-read-1][method]channel.transfer'}
-    			FUNCTION_BLOCK BYTES_STREAM_READ
-    			VAR_INPUT
-    				stream : UDINT;
-    			END_VAR
-    			VAR_OUTPUT
-    				DONE : BOOL;
-    				data : STRING[4096];
-    				read : UDINT;
-    				closed : BOOL;
-    			END_VAR
-    			END_FUNCTION_BLOCK
-
-    			/* Reads the bytes that come next into `data`, as many as it holds at most:
-    			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
-    			   go. */
-    			{extern async 'acme:example/copy@0.3.0' '[stream-read-1][method]channel.transfer'}
-    			FUNCTION_BLOCK BYTES_STREAM_READ_ARRAY
-    			VAR_INPUT
-    				stream : UDINT;
-    			END_VAR
-    			VAR_OUTPUT
-    				DONE : BOOL;
-    				data : ARRAY[0..8191] OF BYTE;
-    				read : UDINT;
-    				closed : BOOL;
-    			END_VAR
-    			END_FUNCTION_BLOCK
 
     			/* Writes the bytes of `data`, as many as the reader takes: `written` of
     			   them, after `DONE`. `closed` is TRUE once the reader has let go. */
@@ -1040,6 +901,9 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     						write(stream := writable, data := rest);
     						IF write.DONE THEN
     							IF write.closed THEN
+    								// The reader left: the writing end goes too.
+    								BYTES_STREAM_DROP_WRITABLE(stream := writable);
+    								writable := 0;
     								closed := TRUE;
     								BUSY := FALSE;
     								ERROR := TRUE;
@@ -1075,10 +939,8 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     END_NAMESPACE
     /* Not generated:
        - `U32_FUTURE_WRITE`: a future's write is not imported yet.
-       - `U32_FUTURE_CANCEL_READ` and `U32_FUTURE_CANCEL_WRITE`: a cancel
-         blocks the scan.
-       - `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel
-         blocks the scan. */
+       - `U32_FUTURE_CANCEL_WRITE`: a cancel blocks the scan.
+       - `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan. */
     ");
 }
 
@@ -1122,16 +984,6 @@ fn a_stream_of_handles_is_read_into_an_array(mut with_db: RootDatabase) {
     			FUNCTION ACCEPT : UDINT
     			END_FUNCTION
 
-    			/* Makes a stream of `own<connection>`, and gives its reading end, then its
-    			   writing end. */
-    			{extern 'acme:example/feeds@0.3.0' '[stream-new-0]accept'}
-    			FUNCTION CONNECTION_STREAM_NEW
-    			VAR_OUTPUT
-    				readable : UDINT;
-    				writable : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			/* Reads the handles that come next into `data`, as many as it holds at
     			   most: `read` of them, after `DONE`, each the program's own to drop.
     			   `closed` is TRUE once the writer has let go. */
@@ -1155,22 +1007,11 @@ fn a_stream_of_handles_is_read_into_an_array(mut with_db: RootDatabase) {
     				stream : UDINT;
     			END_VAR
     			END_FUNCTION
-
-    			/* Lets go of the stream's writing end, `stream`. */
-    			{extern 'acme:example/feeds@0.3.0' '[stream-drop-writable-0]accept'}
-    			FUNCTION CONNECTION_STREAM_DROP_WRITABLE
-    			VAR_INPUT
-    				stream : UDINT;
-    			END_VAR
-    			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - `CONNECTION_STREAM_WRITE`: no function of the interface takes a stream
-         of `own<connection>` from the program.
-       - `CONNECTION_STREAM_CANCEL_READ` and `CONNECTION_STREAM_CANCEL_WRITE`:
-         a cancel blocks the scan. */
+       - `CONNECTION_STREAM_CANCEL_READ`: a cancel blocks the scan. */
     ");
 }
 
@@ -1276,7 +1117,8 @@ impl<D> StreamProducer<D> for Connections {
 }
 
 /// A stream of anything but bytes or handles is made and dropped, not read
-/// or written yet: of a number, of a record.
+/// or written yet: of a number, of a record, given to the program and
+/// taken from it.
 #[rstest]
 fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
     assert_snapshot!(checked(&mut with_db, r#"
@@ -1286,6 +1128,8 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
             record event { code: u32 }
             numbers: func() -> stream<u32>;
             events: func() -> stream<event>;
+            count: func(numbers: stream<u32>);
+            log: func(events: stream<event>);
         }
 
         world example {
@@ -1359,24 +1203,39 @@ fn a_stream_of_anything_else_is_made_and_dropped(mut with_db: RootDatabase) {
     				stream : UDINT;
     			END_VAR
     			END_FUNCTION
+
+    			{extern 'acme:example/feeds@0.3.0' 'count'}
+    			FUNCTION COUNT
+    			VAR_INPUT
+    				numbers : UDINT;
+    			END_VAR
+    			END_FUNCTION
+
+    			{extern 'acme:example/feeds@0.3.0' 'log'}
+    			FUNCTION LOG
+    			VAR_INPUT
+    				events : UDINT;
+    			END_VAR
+    			END_FUNCTION
     		END_NAMESPACE
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - `U32_STREAM_READ` and `U32_STREAM_WRITE`: a stream's read moves bytes
-         or handles only, and its write bytes only.
+       - `U32_STREAM_READ`: a stream's read moves bytes or handles only.
+       - `U32_STREAM_WRITE`: a stream's write moves bytes only.
        - `U32_STREAM_CANCEL_READ` and `U32_STREAM_CANCEL_WRITE`: a cancel
          blocks the scan.
-       - `EVENT_STREAM_READ` and `EVENT_STREAM_WRITE`: a stream's read moves
-         bytes or handles only, and its write bytes only.
+       - `EVENT_STREAM_READ`: a stream's read moves bytes or handles only.
+       - `EVENT_STREAM_WRITE`: a stream's write moves bytes only.
        - `EVENT_STREAM_CANCEL_READ` and `EVENT_STREAM_CANCEL_WRITE`: a cancel
          blocks the scan. */
     ");
 }
 
-/// A write left out says why. Where a function of the interface takes a
+/// A write left out says why: where a function of the interface takes a
 /// stream of handles or a future from the program, it is what rk does not
-/// write yet; where none does, a write would have no reader.
+/// write yet. Where none does, the program writes none, and no note says
+/// so.
 #[rstest]
 fn a_write_left_out_says_why(mut with_db: RootDatabase) {
     let bindings = generated(
@@ -1411,11 +1270,9 @@ fn a_write_left_out_says_why(mut with_db: RootDatabase) {
         left out `CONNECTION_STREAM_CANCEL_READ` and `CONNECTION_STREAM_CANCEL_WRITE`: a cancel blocks the scan
         left out `U32_FUTURE_WRITE`: a future's write is not imported yet
         left out `U32_FUTURE_CANCEL_READ` and `U32_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
-    acme-example-keep.st: CONNECTION, CONNECTION_DROP, ACCEPT, CONNECTION_STREAM_NEW, CONNECTION_STREAM_READ, CONNECTION_STREAM_DROP_READABLE, CONNECTION_STREAM_DROP_WRITABLE, LATER, U32_FUTURE_NEW, U32_FUTURE_READ, U32_FUTURE_DROP_READABLE, U32_FUTURE_DROP_WRITABLE, U32_FUTURE_GET
-        left out `CONNECTION_STREAM_WRITE`: no function of the interface takes a stream of `own<connection>` from the program
-        left out `CONNECTION_STREAM_CANCEL_READ` and `CONNECTION_STREAM_CANCEL_WRITE`: a cancel blocks the scan
-        left out `U32_FUTURE_WRITE`: no function of the interface takes a future of `u32` from the program
-        left out `U32_FUTURE_CANCEL_READ` and `U32_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
+    acme-example-keep.st: CONNECTION, CONNECTION_DROP, ACCEPT, CONNECTION_STREAM_READ, CONNECTION_STREAM_DROP_READABLE, LATER, U32_FUTURE_READ, U32_FUTURE_DROP_READABLE, U32_FUTURE_GET
+        left out `CONNECTION_STREAM_CANCEL_READ`: a cancel blocks the scan
+        left out `U32_FUTURE_CANCEL_READ`: a cancel blocks the scan
     ");
 }
 
@@ -1866,16 +1723,6 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			FUNCTION READY : UDINT
     			END_FUNCTION
 
-    			/* Makes a future of nothing, and gives its reading end, then its writing
-    			   end. */
-    			{extern 'acme:example/promises@0.3.0' '[future-new-0]ready'}
-    			FUNCTION UNIT_FUTURE_NEW
-    			VAR_OUTPUT
-    				readable : UDINT;
-    				writable : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			/* Reads the value the future holds, which comes back after `DONE`. */
     			{extern async 'acme:example/promises@0.3.0' '[future-read-0]ready'}
     			FUNCTION_BLOCK UNIT_FUTURE_READ
@@ -1890,14 +1737,6 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			/* Lets go of the future's reading end, `future`. */
     			{extern 'acme:example/promises@0.3.0' '[future-drop-readable-0]ready'}
     			FUNCTION UNIT_FUTURE_DROP_READABLE
-    			VAR_INPUT
-    				future : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
-    			/* Lets go of the future's writing end, `future`. */
-    			{extern 'acme:example/promises@0.3.0' '[future-drop-writable-0]ready'}
-    			FUNCTION UNIT_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
@@ -1931,16 +1770,6 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			FUNCTION COUNT : UDINT
     			END_FUNCTION
 
-    			/* Makes a future of `u32`, and gives its reading end, then its writing
-    			   end. */
-    			{extern 'acme:example/promises@0.3.0' '[future-new-0]count'}
-    			FUNCTION U32_FUTURE_NEW
-    			VAR_OUTPUT
-    				readable : UDINT;
-    				writable : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			/* Reads the value the future holds, which comes back after `DONE`. */
     			{extern async 'acme:example/promises@0.3.0' '[future-read-0]count'}
     			FUNCTION_BLOCK U32_FUTURE_READ
@@ -1956,14 +1785,6 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			/* Lets go of the future's reading end, `future`. */
     			{extern 'acme:example/promises@0.3.0' '[future-drop-readable-0]count'}
     			FUNCTION U32_FUTURE_DROP_READABLE
-    			VAR_INPUT
-    				future : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
-    			/* Lets go of the future's writing end, `future`. */
-    			{extern 'acme:example/promises@0.3.0' '[future-drop-writable-0]count'}
-    			FUNCTION U32_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
@@ -1999,16 +1820,6 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			FUNCTION OUTCOME : UDINT
     			END_FUNCTION
 
-    			/* Makes a future of `result<_, error-code>`, and gives its reading end,
-    			   then its writing end. */
-    			{extern 'acme:example/promises@0.3.0' '[future-new-0]outcome'}
-    			FUNCTION RESULT_FUTURE_NEW
-    			VAR_OUTPUT
-    				readable : UDINT;
-    				writable : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			/* Reads the value the future holds, which comes back after `DONE`. */
     			{extern async 'acme:example/promises@0.3.0' '[future-read-0]outcome'}
     			FUNCTION_BLOCK RESULT_FUTURE_READ
@@ -2025,14 +1836,6 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			/* Lets go of the future's reading end, `future`. */
     			{extern 'acme:example/promises@0.3.0' '[future-drop-readable-0]outcome'}
     			FUNCTION RESULT_FUTURE_DROP_READABLE
-    			VAR_INPUT
-    				future : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
-    			/* Lets go of the future's writing end, `future`. */
-    			{extern 'acme:example/promises@0.3.0' '[future-drop-writable-0]outcome'}
-    			FUNCTION RESULT_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
@@ -2070,16 +1873,6 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			FUNCTION MAYBE : UDINT
     			END_FUNCTION
 
-    			/* Makes a future of `option<s64>`, and gives its reading end, then its
-    			   writing end. */
-    			{extern 'acme:example/promises@0.3.0' '[future-new-0]maybe'}
-    			FUNCTION OPTION_S64_FUTURE_NEW
-    			VAR_OUTPUT
-    				readable : UDINT;
-    				writable : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			/* Reads the value the future holds, which comes back after `DONE`. */
     			{extern async 'acme:example/promises@0.3.0' '[future-read-0]maybe'}
     			FUNCTION_BLOCK OPTION_S64_FUTURE_READ
@@ -2096,14 +1889,6 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			/* Lets go of the future's reading end, `future`. */
     			{extern 'acme:example/promises@0.3.0' '[future-drop-readable-0]maybe'}
     			FUNCTION OPTION_S64_FUTURE_DROP_READABLE
-    			VAR_INPUT
-    				future : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
-    			/* Lets go of the future's writing end, `future`. */
-    			{extern 'acme:example/promises@0.3.0' '[future-drop-writable-0]maybe'}
-    			FUNCTION OPTION_S64_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
@@ -2139,16 +1924,6 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
 
     			{extern 'acme:example/promises@0.3.0' 'where-is'}
     			FUNCTION WHERE_IS : UDINT
-    			END_FUNCTION
-
-    			/* Makes a future of `point`, and gives its reading end, then its writing
-    			   end. */
-    			{extern 'acme:example/promises@0.3.0' '[future-new-0]where-is'}
-    			FUNCTION POINT_FUTURE_NEW
-    			VAR_OUTPUT
-    				readable : UDINT;
-    				writable : UDINT;
-    			END_VAR
     			END_FUNCTION
 
     			/* The future's read as the host gives it: the values the future holds,
@@ -2193,14 +1968,6 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			/* Lets go of the future's writing end, `future`. */
-    			{extern 'acme:example/promises@0.3.0' '[future-drop-writable-0]where-is'}
-    			FUNCTION POINT_FUTURE_DROP_WRITABLE
-    			VAR_INPUT
-    				future : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			/* Reads the value the future holds, which comes back after `DONE`, then
     			   lets go of the future's reading end: `future` is 0 from then on, and a
     			   call with `future` 0 does nothing. */
@@ -2231,16 +1998,6 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			FUNCTION NAME : UDINT
     			END_FUNCTION
 
-    			/* Makes a future of `string`, and gives its reading end, then its writing
-    			   end. */
-    			{extern 'acme:example/promises@0.3.0' '[future-new-0]name'}
-    			FUNCTION STRING_FUTURE_NEW
-    			VAR_OUTPUT
-    				readable : UDINT;
-    				writable : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			/* Lets go of the future's reading end, `future`. */
     			{extern 'acme:example/promises@0.3.0' '[future-drop-readable-0]name'}
     			FUNCTION STRING_FUTURE_DROP_READABLE
@@ -2249,26 +2006,8 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			/* Lets go of the future's writing end, `future`. */
-    			{extern 'acme:example/promises@0.3.0' '[future-drop-writable-0]name'}
-    			FUNCTION STRING_FUTURE_DROP_WRITABLE
-    			VAR_INPUT
-    				future : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			{extern 'acme:example/promises@0.3.0' 'both'}
     			FUNCTION BOTH : UDINT
-    			END_FUNCTION
-
-    			/* Makes a future of `result<u64, error-code>`, and gives its reading end,
-    			   then its writing end. */
-    			{extern 'acme:example/promises@0.3.0' '[future-new-0]both'}
-    			FUNCTION RESULT_U64_FUTURE_NEW
-    			VAR_OUTPUT
-    				readable : UDINT;
-    				writable : UDINT;
-    			END_VAR
     			END_FUNCTION
 
     			/* The future's read as the host gives it: its value in words of 8 bytes,
@@ -2321,14 +2060,6 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     			END_VAR
     			END_FUNCTION
 
-    			/* Lets go of the future's writing end, `future`. */
-    			{extern 'acme:example/promises@0.3.0' '[future-drop-writable-0]both'}
-    			FUNCTION RESULT_U64_FUTURE_DROP_WRITABLE
-    			VAR_INPUT
-    				future : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			/* Reads the value the future holds, which comes back after `DONE`, then
     			   lets go of the future's reading end: `future` is 0 from then on, and a
     			   call with `future` 0 does nothing. */
@@ -2362,36 +2093,15 @@ fn a_future_s_value_comes_back_as_outputs(mut with_db: RootDatabase) {
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - `UNIT_FUTURE_WRITE`: no function of the interface takes a future from
-         the program.
-       - `UNIT_FUTURE_CANCEL_READ` and `UNIT_FUTURE_CANCEL_WRITE`: a cancel
-         blocks the scan.
-       - `U32_FUTURE_WRITE`: no function of the interface takes a future of
-         `u32` from the program.
-       - `U32_FUTURE_CANCEL_READ` and `U32_FUTURE_CANCEL_WRITE`: a cancel
-         blocks the scan.
-       - `RESULT_FUTURE_WRITE`: no function of the interface takes a future of
-         `result<_, error-code>` from the program.
-       - `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel
-         blocks the scan.
-       - `OPTION_S64_FUTURE_WRITE`: no function of the interface takes a future
-         of `option<s64>` from the program.
-       - `OPTION_S64_FUTURE_CANCEL_READ` and `OPTION_S64_FUTURE_CANCEL_WRITE`:
-         a cancel blocks the scan.
-       - `POINT_FUTURE_WRITE`: no function of the interface takes a future of
-         `point` from the program.
-       - `POINT_FUTURE_CANCEL_READ` and `POINT_FUTURE_CANCEL_WRITE`: a cancel
-         blocks the scan.
+       - `UNIT_FUTURE_CANCEL_READ`: a cancel blocks the scan.
+       - `U32_FUTURE_CANCEL_READ`: a cancel blocks the scan.
+       - `RESULT_FUTURE_CANCEL_READ`: a cancel blocks the scan.
+       - `OPTION_S64_FUTURE_CANCEL_READ`: a cancel blocks the scan.
+       - `POINT_FUTURE_CANCEL_READ`: a cancel blocks the scan.
        - `STRING_FUTURE_READ`: its value holds a string, which a read cannot
          give back yet.
-       - `STRING_FUTURE_WRITE`: no function of the interface takes a future of
-         `string` from the program.
-       - `STRING_FUTURE_CANCEL_READ` and `STRING_FUTURE_CANCEL_WRITE`: a cancel
-         blocks the scan.
-       - `RESULT_U64_FUTURE_WRITE`: no function of the interface takes a future
-         of `result<u64, error-code>` from the program.
-       - `RESULT_U64_FUTURE_CANCEL_READ` and `RESULT_U64_FUTURE_CANCEL_WRITE`:
-         a cancel blocks the scan. */
+       - `STRING_FUTURE_CANCEL_READ`: a cancel blocks the scan.
+       - `RESULT_U64_FUTURE_CANCEL_READ`: a cancel blocks the scan. */
     ");
 }
 
@@ -2406,7 +2116,7 @@ fn a_built_in_named_like_a_function_gives_way(mut with_db: RootDatabase) {
 
         interface feeds {
             record event { x: u32 }
-            event-stream-new: func() -> u32;
+            event-stream-drop-readable: func() -> u32;
             feed: func() -> stream<event>;
         }
 
@@ -2418,9 +2128,9 @@ fn a_built_in_named_like_a_function_gives_way(mut with_db: RootDatabase) {
     let (mir, module) = built(&mut with_db, &bindings.files, &[]);
     assert_abi(&bindings, &mir, &module);
     assert_snapshot!(summary(&bindings.files), @r"
-    acme-example-feeds.st: EVENT, EVENT_STREAM_NEW, FEED, EVENT_STREAM_NEW_, EVENT_STREAM_DROP_READABLE, EVENT_STREAM_DROP_WRITABLE
-        left out `EVENT_STREAM_READ` and `EVENT_STREAM_WRITE`: a stream's read moves bytes or handles only, and its write bytes only
-        left out `EVENT_STREAM_CANCEL_READ` and `EVENT_STREAM_CANCEL_WRITE`: a cancel blocks the scan
+    acme-example-feeds.st: EVENT, EVENT_STREAM_DROP_READABLE, FEED, EVENT_STREAM_DROP_READABLE_
+        left out `EVENT_STREAM_READ`: a stream's read moves bytes or handles only
+        left out `EVENT_STREAM_CANCEL_READ`: a cancel blocks the scan
     ");
 }
 
@@ -2478,16 +2188,6 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     			FUNCTION WATCH : UDINT
     			END_FUNCTION
 
-    			/* Makes a future of `state`, and gives its reading end, then its writing
-    			   end. */
-    			{extern 'acme:example/progress@0.3.0' '[future-new-0]watch'}
-    			FUNCTION STATE_FUTURE_NEW
-    			VAR_OUTPUT
-    				readable : UDINT;
-    				writable : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			/* The future's read as the host gives it: the values the future holds,
     			   which `STATE_FUTURE_READ` puts in the members of `value`. */
     			{extern async 'acme:example/progress@0.3.0' '[future-read-0]watch'}
@@ -2530,14 +2230,6 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     			END_VAR
     			END_FUNCTION
 
-    			/* Lets go of the future's writing end, `future`. */
-    			{extern 'acme:example/progress@0.3.0' '[future-drop-writable-0]watch'}
-    			FUNCTION STATE_FUTURE_DROP_WRITABLE
-    			VAR_INPUT
-    				future : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			/* Reads the value the future holds, which comes back after `DONE`, then
     			   lets go of the future's reading end: `future` is 0 from then on, and a
     			   call with `future` 0 does nothing. */
@@ -2566,16 +2258,6 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
 
     			{extern 'acme:example/progress@0.3.0' 'follow'}
     			FUNCTION FOLLOW : UDINT
-    			END_FUNCTION
-
-    			/* Makes a future of `report`, and gives its reading end, then its writing
-    			   end. */
-    			{extern 'acme:example/progress@0.3.0' '[future-new-0]follow'}
-    			FUNCTION REPORT_FUTURE_NEW
-    			VAR_OUTPUT
-    				readable : UDINT;
-    				writable : UDINT;
-    			END_VAR
     			END_FUNCTION
 
     			/* The future's read as the host gives it: its value in words of 8 bytes,
@@ -2626,14 +2308,6 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     			END_VAR
     			END_FUNCTION
 
-    			/* Lets go of the future's writing end, `future`. */
-    			{extern 'acme:example/progress@0.3.0' '[future-drop-writable-0]follow'}
-    			FUNCTION REPORT_FUTURE_DROP_WRITABLE
-    			VAR_INPUT
-    				future : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			/* Reads the value the future holds, which comes back after `DONE`, then
     			   lets go of the future's reading end: `future` is 0 from then on, and a
     			   call with `future` 0 does nothing. */
@@ -2663,14 +2337,8 @@ fn a_future_s_value_keeps_away_from_its_block_s_names(mut with_db: RootDatabase)
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - `STATE_FUTURE_WRITE`: no function of the interface takes a future of
-         `state` from the program.
-       - `STATE_FUTURE_CANCEL_READ` and `STATE_FUTURE_CANCEL_WRITE`: a cancel
-         blocks the scan.
-       - `REPORT_FUTURE_WRITE`: no function of the interface takes a future of
-         `report` from the program.
-       - `REPORT_FUTURE_CANCEL_READ` and `REPORT_FUTURE_CANCEL_WRITE`: a cancel
-         blocks the scan. */
+       - `STATE_FUTURE_CANCEL_READ`: a cancel blocks the scan.
+       - `REPORT_FUTURE_CANCEL_READ`: a cancel blocks the scan. */
     ");
 }
 
@@ -2713,38 +2381,6 @@ fn std_s_built_ins() {
     				writable : UDINT;
     			END_VAR
     			END_FUNCTION
-
-    			/* Reads the bytes that come next into `data`, as many as it holds at most:
-    			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
-    			   go. */
-    			{extern async 'wasi:cli/stdout@0.3.0' '[stream-read-0]write-via-stream'}
-    			FUNCTION_BLOCK BYTES_STREAM_READ
-    			VAR_INPUT
-    				stream : UDINT;
-    			END_VAR
-    			VAR_OUTPUT
-    				DONE : BOOL;
-    				data : STRING[4096];
-    				read : UDINT;
-    				closed : BOOL;
-    			END_VAR
-    			END_FUNCTION_BLOCK
-
-    			/* Reads the bytes that come next into `data`, as many as it holds at most:
-    			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
-    			   go. */
-    			{extern async 'wasi:cli/stdout@0.3.0' '[stream-read-0]write-via-stream'}
-    			FUNCTION_BLOCK BYTES_STREAM_READ_ARRAY
-    			VAR_INPUT
-    				stream : UDINT;
-    			END_VAR
-    			VAR_OUTPUT
-    				DONE : BOOL;
-    				data : ARRAY[0..8191] OF BYTE;
-    				read : UDINT;
-    				closed : BOOL;
-    			END_VAR
-    			END_FUNCTION_BLOCK
 
     			/* Writes the bytes of `data`, as many as the reader takes: `written` of
     			   them, after `DONE`. `closed` is TRUE once the reader has let go. */
@@ -2879,6 +2515,9 @@ fn std_s_built_ins() {
     						write(stream := writable, data := rest);
     						IF write.DONE THEN
     							IF write.closed THEN
+    								// The reader left: the writing end goes too.
+    								BYTES_STREAM_DROP_WRITABLE(stream := writable);
+    								writable := 0;
     								closed := TRUE;
     								BUSY := FALSE;
     								ERROR := TRUE;
@@ -2910,16 +2549,6 @@ fn std_s_built_ins() {
     				END_IF;
     			END_FUNCTION_BLOCK
 
-    			/* Makes a future of `result<_, error-code>`, and gives its reading end,
-    			   then its writing end. */
-    			{extern 'wasi:cli/stdout@0.3.0' '[future-new-1]write-via-stream'}
-    			FUNCTION RESULT_FUTURE_NEW
-    			VAR_OUTPUT
-    				readable : UDINT;
-    				writable : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
     			/* Reads the value the future holds, which comes back after `DONE`. */
     			{extern async 'wasi:cli/stdout@0.3.0' '[future-read-1]write-via-stream'}
     			FUNCTION_BLOCK RESULT_FUTURE_READ
@@ -2936,14 +2565,6 @@ fn std_s_built_ins() {
     			/* Lets go of the future's reading end, `future`. */
     			{extern 'wasi:cli/stdout@0.3.0' '[future-drop-readable-1]write-via-stream'}
     			FUNCTION RESULT_FUTURE_DROP_READABLE
-    			VAR_INPUT
-    				future : UDINT;
-    			END_VAR
-    			END_FUNCTION
-
-    			/* Lets go of the future's writing end, `future`. */
-    			{extern 'wasi:cli/stdout@0.3.0' '[future-drop-writable-1]write-via-stream'}
-    			FUNCTION RESULT_FUTURE_DROP_WRITABLE
     			VAR_INPUT
     				future : UDINT;
     			END_VAR
@@ -3035,11 +2656,7 @@ fn std_s_built_ins() {
     	END_NAMESPACE
     END_NAMESPACE
     /* Not generated:
-       - `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel
-         blocks the scan.
-       - `RESULT_FUTURE_WRITE`: no function of the interface takes a future of
-         `result<_, error-code>` from the program.
-       - `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel
-         blocks the scan. */
+       - `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan.
+       - `RESULT_FUTURE_CANCEL_READ`: a cancel blocks the scan. */
     ");
 }

@@ -1625,12 +1625,43 @@ END_VAR
             future := Acme.Drain.Drain.TAKE(data := w.readable, offset := 0));
         Acme.Drain.Drain.STOP();
         started := TRUE;
-    ELSE
+    ELSIF NOT w.ERROR THEN
         w(REQ := TRUE, IN := 'hello');
         IF w.DONE THEN
             __RAISE('a write whose reader left took the text');
         END_IF;
-        DONE := w.ERROR;
+    ELSE
+        // The writing end went with the reader, and CLOSE drops it no
+        // second time.
+        IF w.writable <> 0 THEN
+            __RAISE('the writer kept its end once the reader left');
+        END_IF;
+        w(REQ := FALSE, CLOSE := TRUE);
+        DONE := TRUE;
+    END_IF;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_writer_lets_go_when_its_reader_left
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    started : BOOL;
+    held : UDINT;
+    w : Acme.Drain.Drain.BYTES_STREAM_WRITER;
+END_VAR
+    IF NOT started THEN
+        w();
+        held := w.writable;
+        Acme.Drain.Drain.U32_FUTURE_DROP_READABLE(
+            future := Acme.Drain.Drain.TAKE(data := w.readable, offset := 0));
+        Acme.Drain.Drain.STOP();
+        started := TRUE;
+    ELSIF NOT w.ERROR THEN
+        w(REQ := TRUE, IN := 'hello');
+    ELSE
+        // A second drop of the end the writer let go of traps.
+        Acme.Drain.Drain.BYTES_STREAM_DROP_WRITABLE(stream := held);
+        DONE := TRUE;
     END_IF;
 END_FUNCTION_BLOCK
 ";
@@ -2053,7 +2084,8 @@ fn a_function_s_writer_reports_the_error_it_answers_with() {
 /// A `BYTES_STREAM_WRITER` makes its stream at its first call and writes
 /// it to the reader it is handed to, a component here; `CLOSE` ends the
 /// stream once no write is under way, and a request after it, or after the
-/// reader left, is an error.
+/// reader left, is an error; the writer lets go of its end once the reader
+/// left.
 #[test]
 fn a_stream_s_writer_writes_and_ends_it() {
     super::disable_stdlib();
@@ -2068,6 +2100,10 @@ fn a_stream_s_writer_writes_and_ends_it() {
         .expect("CLOSE waits for the write under way");
     tested(&ws, Some("test_writer_sees_its_reader_leave"))
         .expect("the writer sees its reader leave");
+    assert!(
+        tested(&ws, Some("test_writer_lets_go_when_its_reader_left")).is_err(),
+        "the writer let go of its end once the reader left: a second drop traps"
+    );
     tested(&ws, Some("test_writer_takes_an_empty_text"))
         .expect("an empty text is done at once, with no reader");
 }
