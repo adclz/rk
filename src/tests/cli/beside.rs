@@ -1284,6 +1284,516 @@ fn a_copy_waiting_on_the_other_store_ends_when_cancelled() {
     tested(&ws, Some("test_reader_left")).expect("the writer finds its reader gone");
 }
 
+/// The program's tests of `_GET` on [`FEED`]'s futures: called at each
+/// cycle, the block gives each value once and sets the handle to 0; it let
+/// go of the reading end, which a second drop finds gone, where a plain
+/// read leaves the drop to the program.
+const GET_TESTS: &str = "
+{test}
+FUNCTION_BLOCK test_get_reads_once
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    started : BOOL;
+    later : UDINT;
+    ready : UDINT;
+    value : Acme.Feed.Feed.U32_FUTURE_GET;
+    signal : Acme.Feed.Feed.UNIT_FUTURE_GET;
+    got : BOOL;
+    signalled : BOOL;
+    after : INT;
+END_VAR
+    IF NOT started THEN
+        later := Acme.Feed.Feed.LATER();
+        ready := Acme.Feed.Feed.READY();
+        started := TRUE;
+    END_IF;
+    value(future := later);
+    IF value.DONE THEN
+        IF got OR value.value <> 42 OR later <> 0 THEN
+            __RAISE('the value did not come once, 42, its future gone');
+        END_IF;
+        got := TRUE;
+    END_IF;
+    signal(future := ready);
+    IF signal.DONE THEN
+        IF signalled OR ready <> 0 THEN
+            __RAISE('the signal did not come once, its future gone');
+        END_IF;
+        signalled := TRUE;
+    END_IF;
+    IF got AND signalled THEN
+        after := after + 1;
+    END_IF;
+    DONE := after > 3;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_get_lets_go
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    started : BOOL;
+    later : UDINT;
+    kept : UDINT;
+    value : Acme.Feed.Feed.U32_FUTURE_GET;
+END_VAR
+    IF NOT started THEN
+        later := Acme.Feed.Feed.LATER();
+        kept := later;
+        started := TRUE;
+    END_IF;
+    value(future := later);
+    IF value.DONE THEN
+        Acme.Feed.Feed.U32_FUTURE_DROP_READABLE(future := kept);
+        DONE := TRUE;
+    END_IF;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_read_keeps
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    started : BOOL;
+    later : UDINT;
+    value : Acme.Feed.Feed.U32_FUTURE_READ;
+END_VAR
+    IF NOT started THEN
+        later := Acme.Feed.Feed.LATER();
+        started := TRUE;
+    END_IF;
+    value(future := later);
+    IF value.DONE THEN
+        Acme.Feed.Feed.U32_FUTURE_DROP_READABLE(future := later);
+        DONE := TRUE;
+    END_IF;
+END_FUNCTION_BLOCK
+";
+
+/// A future's `_GET` reads it once and lets go of its reading end: the
+/// program's handle is 0 after, a later call reads nothing, and a second
+/// drop of the end traps, where a plain read leaves it to the program.
+#[test]
+fn a_future_s_get_reads_it_and_lets_go() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let feed = component_of_wat(FEED, "feeder", FEED_WAT);
+    library(&root, "feed", &declarations(&feed), Some(&feed));
+    let ws = program(&root, "feed = { path = \"../feed\" }\n", "0");
+    write(&ws, &[("main.st", GET_TESTS)]);
+    tested(&ws, Some("test_get_reads_once")).expect("each value comes once");
+    tested(&ws, Some("test_read_keeps")).expect("a plain read leaves the end to the program");
+    assert!(
+        tested(&ws, Some("test_get_lets_go")).is_err(),
+        "_GET let go of the end: a second drop traps"
+    );
+}
+
+/// A component that reads the stream it is given until the writer lets go:
+/// `take` keeps the reading end, where the bytes land from `offset` on, and
+/// answers with a future of how many came; `ended` reads on, a read at a
+/// time, and gives how many bytes came once the writer let go, -1 until
+/// then, writing the future then; `came` gives the byte at `index`; `stop`
+/// lets go of the reading end.
+const DRAIN: &str = r#"
+    package acme:drain@1.0.0;
+
+    interface drain {
+        take: func(data: stream<u8>, offset: u32) -> future<u32>;
+        ended: func() -> u32;
+        came: func(index: u32) -> u8;
+        stop: func();
+    }
+
+    world drainer {
+        export drain;
+    }
+"#;
+
+/// [`DRAIN`]'s module: a read that waits joins a waitable set, which
+/// `ended` polls for the read's end; the bytes land from 256 + `offset`
+/// on, the count the future gives at 900.
+const DRAIN_WAT: &str = r#"
+    (module
+        (import "$root" "[waitable-set-new]" (func $set_new (result i32)))
+        (import "$root" "[waitable-join]" (func $join (param i32 i32)))
+        (import "$root" "[waitable-set-poll]" (func $set_poll (param i32 i32) (result i32)))
+        (import "[export]acme:drain/drain@1.0.0" "[async-lower][stream-read-0]take" (func $read (param i32 i32 i32) (result i32)))
+        (import "[export]acme:drain/drain@1.0.0" "[stream-drop-readable-0]take" (func $drop (param i32)))
+        (import "[export]acme:drain/drain@1.0.0" "[future-new-1]take" (func $future_new (result i64)))
+        (import "[export]acme:drain/drain@1.0.0" "[async-lower][future-write-1]take" (func $future_write (param i32 i32) (result i32)))
+        (memory (export "memory") 1)
+        (global $readable (mut i32) (i32.const 0))
+        (global $base (mut i32) (i32.const 256))
+        (global $answer (mut i32) (i32.const 0))
+        (global $set (mut i32) (i32.const 0))
+        (global $total (mut i32) (i32.const 0))
+        (global $pending (mut i32) (i32.const 0))
+        (global $over (mut i32) (i32.const 0))
+        (func (export "acme:drain/drain@1.0.0#take") (param $data i32) (param $offset i32) (result i32)
+            (local $ends i64)
+            local.get $data
+            global.set $readable
+            i32.const 256
+            local.get $offset
+            i32.add
+            global.set $base
+            call $set_new
+            global.set $set
+            call $future_new
+            local.tee $ends
+            i64.const 32
+            i64.shr_u
+            i32.wrap_i64
+            global.set $answer
+            local.get $ends
+            i32.wrap_i64)
+        (func (export "acme:drain/drain@1.0.0#ended") (result i32)
+            (local $status i32)
+            (block $wait
+                (loop $more
+                    global.get $over
+                    if
+                        global.get $total
+                        return
+                    end
+                    global.get $pending
+                    if
+                        global.get $set
+                        i32.const 768
+                        call $set_poll
+                        ;; STREAM_READ: the read ended, its status at 772.
+                        i32.const 2
+                        i32.ne
+                        br_if $wait
+                        i32.const 772
+                        i32.load
+                        local.set $status
+                        i32.const 0
+                        global.set $pending
+                    else
+                        global.get $readable
+                        global.get $base
+                        global.get $total
+                        i32.add
+                        i32.const 64
+                        call $read
+                        local.tee $status
+                        i32.const -1
+                        i32.eq
+                        if
+                            global.get $readable
+                            global.get $set
+                            call $join
+                            i32.const 1
+                            global.set $pending
+                            br $wait
+                        end
+                    end
+                    ;; The bytes that came, status >> 4, then whether the
+                    ;; writer let go, 1 in the low bits.
+                    global.get $total
+                    local.get $status
+                    i32.const 4
+                    i32.shr_u
+                    i32.add
+                    global.set $total
+                    local.get $status
+                    i32.const 15
+                    i32.and
+                    i32.const 1
+                    i32.eq
+                    if
+                        i32.const 1
+                        global.set $over
+                        global.get $readable
+                        call $drop
+                        ;; The answer: how many bytes came.
+                        i32.const 900
+                        global.get $total
+                        i32.store
+                        global.get $answer
+                        i32.const 900
+                        call $future_write
+                        drop
+                    end
+                    br $more))
+            i32.const -1)
+        (func (export "acme:drain/drain@1.0.0#came") (param $index i32) (result i32)
+            i32.const 256
+            local.get $index
+            i32.add
+            i32.load8_u)
+        (func (export "acme:drain/drain@1.0.0#stop")
+            global.get $readable
+            call $drop))
+"#;
+
+/// The program's tests of a `BYTES_STREAM_WRITER`, handing its reading end
+/// to [`DRAIN`]: what it writes reaches the reader, and `CLOSE` ends the
+/// stream, once a write that waits for its reader is over; a request after
+/// is an error, as one is once the reader left; an empty text is done at
+/// once.
+const WRITER_TESTS: &str = "
+{test}
+FUNCTION_BLOCK test_writer_ends_the_stream
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    step : INT;
+    w : Acme.Drain.Drain.BYTES_STREAM_WRITER;
+    total : UDINT;
+END_VAR
+    CASE step OF
+        0:
+            w();
+            Acme.Drain.Drain.U32_FUTURE_DROP_READABLE(
+                future := Acme.Drain.Drain.TAKE(data := w.readable, offset := 0));
+            w(REQ := TRUE, IN := 'hello');
+            step := 1;
+        1:
+            w(REQ := TRUE, IN := 'hello');
+            IF NOT w.BUSY THEN
+                w(REQ := FALSE, CLOSE := TRUE);
+                step := 2;
+            END_IF;
+        2:
+            total := Acme.Drain.Drain.ENDED();
+            IF total <> UDINT#16#FFFFFFFF THEN
+                IF total <> 5 OR Acme.Drain.Drain.CAME(index := 0) <> 16#68 THEN
+                    __RAISE('the reader did not get hello, then the end');
+                END_IF;
+                w(REQ := TRUE, IN := 'more');
+                IF NOT w.ERROR THEN
+                    __RAISE('a request after CLOSE is no error');
+                END_IF;
+                DONE := TRUE;
+            END_IF;
+    END_CASE;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_writer_closes_after_its_write
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    started : BOOL;
+    w : Acme.Drain.Drain.BYTES_STREAM_WRITER;
+    total : UDINT;
+END_VAR
+    IF NOT started THEN
+        w();
+        w(REQ := TRUE, IN := 'hello');
+        w(REQ := TRUE, CLOSE := TRUE);
+        IF NOT w.BUSY THEN
+            __RAISE('the write did not wait for its reader');
+        END_IF;
+        Acme.Drain.Drain.U32_FUTURE_DROP_READABLE(
+            future := Acme.Drain.Drain.TAKE(data := w.readable, offset := 0));
+        started := TRUE;
+    END_IF;
+    w(REQ := TRUE, CLOSE := TRUE);
+    total := Acme.Drain.Drain.ENDED();
+    IF total <> UDINT#16#FFFFFFFF THEN
+        IF total <> 5 THEN
+            __RAISE('the write did not go before the end');
+        END_IF;
+        DONE := TRUE;
+    END_IF;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_writer_takes_an_empty_text
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    w : Acme.Drain.Drain.BYTES_STREAM_WRITER;
+END_VAR
+    w(REQ := TRUE, IN := '');
+    IF NOT w.DONE OR w.BUSY THEN
+        __RAISE('an empty text is not done at once');
+    END_IF;
+    DONE := TRUE;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_writer_sees_its_reader_leave
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    started : BOOL;
+    w : Acme.Drain.Drain.BYTES_STREAM_WRITER;
+END_VAR
+    IF NOT started THEN
+        w();
+        Acme.Drain.Drain.U32_FUTURE_DROP_READABLE(
+            future := Acme.Drain.Drain.TAKE(data := w.readable, offset := 0));
+        Acme.Drain.Drain.STOP();
+        started := TRUE;
+    ELSE
+        w(REQ := TRUE, IN := 'hello');
+        IF w.DONE THEN
+            __RAISE('a write whose reader left took the text');
+        END_IF;
+        DONE := w.ERROR;
+    END_IF;
+END_FUNCTION_BLOCK
+";
+
+/// The program's tests of the writers of [`DRAIN`]'s `take` and of
+/// [`FEED`]'s `sink`: the block makes the stream at the first request,
+/// calls the function with its reading end and its other inputs, writes,
+/// and once `CLOSE` ended the stream, gives the future's value; one of a
+/// function that answers with nothing writes.
+const FUNCTION_WRITER_TESTS: &str = "
+{test}
+FUNCTION_BLOCK test_function_writer_answers
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    step : INT;
+    w : Acme.Drain.Drain.TAKE_WRITER;
+    total : UDINT;
+    wrote : BOOL;
+END_VAR
+    CASE step OF
+        0:
+            w(CLOSE := FALSE, offset := 10);
+            w(REQ := TRUE, IN := 'hello');
+            wrote := w.DONE;
+            step := 1;
+        1:
+            w(REQ := TRUE, IN := 'hello');
+            wrote := wrote OR w.DONE;
+            IF wrote AND NOT w.BUSY THEN
+                w(REQ := FALSE, CLOSE := TRUE);
+                step := 2;
+            END_IF;
+        2:
+            w(CLOSE := TRUE);
+            IF w.ENDED THEN
+                IF w.value <> 5 OR Acme.Drain.Drain.CAME(index := 10) <> 16#68 THEN
+                    __RAISE('the answer is not the 5 bytes of hello, from 10 on');
+                END_IF;
+                w(REQ := TRUE, IN := 'more');
+                IF NOT w.ERROR THEN
+                    __RAISE('a request after CLOSE is no error');
+                END_IF;
+                DONE := TRUE;
+            END_IF;
+    END_CASE;
+    IF step > 0 THEN
+        total := Acme.Drain.Drain.ENDED();
+        IF total = UDINT#16#FFFFFFFF AND w.ENDED THEN
+            __RAISE('the answer came before the stream ended');
+        END_IF;
+    END_IF;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_function_writer_is_busy_while_the_reader_waits
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    w : Acme.Drain.Drain.TAKE_WRITER;
+    request : BOOL;
+    written : INT;
+END_VAR
+    // The component reads nothing: the bridge's channel fills, and the
+    // write after its nine chunks waits.
+    request := NOT request;
+    w(REQ := request, IN := 'x');
+    IF w.DONE THEN
+        written := written + 1;
+    END_IF;
+    IF w.BUSY THEN
+        IF written <> 9 THEN
+            __RAISE('the write did not wait once the channel was full');
+        END_IF;
+        DONE := TRUE;
+    END_IF;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_function_writer_waits_for_a_request
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    w : Acme.Drain.Drain.TAKE_WRITER;
+    cycles : INT;
+END_VAR
+    // A CLOSE before any request ends no stream: there is none yet, and
+    // the first request makes one and writes it.
+    cycles := cycles + 1;
+    IF cycles < 4 THEN
+        w(CLOSE := TRUE);
+    ELSE
+        w(REQ := TRUE, IN := 'x', CLOSE := FALSE);
+        IF w.ERROR OR NOT w.DONE THEN
+            __RAISE('a CLOSE before any request ended the stream');
+        END_IF;
+        DONE := TRUE;
+    END_IF;
+END_FUNCTION_BLOCK
+";
+
+/// The program's test of the writer of [`FEED`]'s `sink`, which answers
+/// with nothing: the bytes reach the component.
+const SINK_WRITER_TESTS: &str = "
+{test}
+FUNCTION_BLOCK test_function_writer_of_nothing
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    w : Acme.Feed.Feed.SINK_WRITER;
+END_VAR
+    w(REQ := TRUE, IN := 'hello');
+    DONE := Acme.Feed.Feed.FIRST() = USINT#16#68;
+END_FUNCTION_BLOCK
+";
+
+/// A function's writer, `<NAME>_WRITER`, makes the stream the function
+/// takes at the first request, calls the function with it and with its
+/// other inputs, writes it, and gives the value of the future the function
+/// answers with once it comes; nothing happens before a request.
+#[test]
+fn a_function_s_writer_opens_writes_and_reads_the_answer() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let drain = component_of_wat(DRAIN, "drainer", DRAIN_WAT);
+    library(&root, "drain", &declarations(&drain), Some(&drain));
+    let ws = program(&root, "drain = { path = \"../drain\" }\n", "0");
+    write(&ws, &[("main.st", FUNCTION_WRITER_TESTS)]);
+    tested(&ws, Some("test_function_writer_answers")).expect("the text goes, the answer comes");
+    tested(&ws, Some("test_function_writer_waits_for_a_request"))
+        .expect("nothing opens before a request");
+    tested(
+        &ws,
+        Some("test_function_writer_is_busy_while_the_reader_waits"),
+    )
+    .expect("BUSY while the write waits");
+
+    let feed = component_of_wat(FEED, "feeder", FEED_WAT);
+    library(&root, "feed", &declarations(&feed), Some(&feed));
+    let ws = program(&root, "feed = { path = \"../feed\" }\n", "0");
+    write(&ws, &[("main.st", SINK_WRITER_TESTS)]);
+    tested(&ws, Some("test_function_writer_of_nothing")).expect("the bytes reach the component");
+}
+
+/// A `BYTES_STREAM_WRITER` makes its stream at its first call and writes
+/// it to the reader it is handed to, a component here; `CLOSE` ends the
+/// stream once no write is under way, and a request after it, or after the
+/// reader left, is an error.
+#[test]
+fn a_stream_s_writer_writes_and_ends_it() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let drain = component_of_wat(DRAIN, "drainer", DRAIN_WAT);
+    library(&root, "drain", &declarations(&drain), Some(&drain));
+    let ws = program(&root, "drain = { path = \"../drain\" }\n", "0");
+    write(&ws, &[("main.st", WRITER_TESTS)]);
+    tested(&ws, Some("test_writer_ends_the_stream")).expect("the text goes, then the end");
+    tested(&ws, Some("test_writer_closes_after_its_write"))
+        .expect("CLOSE waits for the write under way");
+    tested(&ws, Some("test_writer_sees_its_reader_leave"))
+        .expect("the writer sees its reader leave");
+    tested(&ws, Some("test_writer_takes_an_empty_text"))
+        .expect("an empty text is done at once, with no reader");
+}
+
 /// A component that keeps files: each is a resource whose handle the
 /// program holds, made by its constructor, read by a method, lent to a
 /// function, given back to another, found in an option, and dropped; the
