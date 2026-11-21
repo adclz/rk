@@ -522,13 +522,33 @@ impl Out {
         self.line(section);
         self.depth += 1;
         for var in vars {
-            match var.start {
-                Some(start) => self.line(&format!("{} : {} := {start};", var.name, var.ty)),
-                None => self.line(&format!("{} : {};", var.name, var.ty)),
-            }
+            self.declaration(var);
         }
         self.depth -= 1;
         self.line("END_VAR");
+    }
+
+    /// A section whose variables each have their documentation on the lines
+    /// above them, which the editor shows on hover.
+    fn documented_vars(&mut self, section: &str, vars: &[(Var, String)]) {
+        if vars.is_empty() {
+            return;
+        }
+        self.line(section);
+        self.depth += 1;
+        for (var, text) in vars {
+            self.prose(text);
+            self.declaration(var);
+        }
+        self.depth -= 1;
+        self.line("END_VAR");
+    }
+
+    fn declaration(&mut self, var: &Var) {
+        match var.start {
+            Some(start) => self.line(&format!("{} : {} := {start};", var.name, var.ty)),
+            None => self.line(&format!("{} : {};", var.name, var.ty)),
+        }
     }
 }
 
@@ -1750,20 +1770,45 @@ fn function_writer(
         format!("the writer of `{}`", function.name),
     );
 
+    let pou = &declared.pou;
+    // The function as WIT names it: a resource's `send` is `channel.send`.
+    let shown = match function.kind {
+        FunctionKind::Method(id)
+        | FunctionKind::AsyncMethod(id)
+        | FunctionKind::Static(id)
+        | FunctionKind::AsyncStatic(id) => format!(
+            "{}.{}",
+            wit_text(resolve, Some(Type::Id(id))),
+            function.item_name()
+        ),
+        _ => function.item_name().to_string(),
+    };
     // The block's own names come first; a WIT name that would be one of
-    // them, or one taken before it, takes a `_`.
+    // them, or one taken before it, takes a `_`, and the documentation of
+    // each of the two names the other.
     let own = [
-        "REQ", "IN", "CLOSE", "BUSY", "DONE", "ERROR", "ENDED", "open", "future", "stream",
-        "answer", "call",
+        "REQ", "IN", "CLOSE", "BUSY", "DONE", "ERROR", "ERRORID", "ENDED", "open", "future",
+        "stream", "answer", "call",
     ];
     let mut held: Vec<String> = own.iter().map(|name| name.to_string()).collect();
-    let mut apart = |name: &str| {
-        let mut name = name.to_string();
-        while held.iter().any(|other| other.eq_ignore_ascii_case(&name)) {
-            name.push('_');
+    // Each name taken apart, here or by the function's own declaration
+    // (`done_` of an `async func`'s block, beside its `DONE`): the name it
+    // met, its own, and where it comes from.
+    let mut met: Vec<(String, String, String)> = Vec::new();
+    let mut apart = |name: &str, from: String| {
+        let first = held
+            .iter()
+            .find(|other| other.eq_ignore_ascii_case(name.trim_end_matches('_')))
+            .cloned();
+        let mut new = name.to_string();
+        while held.iter().any(|other| other.eq_ignore_ascii_case(&new)) {
+            new.push('_');
         }
-        held.push(name.clone());
-        name
+        held.push(new.clone());
+        if let Some(first) = first {
+            met.push((first, new.clone(), from));
+        }
+        new
     };
     let var = |name: &str, ty: &str| Var {
         name: name.to_string(),
@@ -1771,102 +1816,173 @@ fn function_writer(
         flat: 1,
         start: None,
     };
-    // The function's other inputs, each passed when the block opens.
-    let inputs: Vec<(Var, String)> = declared
+    // The function's other inputs, each passed when the block opens: the
+    // block's input, the function's name of it, and what it is in WIT.
+    let inputs: Vec<(Var, String, String)> = declared
         .inputs
         .iter()
+        .zip(&function.params)
         .enumerate()
         .filter(|(index, _)| *index != at)
-        .map(|(_, input)| {
-            let name = apart(&input.name);
+        .map(|(_, (input, param))| {
+            let name = apart(&input.name, format!("a parameter of `{shown}`"));
+            let doc = format!(
+                "`{}: {}` of `{shown}`, passed when the stream opens.",
+                param.name,
+                wit_text(resolve, Some(param.ty))
+            );
             (
                 Var {
-                    name: name.clone(),
+                    name,
                     ..input.clone()
                 },
-                format!("{} := {name}", input.name),
+                input.name.clone(),
+                doc,
             )
         })
         .collect();
-    // What the block keeps of the answer, and where it reads each value.
-    let (kept, from): (&[Var], &str) = match &answer {
-        Answer::Future(_, outputs) => (outputs, "answer"),
-        Answer::Call(outputs) => (outputs, "call"),
-        Answer::Nothing | Answer::Unread(_) => (&[], ""),
+    // What the block keeps of the answer, where it reads each value, and
+    // the value's type in WIT.
+    let (kept, from, answered): (&[Var], &str, Option<Type>) = match &answer {
+        Answer::Future(_, outputs) => (
+            outputs,
+            "answer",
+            function
+                .result
+                .and_then(|ty| carried(resolve, ty))
+                .and_then(|(_, payload)| payload),
+        ),
+        Answer::Call(outputs) => (outputs, "call", function.result),
+        Answer::Nothing | Answer::Unread(_) => (&[], "", None),
     };
-    let values: Vec<(Var, String)> = kept
+    // A result's flag and error are the block's own `ERROR` and `ERRORID`:
+    // the flag, read where the answer is, turns `ERROR` TRUE.
+    let result = answered.and_then(|ty| match defined(resolve, ty) {
+        Some(TypeDefKind::Result(result)) => Some((ty, result.err)),
+        _ => None,
+    });
+    let is = |output: &Var, name: &str| {
+        result.is_some() && output.name.trim_end_matches('_').eq_ignore_ascii_case(name)
+    };
+    let flag = kept.iter().find(|output| is(output, "failed"));
+    let values: Vec<(Var, String, String)> = kept
         .iter()
+        .filter(|output| !is(output, "failed"))
         .map(|output| {
-            let name = apart(&output.name);
+            let doc = match answered {
+                Some(ty) => part_of(resolve, ty, &output.name, &shown),
+                None => String::new(),
+            };
+            let name = match is(output, "error") {
+                true => "ERRORID".to_string(),
+                false => apart(&output.name, format!("from `{shown}`")),
+            };
             (
                 Var {
                     name,
                     ..output.clone()
                 },
                 output.name.clone(),
+                doc,
             )
         })
         .collect();
 
-    let pou = &declared.pou;
-    let named = |vars: &[(Var, String)]| {
-        vars.iter()
-            .map(|(var, _)| format!("`{}`", var.name))
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    let opening = match inputs.is_empty() {
-        true => String::new(),
-        false => format!(
-            ", and its other inputs, {}, as they are then",
-            named(&inputs)
-        ),
-    };
-    let calls = match answer {
-        Answer::Call(_) => format!("starts the call of `{pou}`"),
-        _ => format!("calls `{pou}`"),
-    };
-    let ended = match (&answer, values.is_empty()) {
-        (Answer::Nothing, _) => String::new(),
-        (Answer::Unread(_), _) => format!(
-            " What `{pou}` answers with is let go of unread: no read gives its value back yet."
-        ),
-        (Answer::Future(..), true) => {
-            format!(" `ENDED` is TRUE once the future `{pou}` answers with has come.")
+    // What an input or an output is, shown on hover, and for a name taken
+    // apart, the other of the two.
+    let documented = |var: Var, text: String| {
+        let mut text = text;
+        for (first, new, from) in &met {
+            if *first == var.name {
+                text.push_str(&format!(" `{new}` is {from}."));
+            }
+            if *new == var.name {
+                let other = match own.contains(&first.as_str()) {
+                    true => "the writer's own".to_string(),
+                    false => met
+                        .iter()
+                        .find(|(_, new, _)| new == first)
+                        .map(|(.., from)| from.clone())
+                        .unwrap_or_else(|| format!("a parameter of `{shown}`")),
+                };
+                text.push_str(&format!(" Not `{first}`, {other}."));
+            }
         }
-        (Answer::Future(..), false) => format!(
-            " `ENDED` is TRUE once the future `{pou}` answers with has come, its value in {}.",
-            named(&values)
-        ),
-        (Answer::Call(_), true) => " `ENDED` is TRUE once the call has returned.".to_string(),
-        (Answer::Call(_), false) => format!(
-            " `ENDED` is TRUE once the call has returned, its result in {}.",
-            named(&values)
-        ),
+        (var, text)
+    };
+    let starts = match answer {
+        Answer::Call(_) => "starts",
+        _ => "calls",
     };
     out.prose(&format!(
-        "Writes to `{pou}` through a stream of bytes it makes at the first rising edge of `REQ`, when it {calls} with the stream's reading end{opening}. A rising edge of `REQ` writes `IN`, handing what the reader has not taken until it has all of it: `BUSY` meanwhile, then `DONE` in the call where it has all of it, at once for an empty text. An edge while `BUSY` is ignored. A rising edge of `CLOSE` ends the stream once no write is under way. `ERROR` is TRUE once the stream is closed, by `CLOSE` or by the reader letting go: each later request is an error at once.{ended}"
+        "Writes text to `{shown}` through a stream of bytes it opens at the first request."
     ));
     out.line(&format!("FUNCTION_BLOCK {block}"));
     let text = format!("STRING[{STRING_LIMIT}]");
-    out.vars(
-        "VAR_INPUT",
-        &[
-            vec![var("REQ", "BOOL"), var("IN", &text), var("CLOSE", "BOOL")],
-            inputs.iter().map(|(var, _)| var.clone()).collect(),
-        ]
-        .concat(),
-    );
-    let mut outputs = vec![
-        var("BUSY", "BOOL"),
-        var("DONE", "BOOL"),
-        var("ERROR", "BOOL"),
+    let mut inputs_documented = vec![
+        documented(
+            var("REQ", "BOOL"),
+            format!(
+                "A rising edge writes `IN`; the first opens the stream and {starts} `{shown}` with it. An edge while `BUSY` is ignored."
+            ),
+        ),
+        documented(var("IN", &text), WRITER_IN.to_string()),
+        documented(var("CLOSE", "BOOL"), WRITER_CLOSE.to_string()),
     ];
-    if let Answer::Future(..) | Answer::Call(_) = answer {
-        outputs.push(var("ENDED", "BOOL"));
-        outputs.extend(values.iter().map(|(var, _)| var.clone()));
+    inputs_documented.extend(
+        inputs
+            .iter()
+            .map(|(var, _, doc)| documented(var.clone(), doc.clone())),
+    );
+    out.documented_vars("VAR_INPUT", &inputs_documented);
+    let mut outputs = vec![
+        documented(var("BUSY", "BOOL"), WRITER_BUSY.to_string()),
+        documented(var("DONE", "BOOL"), WRITER_DONE.to_string()),
+        documented(
+            var("ERROR", "BOOL"),
+            match result {
+                Some((ty, err)) => format!(
+                    "TRUE once a write finds the reader gone, a request comes after `CLOSE`, or the `{}` from `{shown}` is an error{}.",
+                    wit_text(resolve, Some(ty)),
+                    match err {
+                        Some(err) =>
+                            format!(", whose `{}` is in `ERRORID`", wit_text(resolve, Some(err))),
+                        None => String::new(),
+                    }
+                ),
+                None => WRITER_ERROR.to_string(),
+            },
+        ),
+    ];
+    // `ERRORID` beside `ERROR`, the answer's other values after `ENDED`.
+    let (errorid, values_after): (Vec<_>, Vec<_>) =
+        values.iter().partition(|(var, ..)| var.name == "ERRORID");
+    outputs.extend(
+        errorid
+            .into_iter()
+            .map(|(var, _, doc)| documented(var.clone(), doc.clone())),
+    );
+    let whole = wit_text(resolve, answered);
+    match answer {
+        Answer::Future(..) => outputs.push(documented(
+            var("ENDED", "BOOL"),
+            match answered {
+                Some(_) => format!("TRUE once the `future<{whole}>` from `{shown}` has its value."),
+                None => format!("TRUE once the `future` from `{shown}` has come."),
+            },
+        )),
+        Answer::Call(_) => outputs.push(documented(
+            var("ENDED", "BOOL"),
+            format!("TRUE once `{shown}` has returned."),
+        )),
+        Answer::Nothing | Answer::Unread(_) => {}
     }
-    out.vars("VAR_OUTPUT", &outputs);
+    outputs.extend(
+        values_after
+            .into_iter()
+            .map(|(var, _, doc)| documented(var.clone(), doc.clone())),
+    );
+    out.documented_vars("VAR_OUTPUT", &outputs);
     let mut locals = vec![var("open", "BOOL"), var("stream", &writer)];
     match &answer {
         Answer::Future(get, _) => {
@@ -1879,11 +1995,15 @@ fn function_writer(
     out.vars("VAR", &locals);
     out.depth += 1;
     let arguments = std::iter::once(format!("{} := stream.readable", declared.inputs[at].name))
-        .chain(inputs.iter().map(|(_, passed)| passed.clone()))
+        .chain(
+            inputs
+                .iter()
+                .map(|(var, field, _)| format!("{field} := {}", var.name)),
+        )
         .collect::<Vec<_>>()
         .join(", ");
     let keep = |out: &mut Out| {
-        for (var, field) in &values {
+        for (var, field, _) in &values {
             out.line(&format!("{} := {from}.{field};", var.name));
         }
         out.line("ENDED := TRUE;");
@@ -1924,7 +2044,6 @@ fn function_writer(
     out.line("stream(REQ := REQ, IN := IN, CLOSE := CLOSE);");
     out.line("BUSY := stream.BUSY;");
     out.line("DONE := stream.DONE;");
-    out.line("ERROR := stream.ERROR;");
     if let Answer::Future(..) = answer {
         out.line("// The answer, read once it comes, and kept.");
         out.line("answer(future := future);");
@@ -1934,11 +2053,81 @@ fn function_writer(
         out.depth -= 1;
         out.line("END_IF;");
     }
+    match flag {
+        Some(flag) => out.line(&format!("ERROR := stream.ERROR OR {from}.{};", flag.name)),
+        None => out.line("ERROR := stream.ERROR;"),
+    }
     out.depth -= 1;
     out.line("END_IF;");
     out.depth -= 1;
     out.line("END_FUNCTION_BLOCK");
     out.line("");
+}
+
+/// What the inputs and outputs every writer of a stream of bytes declares
+/// are, shown on hover.
+const WRITER_IN: &str = "The text to write.";
+const WRITER_CLOSE: &str = "A rising edge ends the stream, once no write is under way.";
+const WRITER_BUSY: &str = "TRUE while the reader has not taken all of `IN`.";
+const WRITER_DONE: &str =
+    "TRUE in the call where the reader has taken all of `IN`, at once for an empty text.";
+const WRITER_ERROR: &str = "TRUE once a write finds the reader gone, or a request comes after `CLOSE`: the stream does not open again.";
+
+/// What `ty` is defined as, past its aliases; `None` for a primitive type.
+fn defined(resolve: &Resolve, ty: Type) -> Option<&TypeDefKind> {
+    let mut at = ty;
+    while let Type::Id(id) = at {
+        match &resolve.types[id].kind {
+            TypeDefKind::Type(inner) => at = *inner,
+            other => return Some(other),
+        }
+    }
+    None
+}
+
+/// What `output`, one of the outputs a value of `ty` comes back in, holds
+/// of it, in WIT's terms: a result's flag and its sides, an option's flag
+/// and value, a tuple's items, or the value itself (`shapes::result`); the
+/// value comes from the function `shown`.
+fn part_of(resolve: &Resolve, ty: Type, output: &str, shown: &str) -> String {
+    let whole = wit_text(resolve, Some(ty));
+    let is = |name: &str| output.trim_end_matches('_').eq_ignore_ascii_case(name);
+    let kind = defined(resolve, ty);
+    let from = format!("the `{whole}` from `{shown}`");
+    match kind {
+        Some(TypeDefKind::Result(_)) if is("failed") => format!("TRUE when {from} is an error."),
+        Some(TypeDefKind::Result(result)) if is("error") => format!(
+            "The `{}` of {from}, when it is an error, which turns `ERROR` TRUE.",
+            wit_text(resolve, result.err)
+        ),
+        Some(TypeDefKind::Result(result)) if is("value") => format!(
+            "The `{}` of {from}, when it is no error.",
+            wit_text(resolve, result.ok)
+        ),
+        Some(TypeDefKind::Option(_)) if is("is_some") => {
+            format!("TRUE when {from} holds a value.")
+        }
+        Some(TypeDefKind::Option(inner)) if is("value") => format!(
+            "The `{}` that {from} holds.",
+            wit_text(resolve, Some(*inner))
+        ),
+        Some(TypeDefKind::Tuple(tuple)) => {
+            let item = output
+                .trim_end_matches('_')
+                .strip_prefix("item")
+                .and_then(|at| at.parse::<usize>().ok())
+                .and_then(|at| tuple.types.get(at).map(|ty| (at, ty)));
+            match item {
+                Some((at, ty)) => {
+                    format!("Item {at} of {from}, a `{}`.", wit_text(resolve, Some(*ty)))
+                }
+                None => format!("Part of {from}."),
+            }
+        }
+        Some(TypeDefKind::Result(_) | TypeDefKind::Option(_)) => format!("Part of {from}."),
+        _ if is("value") => format!("The `{whole}` from `{shown}`."),
+        _ => format!("Part of {from}."),
+    }
 }
 
 /// The names a stream's writer uses: its own, those of its two helpers, a
@@ -2006,20 +2195,33 @@ fn stream_writer(out: &mut Out, names: &Writer) {
     out.line("");
 
     out.prose(
-        "Writes a stream of bytes it makes at its first call: `readable` is its reading end, to hand to the function that reads it. A rising edge of `REQ` writes `IN`, handing the reader what it has not taken until it has all of it: `BUSY` meanwhile, then `DONE` in the call where it has all of it, at once for an empty text. An edge while `BUSY` is ignored. A rising edge of `CLOSE` lets go of the writing end once no write is under way, which ends the stream for the reader. `ERROR` is TRUE once the stream is closed, by `CLOSE` or by the reader letting go: each later request is an error at once.",
+        "Writes text to a stream of bytes it makes at its first call, for the function `readable` is handed to.",
     );
     out.line(&format!("FUNCTION_BLOCK {writer}"));
-    out.vars(
+    let documented = |name: &str, ty: &str, doc: &str| (var(name, ty), doc.to_string());
+    out.documented_vars(
         "VAR_INPUT",
-        &[var("REQ", "BOOL"), var("IN", &text), var("CLOSE", "BOOL")],
+        &[
+            documented(
+                "REQ",
+                "BOOL",
+                "A rising edge writes `IN`. An edge while `BUSY` is ignored.",
+            ),
+            documented("IN", &text, WRITER_IN),
+            documented("CLOSE", "BOOL", WRITER_CLOSE),
+        ],
     );
-    out.vars(
+    out.documented_vars(
         "VAR_OUTPUT",
         &[
-            var("readable", "UDINT"),
-            var("BUSY", "BOOL"),
-            var("DONE", "BOOL"),
-            var("ERROR", "BOOL"),
+            documented(
+                "readable",
+                "UDINT",
+                "The stream's reading end, to hand to the function that reads it.",
+            ),
+            documented("BUSY", "BOOL", WRITER_BUSY),
+            documented("DONE", "BOOL", WRITER_DONE),
+            documented("ERROR", "BOOL", WRITER_ERROR),
         ],
     );
     out.vars(
