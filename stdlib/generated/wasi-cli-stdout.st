@@ -26,38 +26,6 @@ NAMESPACE INTERNAL Wasi
 			END_VAR
 			END_FUNCTION
 
-			/* Reads the bytes that come next into `data`, as many as it holds at most:
-			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
-			   go. */
-			{extern async 'wasi:cli/stdout@0.3.0' '[stream-read-0]write-via-stream'}
-			FUNCTION_BLOCK BYTES_STREAM_READ
-			VAR_INPUT
-				stream : UDINT;
-			END_VAR
-			VAR_OUTPUT
-				DONE : BOOL;
-				data : STRING[4096];
-				read : UDINT;
-				closed : BOOL;
-			END_VAR
-			END_FUNCTION_BLOCK
-
-			/* Reads the bytes that come next into `data`, as many as it holds at most:
-			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
-			   go. */
-			{extern async 'wasi:cli/stdout@0.3.0' '[stream-read-0]write-via-stream'}
-			FUNCTION_BLOCK BYTES_STREAM_READ_ARRAY
-			VAR_INPUT
-				stream : UDINT;
-			END_VAR
-			VAR_OUTPUT
-				DONE : BOOL;
-				data : ARRAY[0..8191] OF BYTE;
-				read : UDINT;
-				closed : BOOL;
-			END_VAR
-			END_FUNCTION_BLOCK
-
 			/* Writes the bytes of `data`, as many as the reader takes: `written` of
 			   them, after `DONE`. `closed` is TRUE once the reader has let go. */
 			{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
@@ -191,6 +159,9 @@ NAMESPACE INTERNAL Wasi
 						write(stream := writable, data := rest);
 						IF write.DONE THEN
 							IF write.closed THEN
+								// The reader left: the writing end goes too.
+								BYTES_STREAM_DROP_WRITABLE(stream := writable);
+								writable := 0;
 								closed := TRUE;
 								BUSY := FALSE;
 								ERROR := TRUE;
@@ -222,16 +193,6 @@ NAMESPACE INTERNAL Wasi
 				END_IF;
 			END_FUNCTION_BLOCK
 
-			/* Makes a future of `result<_, error-code>`, and gives its reading end,
-			   then its writing end. */
-			{extern 'wasi:cli/stdout@0.3.0' '[future-new-1]write-via-stream'}
-			FUNCTION RESULT_FUTURE_NEW
-			VAR_OUTPUT
-				readable : UDINT;
-				writable : UDINT;
-			END_VAR
-			END_FUNCTION
-
 			/* Reads the value the future holds, which comes back after `DONE`. */
 			{extern async 'wasi:cli/stdout@0.3.0' '[future-read-1]write-via-stream'}
 			FUNCTION_BLOCK RESULT_FUTURE_READ
@@ -248,14 +209,6 @@ NAMESPACE INTERNAL Wasi
 			/* Lets go of the future's reading end, `future`. */
 			{extern 'wasi:cli/stdout@0.3.0' '[future-drop-readable-1]write-via-stream'}
 			FUNCTION RESULT_FUTURE_DROP_READABLE
-			VAR_INPUT
-				future : UDINT;
-			END_VAR
-			END_FUNCTION
-
-			/* Lets go of the future's writing end, `future`. */
-			{extern 'wasi:cli/stdout@0.3.0' '[future-drop-writable-1]write-via-stream'}
-			FUNCTION RESULT_FUTURE_DROP_WRITABLE
 			VAR_INPUT
 				future : UDINT;
 			END_VAR
@@ -347,9 +300,5 @@ NAMESPACE INTERNAL Wasi
 	END_NAMESPACE
 END_NAMESPACE
 /* Not generated:
-   - `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel
-     blocks the scan.
-   - `RESULT_FUTURE_WRITE`: no function of the interface takes a future of
-     `result<_, error-code>` from the program.
-   - `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel
-     blocks the scan. */
+   - `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan.
+   - `RESULT_FUTURE_CANCEL_READ`: a cancel blocks the scan. */
