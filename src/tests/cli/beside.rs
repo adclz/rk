@@ -546,8 +546,8 @@ fn a_future_of_each_scalar_crosses() {
 }
 
 /// A component runs in a store of its own: a handle of its own resource
-/// crosses to it, as the host's proxy, and so does a stream of bytes,
-/// through a pipe; a stream of anything else does not, for now.
+/// crosses to it, as the host's proxy, and so does a stream of bytes or of
+/// numbers, through a channel; a stream of lists does not, for now.
 #[test]
 fn what_crosses_to_a_component() {
     super::disable_stdlib();
@@ -576,6 +576,7 @@ fn what_crosses_to_a_component() {
         interface logs {
             tail: func() -> stream<u8>;
             wide: func() -> stream<u16>;
+            chunks: func() -> stream<list<u8>>;
         }
 
         world logger {
@@ -586,7 +587,8 @@ fn what_crosses_to_a_component() {
         &root,
         "files",
         "{extern 'acme:logs/logs@1.0.0' 'tail'}\nFUNCTION TAIL : UDINT\nEND_FUNCTION\n\
-         {extern 'acme:logs/logs@1.0.0' 'wide'}\nFUNCTION WIDE : UDINT\nEND_FUNCTION\n",
+         {extern 'acme:logs/logs@1.0.0' 'wide'}\nFUNCTION WIDE : UDINT\nEND_FUNCTION\n\
+         {extern 'acme:logs/logs@1.0.0' 'chunks'}\nFUNCTION CHUNKS : UDINT\nEND_FUNCTION\n",
         Some(&component_of_world(logs, "logger")),
     );
     let calls = |call: &str| {
@@ -601,16 +603,248 @@ fn what_crosses_to_a_component() {
     calls("Files.TAIL()");
     compiled(&ws).expect("a stream of bytes crosses");
     calls("Files.WIDE()");
+    compiled(&ws).expect("a stream of numbers crosses");
+    calls("Files.CHUNKS()");
     let refused = refusal(&ws);
     assert!(
         refused.contains(
-            "`files.WIDE` imports `wide` of `acme:logs/logs@1.0.0`, which the component of \
-             'files' exports, and it passes a stream of `u16`: only a stream of bytes and a \
-             future of no value, a number, a bool or a char cross to a component beside the \
-             program, for now"
+            "`files.CHUNKS` imports `chunks` of `acme:logs/logs@1.0.0`, which the component of \
+             'files' exports, and it passes a stream of a list: only a stream or a future of \
+             numbers, bools, chars or strings, and a future of no value, cross to a component \
+             beside the program, for now"
         ),
         "{refused}"
     );
+}
+
+/// The items of the streams [`a_stream_of_each_type_crosses`] relays, by the
+/// WIT name of their type: three, as the component lays them out in its
+/// memory, each so many bytes wide. A bool is 0 or 1: anything else does not
+/// lift. A char is no stream's item: the component model has no `stream<char>`.
+const ITEMS: [(&str, &str, u32); 11] = [
+    ("bool", r"\01\00\01", 1),
+    ("u8", r"\07\08\ff", 1),
+    ("s8", r"\f9\08\80", 1),
+    ("u16", r"\bc\02\01\00\ff\ff", 2),
+    ("s16", r"\44\fd\01\00\00\80", 2),
+    ("u32", r"\70\11\01\00\01\00\00\00\ff\ff\ff\ff", 4),
+    ("s32", r"\90\ee\fe\ff\01\00\00\00\00\00\00\80", 4),
+    (
+        "u64",
+        r"\00\86\3b\a1\01\00\00\00\01\00\00\00\00\00\00\00\ff\ff\ff\ff\ff\ff\ff\ff",
+        8,
+    ),
+    (
+        "s64",
+        r"\00\7a\c4\5e\fe\ff\ff\ff\01\00\00\00\00\00\00\00\00\00\00\00\00\00\00\80",
+        8,
+    ),
+    ("f32", r"\00\00\20\40\00\00\80\bf\00\00\00\3f", 4),
+    (
+        "f64",
+        r"\00\00\00\00\00\00\04\40\00\00\00\00\00\00\f0\bf\00\00\00\00\00\00\e0\3f",
+        8,
+    ),
+];
+
+/// [`a_stream_of_each_type_crosses`]'s module, but for the functions of
+/// each type: `cabi_realloc`, a bump through the memory, where the strings
+/// a read gives land; `$same`, whether `n` bytes at `a` and at `b` are the
+/// same; `$string_is`, whether the string whose place is at `pair` is the
+/// `len` bytes at `at`; three strings for the stream of strings, their
+/// places at 1376, `hello` for the future of a string, its place at 3200,
+/// and `€` for the future of a char, at 3208.
+const RELAY_WAT: &str = r#"
+    (memory (export "memory") 1)
+    (global $heap (mut i32) (i32.const 8192))
+    (data (i32.const 1376) "\00\0c\00\00\01\00\00\00\01\0c\00\00\02\00\00\00\03\0c\00\00\04\00\00\00")
+    (data (i32.const 3072) "abcd\c3\a9f")
+    (data (i32.const 3100) "hello")
+    (data (i32.const 3200) "\1c\0c\00\00\05\00\00\00")
+    (data (i32.const 3208) "\ac\20\00\00")
+    (func (export "cabi_realloc") (param i32 i32) (param $align i32) (param $size i32) (result i32)
+        (local $at i32)
+        global.get $heap
+        local.get $align
+        i32.add
+        i32.const 1
+        i32.sub
+        i32.const 0
+        local.get $align
+        i32.sub
+        i32.and
+        local.tee $at
+        local.get $size
+        i32.add
+        global.set $heap
+        local.get $at)
+    (func $same (param $a i32) (param $b i32) (param $n i32) (result i32)
+        (block $differ
+            (loop $next
+                local.get $n
+                i32.eqz
+                if
+                    i32.const 1
+                    return
+                end
+                local.get $a
+                i32.load8_u
+                local.get $b
+                i32.load8_u
+                i32.ne
+                br_if $differ
+                local.get $a
+                i32.const 1
+                i32.add
+                local.set $a
+                local.get $b
+                i32.const 1
+                i32.add
+                local.set $b
+                local.get $n
+                i32.const 1
+                i32.sub
+                local.set $n
+                br $next))
+        i32.const 0)
+    (func $string_is (param $pair i32) (param $at i32) (param $len i32) (result i32)
+        local.get $pair
+        i32.load offset=4
+        local.get $len
+        i32.ne
+        if (result i32)
+            i32.const 0
+        else
+            local.get $pair
+            i32.load
+            local.get $at
+            local.get $len
+            call $same
+        end)
+"#;
+
+/// A stream of each type wasmtime's host API carries, the [`ITEMS`] and
+/// strings, crosses from a component to the program and from the program
+/// back to the component, and so does a future of a string and one of a
+/// char: the program passes on what ST cannot read yet, and the component
+/// finds in its memory what it wrote.
+#[test]
+fn a_stream_of_each_type_crosses() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let interface = "acme:relay/relay@1.0.0";
+    let types: Vec<&str> = ITEMS.iter().map(|(ty, ..)| *ty).chain(["string"]).collect();
+    let functions: String = types
+        .iter()
+        .map(|ty| {
+            format!(
+                "    tail-{ty}: func() -> stream<{ty}>;\n    sink-{ty}: func(data: stream<{ty}>);\n    \
+                 got-{ty}: func() -> u32;\n"
+            )
+        })
+        .collect();
+    let wit = format!(
+        "package acme:relay@1.0.0;\n\ninterface relay {{\n{functions}    \
+         later-string: func() -> future<string>;\n    relay-string: func(f: future<string>);\n    \
+         relayed-string: func() -> u32;\n    later-char: func() -> future<char>;\n    \
+         relay-char: func(f: future<char>);\n    relayed-char: func() -> u32;\n}}\n\n\
+         world relayer {{\n    export relay;\n}}\n"
+    );
+    // Each type's items are written from 1024 + 32 i and read into 2048 + 32 i.
+    let (mut imports, mut definitions) = (String::new(), String::new());
+    for (i, ty) in types.iter().enumerate() {
+        let (data, buffer) = (1024 + 32 * i, 2048 + 32 * i);
+        let got = match ITEMS.get(i) {
+            Some((_, bytes, width)) => {
+                definitions.push_str(&format!("(data (i32.const {data}) \"{bytes}\")\n"));
+                format!(
+                    "i32.const {data} i32.const {buffer} i32.const {} call $same",
+                    3 * width
+                )
+            }
+            None => format!(
+                "i32.const {buffer} i32.const 3072 i32.const 1 call $string_is \
+                 i32.const {} i32.const 3073 i32.const 2 call $string_is i32.and \
+                 i32.const {} i32.const 3075 i32.const 4 call $string_is i32.and",
+                buffer + 8,
+                buffer + 16
+            ),
+        };
+        imports.push_str(&format!(
+            "(import \"[export]{interface}\" \"[stream-new-0]tail-{ty}\" (func $new_{i} (result i64)))\n\
+             (import \"[export]{interface}\" \"[async-lower][stream-write-0]tail-{ty}\" \
+             (func $write_{i} (param i32 i32 i32) (result i32)))\n\
+             (import \"[export]{interface}\" \"[async-lower][stream-read-0]sink-{ty}\" \
+             (func $read_{i} (param i32 i32 i32) (result i32)))\n"
+        ));
+        definitions.push_str(&format!(
+            "(func (export \"{interface}#tail-{ty}\") (result i32) (local $ends i64)\n\
+             call $new_{i} local.set $ends\n\
+             local.get $ends i64.const 32 i64.shr_u i32.wrap_i64\n\
+             i32.const {data} i32.const 3 call $write_{i} drop\n\
+             local.get $ends i32.wrap_i64)\n\
+             (func (export \"{interface}#sink-{ty}\") (param $data i32)\n\
+             local.get $data i32.const {buffer} i32.const 3 call $read_{i} drop)\n\
+             (func (export \"{interface}#got-{ty}\") (result i32) {got})\n"
+        ));
+    }
+    let wat = format!(
+        "(module\n{imports}\
+         (import \"[export]{interface}\" \"[future-new-0]later-string\" (func $future_new (result i64)))\n\
+         (import \"[export]{interface}\" \"[async-lower][future-write-0]later-string\" \
+         (func $future_write (param i32 i32) (result i32)))\n\
+         (import \"[export]{interface}\" \"[async-lower][future-read-0]relay-string\" \
+         (func $future_read (param i32 i32) (result i32)))\n\
+         (import \"[export]{interface}\" \"[future-new-0]later-char\" (func $char_new (result i64)))\n\
+         (import \"[export]{interface}\" \"[async-lower][future-write-0]later-char\" \
+         (func $char_write (param i32 i32) (result i32)))\n\
+         (import \"[export]{interface}\" \"[async-lower][future-read-0]relay-char\" \
+         (func $char_read (param i32 i32) (result i32)))\n\
+         {RELAY_WAT}{definitions}\
+         (func (export \"{interface}#later-string\") (result i32) (local $ends i64)\n\
+         call $future_new local.set $ends\n\
+         local.get $ends i64.const 32 i64.shr_u i32.wrap_i64 i32.const 3200 call $future_write drop\n\
+         local.get $ends i32.wrap_i64)\n\
+         (func (export \"{interface}#relay-string\") (param $f i32)\n\
+         local.get $f i32.const 3300 call $future_read drop)\n\
+         (func (export \"{interface}#relayed-string\") (result i32)\n\
+         i32.const 3300 i32.const 3100 i32.const 5 call $string_is)\n\
+         (func (export \"{interface}#later-char\") (result i32) (local $ends i64)\n\
+         call $char_new local.set $ends\n\
+         local.get $ends i64.const 32 i64.shr_u i32.wrap_i64 i32.const 3208 call $char_write drop\n\
+         local.get $ends i32.wrap_i64)\n\
+         (func (export \"{interface}#relay-char\") (param $f i32)\n\
+         local.get $f i32.const 3316 call $char_read drop)\n\
+         (func (export \"{interface}#relayed-char\") (result i32)\n\
+         i32.const 3316 i32.const 3208 i32.const 4 call $same))\n"
+    );
+    let relay = component_of_wat(&wit, "relayer", &wat);
+    library(&root, "relay", &declarations(&relay), Some(&relay));
+    let ws = program(&root, "relay = { path = \"../relay\" }\n", "0");
+    let mut tests = String::new();
+    for ty in &types {
+        let name = ty.to_uppercase();
+        tests.push_str(&format!(
+            "{{test}}\nFUNCTION_BLOCK test_stream_of_{ty}\nVAR_OUTPUT DONE : BOOL; END_VAR\n\
+             VAR started : BOOL; END_VAR\n    IF NOT started THEN\n        \
+             Acme.Relay.Relay.SINK_{name}(data := Acme.Relay.Relay.TAIL_{name}());\n        \
+             started := TRUE;\n    END_IF;\n    DONE := Acme.Relay.Relay.GOT_{name}() = 1;\n\
+             END_FUNCTION_BLOCK\n\n"
+        ));
+    }
+    for ty in ["string", "char"] {
+        let name = ty.to_uppercase();
+        tests.push_str(&format!(
+            "{{test}}\nFUNCTION_BLOCK test_future_of_{ty}\nVAR_OUTPUT DONE : BOOL; END_VAR\n\
+             VAR started : BOOL; END_VAR\n    IF NOT started THEN\n        \
+             Acme.Relay.Relay.RELAY_{name}(f := Acme.Relay.Relay.LATER_{name}());\n        \
+             started := TRUE;\n    END_IF;\n    DONE := Acme.Relay.Relay.RELAYED_{name}() = 1;\n\
+             END_FUNCTION_BLOCK\n\n"
+        ));
+    }
+    write(&ws, &[("main.st", &tests)]);
+    tested(&ws, None).expect("each stream and the future cross both ways");
 }
 
 /// A component that feeds the program a stream of the bytes of `hello`, a
@@ -857,6 +1091,197 @@ fn rk_test_carries_a_component_s_stream_and_future() {
     tested(&ws, Some("test_feed")).expect("the component's stream and future cross");
     tested(&ws, Some("test_sink")).expect("the program's stream crosses");
     tested(&ws, Some("test_relay")).expect("a future the program passes on crosses");
+}
+
+/// A component whose copies wait on the program's store: `listen` reads a
+/// stream the program never writes to and `stop-listening` cancels the read;
+/// `open` gives the program a stream it never reads, `flood` writes into it
+/// a byte at a time while each write goes at once and gives how many went,
+/// `stop-flooding` cancels the write that waits; `poke` writes once more.
+/// A cancel and `poke` give the copy's status: how many items went,
+/// `status >> 4`, then how it ended, 1 dropped, 2 cancelled.
+const WAIT: &str = r#"
+    package acme:wait@1.0.0;
+
+    interface wait {
+        listen: func(data: stream<u8>);
+        stop-listening: async func() -> u32;
+        open: func() -> stream<u8>;
+        flood: func() -> u32;
+        stop-flooding: async func() -> u32;
+        poke: func() -> u32;
+    }
+
+    world waiter {
+        export wait;
+    }
+"#;
+
+/// [`WAIT`]'s module. The cancels wait for the other store to end the copy,
+/// which wasmtime allows a call of an `async func` and refuses one of a
+/// `func`: each is lifted async, cancels, and gives the status through
+/// `task.return`.
+const WAIT_WAT: &str = r#"
+    (module
+        (import "[export]acme:wait/wait@1.0.0" "[async-lower][stream-read-0]listen" (func $read (param i32 i32 i32) (result i32)))
+        (import "[export]acme:wait/wait@1.0.0" "[stream-cancel-read-0]listen" (func $cancel_read (param i32) (result i32)))
+        (import "[export]acme:wait/wait@1.0.0" "[task-return]stop-listening" (func $listening_return (param i32)))
+        (import "[export]acme:wait/wait@1.0.0" "[stream-new-0]open" (func $new (result i64)))
+        (import "[export]acme:wait/wait@1.0.0" "[async-lower][stream-write-0]open" (func $write (param i32 i32 i32) (result i32)))
+        (import "[export]acme:wait/wait@1.0.0" "[stream-cancel-write-0]open" (func $cancel_write (param i32) (result i32)))
+        (import "[export]acme:wait/wait@1.0.0" "[task-return]stop-flooding" (func $flooding_return (param i32)))
+        (memory (export "memory") 1)
+        (global $readable (mut i32) (i32.const 0))
+        (global $writable (mut i32) (i32.const 0))
+        (func (export "acme:wait/wait@1.0.0#listen") (param $data i32)
+            local.get $data
+            global.set $readable
+            local.get $data
+            i32.const 256
+            i32.const 16
+            call $read
+            drop)
+        (func (export "[async-lift]acme:wait/wait@1.0.0#stop-listening") (result i32)
+            global.get $readable
+            call $cancel_read
+            call $listening_return
+            ;; EXIT: the call is over.
+            i32.const 0)
+        (func (export "[callback][async-lift]acme:wait/wait@1.0.0#stop-listening")
+            (param i32 i32 i32) (result i32)
+            i32.const 0)
+        (func (export "acme:wait/wait@1.0.0#open") (result i32)
+            (local $ends i64)
+            call $new
+            local.tee $ends
+            i64.const 32
+            i64.shr_u
+            i32.wrap_i64
+            global.set $writable
+            local.get $ends
+            i32.wrap_i64)
+        (func (export "acme:wait/wait@1.0.0#flood") (result i32)
+            (local $went i32)
+            (block $waits
+                (loop $next
+                    global.get $writable
+                    i32.const 512
+                    i32.const 1
+                    call $write
+                    i32.const -1
+                    i32.eq
+                    br_if $waits
+                    local.get $went
+                    i32.const 1
+                    i32.add
+                    local.tee $went
+                    i32.const 64
+                    i32.lt_u
+                    br_if $next))
+            local.get $went)
+        (func (export "[async-lift]acme:wait/wait@1.0.0#stop-flooding") (result i32)
+            global.get $writable
+            call $cancel_write
+            call $flooding_return
+            i32.const 0)
+        (func (export "[callback][async-lift]acme:wait/wait@1.0.0#stop-flooding")
+            (param i32 i32 i32) (result i32)
+            i32.const 0)
+        (func (export "acme:wait/wait@1.0.0#poke") (result i32)
+            global.get $writable
+            i32.const 512
+            i32.const 1
+            call $write))
+"#;
+
+/// The program's tests of [`WAIT`]: a read and a write that wait on the
+/// program end cancelled, with nothing moved, and a write after the program
+/// let go of the reading end finds the stream dropped.
+const WAIT_TESTS: &str = "
+{test}
+FUNCTION_BLOCK test_cancelled_read
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    started : BOOL;
+    readable : UDINT;
+    writable : UDINT;
+    stop : Acme.Wait.Wait.STOP_LISTENING;
+END_VAR
+    IF NOT started THEN
+        Acme.Wait.Wait.BYTES_STREAM_NEW(readable => readable, writable => writable);
+        Acme.Wait.Wait.LISTEN(data := readable);
+        started := TRUE;
+    END_IF;
+    stop();
+    IF stop.DONE THEN
+        IF stop.value <> 2 THEN
+            __RAISE('the read did not end cancelled');
+        END_IF;
+        DONE := TRUE;
+    END_IF;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_cancelled_write
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    started : BOOL;
+    unread : UDINT;
+    stop : Acme.Wait.Wait.STOP_FLOODING;
+END_VAR
+    IF NOT started THEN
+        unread := Acme.Wait.Wait.OPEN();
+        IF Acme.Wait.Wait.FLOOD() <> 9 THEN
+            __RAISE('the channel did not hold nine chunks');
+        END_IF;
+        started := TRUE;
+    END_IF;
+    stop();
+    IF stop.DONE THEN
+        IF stop.value <> 2 THEN
+            __RAISE('the write did not end cancelled');
+        END_IF;
+        DONE := TRUE;
+    END_IF;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_reader_left
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    opened : BOOL;
+    unread : UDINT;
+END_VAR
+    IF NOT opened THEN
+        unread := Acme.Wait.Wait.OPEN();
+        Acme.Wait.Wait.BYTES_STREAM_DROP_READABLE(stream := unread);
+        opened := TRUE;
+    ELSE
+        IF Acme.Wait.Wait.POKE() <> 1 THEN
+            __RAISE('the write did not find the stream dropped');
+        END_IF;
+        DONE := TRUE;
+    END_IF;
+END_FUNCTION_BLOCK
+";
+
+/// A copy that waits on the other store ends when its guest cancels it, as
+/// wasmtime's contract asks of a producer and a consumer: a read with
+/// nothing in the channel, and a write once the channel holds its nine
+/// chunks, eight and the one its sender keeps. A writer whose reader left
+/// finds the stream dropped.
+#[test]
+fn a_copy_waiting_on_the_other_store_ends_when_cancelled() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let wait = component_of_wat(WAIT, "waiter", WAIT_WAT);
+    library(&root, "wait", &declarations(&wait), Some(&wait));
+    let ws = program(&root, "wait = { path = \"../wait\" }\n", "0");
+    write(&ws, &[("main.st", WAIT_TESTS)]);
+    tested(&ws, Some("test_cancelled_read")).expect("a waiting read is cancelled");
+    tested(&ws, Some("test_cancelled_write")).expect("a waiting write is cancelled");
+    tested(&ws, Some("test_reader_left")).expect("the writer finds its reader gone");
 }
 
 /// A component that keeps files: each is a resource whose handle the
