@@ -330,6 +330,7 @@ A future's read, `[future-read-N]f`, takes the future's reading end and gives af
 A future is a value, not a call: the function that gave it has returned, often with a stream beside it to read while the work runs, and the program reads the future when it wants, passes it on, or drops it, where a call that has started is followed to its end.
 A future's write is not imported yet (`E1516`).
 
+`rk bindgen` writes a type's built-ins for the ways the interface's functions pass it: its `new`, its writes and the drop of its writing end when a function takes one from the program, its reads when a function gives one to the program, and the drop of its reading end either way.
 Beside these imports, `rk bindgen` writes two blocks in ST that manage an end for the program.
 A future's `_GET`, `U32_FUTURE_GET` for a `future<u32>`, reads the future and lets go of its reading end in the call that sees `DONE`, setting the handle, an input and output, to 0: a later call does nothing.
 A stream of bytes that a function takes from the program has a `BYTES_STREAM_WRITER`, which makes the stream at its first call and gives `readable` to hand to the function, writes `IN` on a rising edge of `REQ`, handing over the rest when the reader takes a part, and lets go of the writing end on a rising edge of `CLOSE`, once no write is under way.
