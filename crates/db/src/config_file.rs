@@ -18,10 +18,10 @@ pub struct Config {
     pub project: ProjectInfo,
     pub settings: Option<SettingsConfig>,
     pub linter: Option<LinterConfig>,
-    /// The libraries this workspace, or this library, reads beside its own
-    /// files, each under the name of its own `config.toml`
-    /// (see [`crate::dependencies`]). A name keeps its place in the file,
-    /// for the diagnostics that are about it.
+    /// The libraries this workspace reads beside its own files, each under
+    /// the name of its own `config.toml` (see [`crate::dependencies`]). A
+    /// library has none. A name keeps its place in the file, for the
+    /// diagnostics that are about it.
     #[serde(default)]
     pub dependencies: BTreeMap<toml::Spanned<String>, Dependency>,
 }
@@ -35,7 +35,7 @@ pub struct Dependency {
     pub path: Option<String>,
     /// A `.tar.gz` archive, over `https`, `http` or `file`.
     pub url: Option<String>,
-    /// What the archive holds, as `rk fetch --save` writes it.
+    /// What the archive holds, as `rk fetch <url>` writes it.
     pub hash: Option<String>,
 }
 
@@ -115,11 +115,27 @@ impl<'de> Deserialize<'de> for StackSize {
 pub struct ProjectInfo {
     pub name: String,
     pub version: String,
+    /// What the folder is: a program, unless it says `type = "library"`.
+    #[serde(default, rename = "type")]
+    pub kind: ProjectKind,
     /// The files and folders that make the library, for the day it is
     /// fetched: what they do not hold is left out of it and of its hash.
     /// With none, every file is part of it. `config.toml` always is.
     #[serde(default)]
     pub paths: Vec<String>,
+}
+
+/// What a folder with a `config.toml` is, as its `[project] type` says.
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectKind {
+    /// What `rk compile` builds, the libraries it lists built into it.
+    #[default]
+    Program,
+    /// What a program lists in its `[dependencies]`. A library keeps its
+    /// rules in its own folder too, where `rk check` and `rk test` read it
+    /// and `rk compile` does not build it.
+    Library,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]

@@ -10,10 +10,5 @@ publish = false
 name = "rk_bindgen"
 path = "src/lib.rs"
 
-# Writes `stdlib/generated/`: `cargo run -p rk-bindgen`.
-[[bin]]
-name = "rk-bindgen"
-path = "src/main.rs"
-
 [dependencies]
 wit-parser = { workspace = true }

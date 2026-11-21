@@ -408,7 +408,18 @@ impl<'db> Signature<'db> {
 
             if var.kind(db) == VariableKind::External {
                 let var_name = var.get_name_ident(db);
-                if external_var_lookup(db, var_name).is_none() {
+                if crate::hir_ty::library::is_library_code(db, self.scope.file(db)) {
+                    // A library has no global and sees none: what a
+                    // VAR_EXTERNAL would name is the program's (E1008).
+                    self.errors.push(
+                        crate::check::errors::e10_visibility::VisibilityError::OutsideTheLibrary {
+                            text: var.get_name_with_case(db).text(db).clone(),
+                            span: var.get_name_span(db),
+                            reached: crate::check::errors::e10_visibility::Reached::Global,
+                        }
+                        .to_diagnostic(db, self.scope.file(db)),
+                    );
+                } else if external_var_lookup(db, var_name).is_none() {
                     self.errors.push(
                         ResolveError::ExternalVarNotFound { var: *var }
                             .to_diagnostic(db, self.scope.file(db)),
@@ -525,6 +536,23 @@ impl<'db> Signature<'db> {
                                     name: target.path.target.ident(db),
                                     span: spec.get_span(db),
                                     candidates,
+                                }
+                                .to_diagnostic(db, self.scope.file(db)),
+                            );
+                        }
+                        NameResolution::NotFound
+                            if let Some(reached) =
+                                crate::hir_ty::resolver::name::reached_outside(
+                                    db,
+                                    &target.path,
+                                    spec.scope_id(db),
+                                ) =>
+                        {
+                            self.errors.push(
+                                crate::check::errors::e10_visibility::VisibilityError::OutsideTheLibrary {
+                                    text: CallSite::new(spec.scope_id(db), spec.id(db)).to_string(db),
+                                    span: spec.get_span(db),
+                                    reached,
                                 }
                                 .to_diagnostic(db, self.scope.file(db)),
                             );

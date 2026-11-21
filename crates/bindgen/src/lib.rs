@@ -168,8 +168,9 @@ pub fn resolve(world: &str, packages: &[PathBuf]) -> Result<(Resolve, WorldId), 
 
 /// The world rk-bindgen generates for the WIT folder `dir`, laid out as
 /// WIT's tools lay one out: the folder's own package, its files at the top,
-/// and in `deps/` a package for each it uses. `world` names a world of the
-/// folder's own package, and without it the package's one world is taken.
+/// and in `deps/` a package for each it uses, a folder, a `.wit` file or a
+/// binary `.wasm` package. `world` names a world of the folder's own
+/// package, and without it the package's one world is taken.
 /// A package that declares no world needs none written for it: the world
 /// imports every interface the package declares, or, when it declares none
 /// or the folder has no package of its own, every interface of each package
@@ -191,10 +192,18 @@ pub fn resolve_folder(dir: &Path, world: Option<&str>) -> Result<(Resolve, World
             .map_err(|e| format!("selecting the world: {e:#}"))?;
         return Ok((resolve, world));
     }
-    let deps = deps_packages(dir)?;
+    let (deps, binaries) = deps_packages(dir, &mut resolve)?;
     let mut imports = own.iter().flat_map(interfaces_of).collect::<Vec<_>>();
     if imports.is_empty() {
-        imports = deps.iter().flat_map(interfaces_of).collect();
+        imports = deps
+            .iter()
+            .flat_map(interfaces_of)
+            .chain(
+                binaries
+                    .iter()
+                    .flat_map(|package| package_interfaces(&resolve, *package)),
+            )
+            .collect();
     }
     if imports.is_empty() {
         return Err(format!(
@@ -222,6 +231,83 @@ pub fn resolve_folder(dir: &Path, world: Option<&str>) -> Result<(Resolve, World
     Ok((resolve, world))
 }
 
+/// What a component exports, as a program imports it, read from the
+/// component's binary, which carries its types: a world importing each
+/// interface the component's world exports, after each interface the
+/// exports take types from. `bytes` is the component a library carries in
+/// its `component/` folder; what the component itself imports is its own
+/// business, not the program's.
+pub fn component_exports(bytes: &[u8]) -> Result<(Resolve, WorldId), String> {
+    let wit_parser::decoding::DecodedWasm::Component(mut resolve, world) =
+        wit_parser::decoding::decode(bytes).map_err(|e| format!("reading the component: {e:#}"))?
+    else {
+        return Err(
+            "a WIT package, not a component: a library carries the `.wasm` its language built"
+                .to_string(),
+        );
+    };
+    let component = &resolve.worlds[world];
+    let mut exported = Vec::new();
+    for item in component.exports.values() {
+        match item {
+            WorldItem::Interface { id, .. } => exported.push(*id),
+            WorldItem::Function(function) => {
+                return Err(format!(
+                    "the component exports `{}` itself: rk imports a function from an interface",
+                    function.name
+                ));
+            }
+            WorldItem::Type { .. } => {}
+        }
+    }
+    if exported.is_empty() {
+        return Err("the component exports no interface".to_string());
+    }
+    // The interfaces the exports take types from, and those theirs take
+    // from: the world imports them, as a component's world imports what its
+    // exports use.
+    let mut needed: Vec<InterfaceId> = Vec::new();
+    let mut todo = exported.clone();
+    while let Some(id) = todo.pop() {
+        for dep in resolve.interface_direct_deps(id) {
+            if !needed.contains(&dep) && !exported.contains(&dep) {
+                needed.push(dep);
+                todo.push(dep);
+            }
+        }
+    }
+    let imported =
+        |item: &WorldItem| matches!(item, WorldItem::Interface { id, .. } if needed.contains(id));
+    if let Some(missing) = needed.iter().find(|dep| {
+        !component
+            .imports
+            .values()
+            .any(|item| matches!(item, WorldItem::Interface { id, .. } if id == *dep))
+    }) {
+        return Err(format!(
+            "the component's world does not import `{}`, whose types its exports take",
+            resolve.id_of(*missing).unwrap_or_default()
+        ));
+    }
+    let mut program = component.clone();
+    program.name = "bindgen".to_string();
+    program.imports = component
+        .imports
+        .iter()
+        .filter(|(_, item)| imported(item))
+        .chain(
+            component
+                .exports
+                .iter()
+                .filter(|(_, item)| matches!(item, WorldItem::Interface { .. })),
+        )
+        .map(|(key, item)| (key.clone(), item.clone()))
+        .collect();
+    program.exports = Default::default();
+    let world = resolve.worlds.alloc(program);
+    Ok((resolve, world))
+}
+
 /// The package written in the `.wit` files at the top of `dir`, or `None`
 /// when there are none: the folder ships only what its `deps/` holds.
 fn own_package(dir: &Path) -> Result<Option<wit_parser::UnresolvedPackageGroup>, String> {
@@ -240,12 +326,24 @@ fn own_package(dir: &Path) -> Result<Option<wit_parser::UnresolvedPackageGroup>,
         .map_err(|(_, e)| format!("parsing the WIT in `{}`: {e}", dir.display()))
 }
 
-/// The packages in the `deps/` of `dir`, as WIT's tools read them: a folder
-/// or a `.wit` file each, in the order of their names.
-fn deps_packages(dir: &Path) -> Result<Vec<wit_parser::UnresolvedPackageGroup>, String> {
+/// The packages in the `deps/` of `dir`, as WIT's tools read them, in the
+/// order of their names: a folder or a `.wit` file each, parsed, and a
+/// binary `.wasm` package each, read into `resolve` with the packages it
+/// takes from, before the text that may take from it.
+fn deps_packages(
+    dir: &Path,
+    resolve: &mut Resolve,
+) -> Result<
+    (
+        Vec<wit_parser::UnresolvedPackageGroup>,
+        Vec<wit_parser::PackageId>,
+    ),
+    String,
+> {
     let deps = dir.join("deps");
+    let mut binaries = Vec::new();
     if !deps.is_dir() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), binaries));
     }
     let mut entries: Vec<PathBuf> = std::fs::read_dir(&deps)
         .map_err(|e| format!("reading `{}`: {e}", deps.display()))?
@@ -255,10 +353,17 @@ fn deps_packages(dir: &Path) -> Result<Vec<wit_parser::UnresolvedPackageGroup>, 
     let mut packages = Vec::new();
     for path in entries {
         let mut map = wit_parser::SourceMap::new();
-        let read = match path.is_dir() {
-            true => map.push_dir(&path),
-            false if path.extension().is_some_and(|ext| ext == "wit") => map.push_file(&path),
-            false => continue,
+        let read = match (path.is_dir(), path.extension().and_then(|ext| ext.to_str())) {
+            (true, _) => map.push_dir(&path),
+            (false, Some("wit")) => map.push_file(&path),
+            (false, Some("wasm" | "wat")) => {
+                let package = resolve
+                    .push_file(&path)
+                    .map_err(|e| format!("reading the WIT in `{}`: {e:#}", path.display()))?;
+                binaries.push(package);
+                continue;
+            }
+            _ => continue,
         };
         read.map_err(|e| format!("reading the WIT in `{}`: {e:#}", path.display()))?;
         packages.push(
@@ -266,7 +371,22 @@ fn deps_packages(dir: &Path) -> Result<Vec<wit_parser::UnresolvedPackageGroup>, 
                 .map_err(|(_, e)| format!("parsing the WIT in `{}`: {e}", path.display()))?,
         );
     }
-    Ok(packages)
+    Ok((packages, binaries))
+}
+
+/// Each interface the package `package` of `resolve` declares, as a world
+/// imports it, written as [`interfaces_of`] writes them.
+fn package_interfaces(resolve: &Resolve, package: wit_parser::PackageId) -> Vec<String> {
+    let name = &resolve.packages[package].name;
+    let version = name
+        .version
+        .as_ref()
+        .map_or(String::new(), |version| format!("@{version}"));
+    resolve.packages[package]
+        .interfaces
+        .keys()
+        .map(|interface| format!("%{}:%{}/%{interface}{version}", name.namespace, name.name))
+        .collect()
 }
 
 /// Each interface the package `group` declares, as a world imports it:

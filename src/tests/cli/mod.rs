@@ -3,6 +3,7 @@
 
 mod args;
 mod backtrace;
+mod beside;
 mod component;
 pub(crate) mod component_host;
 mod console;

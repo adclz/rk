@@ -67,6 +67,29 @@ pub fn wasi_packages() -> Vec<std::path::PathBuf> {
         .collect()
 }
 
+/// WASI's packages as one WIT folder holds them, a folder each in its
+/// `deps/`, copied from WASI's repository: what a library that calls WASI
+/// ships in its `wit/`, read as one folder. The folder is `wit/` in what
+/// it returns, which keeps it.
+pub fn wasi_wit() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("a WIT folder");
+    for from in wasi_packages() {
+        let name = from
+            .parent()
+            .and_then(|proposal| proposal.file_name())
+            .expect("a proposal's folder");
+        let to = dir.path().join("wit").join("deps").join(name);
+        std::fs::create_dir_all(&to).expect("a folder");
+        for entry in std::fs::read_dir(&from).expect("WASI's package") {
+            let path = entry.expect("a file").path();
+            if path.extension().is_some_and(|ext| ext == "wit") {
+                std::fs::copy(&path, to.join(path.file_name().expect("a name"))).expect("a copy");
+            }
+        }
+    }
+    dir
+}
+
 /// What `f` returns, when it returns within `limit`. A test of something that
 /// took exponential time fails here instead of holding up the suite.
 pub fn within<T: Send + 'static>(
@@ -238,6 +261,7 @@ pub fn add_library_sources(db: &mut RootDatabase, sources: &[&str]) {
                 None,
                 vec![library],
                 Some(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("stdlib/config.toml")),
+                db::config_file::ProjectKind::Program,
                 auto_lsp::lsp_types::PositionEncodingKind::UTF8,
             );
         }
@@ -635,4 +659,83 @@ pub fn walk_hir_diagnostics(db: &dyn WorkspaceDataBase, file: File) -> Vec<IdeDi
     }
 
     vec![diag]
+}
+
+/// The binary of the WIT package `wit` writes, as `wasm-tools component wit
+/// --wasm` encodes one: a package a library's `wit/` may hold in its
+/// `deps/`, as WIT's tools allow.
+pub fn package_binary(wit: &str) -> Vec<u8> {
+    let mut resolve = wit_parser::Resolve::default();
+    let package = resolve
+        .push_str("package.wit", wit)
+        .expect("the WIT resolves");
+    wit_component::encode(&resolve, package, false).expect("the package encodes")
+}
+
+/// The component of the world `world` of `wit`, as wit-component builds one
+/// from a module that implements it with traps: the binary carries its
+/// world.
+pub fn component_of_world(wit: &str, world: &str) -> Vec<u8> {
+    let mut resolve = wit_parser::Resolve::default();
+    let package = resolve
+        .push_str("component.wit", wit)
+        .expect("the WIT resolves");
+    let world = resolve
+        .select_world(&[package], Some(world))
+        .expect("the world");
+    let module =
+        wit_component::dummy_module(&resolve, world, wit_parser::ManglingAndAbi::Standard32);
+    wrapped(module, &resolve, world)
+}
+
+/// The component of the world `world` of `wit`, whose module is `wat`, as
+/// wit-component builds one: the binary carries its world. `wit` may take
+/// WASI's clocks, at the version the standard library ships.
+pub fn component_of_wat(wit: &str, world: &str, wat: &str) -> Vec<u8> {
+    let mut resolve = wit_parser::Resolve {
+        // WASI's time zone is `@unstable(feature = clocks-timezone)`.
+        all_features: true,
+        ..Default::default()
+    };
+    resolve
+        .push_dir(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("stdlib")
+                .join("wit")
+                .join("deps")
+                .join("wasi-clocks"),
+        )
+        .expect("WASI's clocks resolve");
+    let package = resolve
+        .push_str("component.wit", wit)
+        .expect("the WIT resolves");
+    let world = resolve
+        .select_world(&[package], Some(world))
+        .expect("the world");
+    wrapped(
+        wat::parse_str(wat).expect("the module parses"),
+        &resolve,
+        world,
+    )
+}
+
+/// `module`, typed with `world` and wrapped into a component.
+fn wrapped(
+    mut module: Vec<u8>,
+    resolve: &wit_parser::Resolve,
+    world: wit_parser::WorldId,
+) -> Vec<u8> {
+    wit_component::embed_component_metadata(
+        &mut module,
+        resolve,
+        world,
+        wit_component::StringEncoding::UTF8,
+        false,
+    )
+    .expect("the module is typed with its world");
+    wit_component::ComponentEncoder::default()
+        .validate(true)
+        .module(&module)
+        .and_then(|encoder| encoder.encode())
+        .expect("the module wraps into a component")
 }

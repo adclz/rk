@@ -1234,6 +1234,98 @@ END_CONFIGURATION
     ");
 }
 
+/// `rk test` makes a test's instance itself, and no PROGRAM holds it, so no
+/// VAR_CONFIG path names what it holds (E1425): an instance whose type holds
+/// a variable declared `AT %I*`, directly or through another block, and a
+/// variable the test declares so itself, in a test FUNCTION_BLOCK as in a
+/// test FUNCTION. The PROGRAM's instance of the same block, which VAR_CONFIG
+/// locates, and the block that holds one, are not reported.
+#[rstest]
+fn invalid_partly_located_variables_in_a_test(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Drive
+VAR level AT %I* : INT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Holder
+VAR d : Drive; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR d : Drive; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_CONFIG
+    Res.P1.d.level AT %IW4 : INT;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+
+{test}
+FUNCTION_BLOCK test_drive
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR d : Drive; h : Holder; END_VAR
+VAR raw AT %I* : INT; END_VAR
+    DONE := TRUE;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION test_once
+VAR d : Drive; END_VAR
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:27:5 ]
+        |
+     27 | VAR d : Drive; h : Holder; END_VAR
+        |     |
+        |     `-- 'd' holds 'level', declared AT %I*, in a test
+        |
+        | Help: test a block that takes 'level' as a VAR_INPUT
+        |
+        | Note: a VAR_CONFIG path starts at a PROGRAM instance, and `rk test` makes a test's instance itself
+    ----'
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:27:16 ]
+        |
+     27 | VAR d : Drive; h : Holder; END_VAR
+        |                |
+        |                `-- 'h' holds 'd.level', declared AT %I*, in a test
+        |
+        | Help: test a block that takes 'level' as a VAR_INPUT
+        |
+        | Note: a VAR_CONFIG path starts at a PROGRAM instance, and `rk test` makes a test's instance itself
+    ----'
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:28:5 ]
+        |
+     28 | VAR raw AT %I* : INT; END_VAR
+        |     ^|^
+        |      `--- 'raw' is declared AT %I*, in a test
+        |
+        | Help: declare it without `AT`
+        |
+        | Note: a VAR_CONFIG path starts at a PROGRAM instance, and `rk test` makes a test's instance itself
+    ----'
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:34:5 ]
+        |
+     34 | VAR d : Drive; END_VAR
+        |     |
+        |     `-- 'd' holds 'level', declared AT %I*, in a test
+        |
+        | Help: test a block that takes 'level' as a VAR_INPUT
+        |
+        | Note: a VAR_CONFIG path starts at a PROGRAM instance, and `rk test` makes a test's instance itself
+    ----'
+    ");
+}
+
 /// A variable declared `AT %I*` points at its instance's channel, so what
 /// would write over that pointer is refused: an instance's initializer
 /// naming it (E1427), a copy of the instance (E1427), and a VAR_INPUT each

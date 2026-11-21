@@ -41,7 +41,22 @@ pub fn collect_diagnostics(
 /// library lowers into an invalid module with no message naming the
 /// cause.
 pub fn collect_library_errors(db: &RootDatabase) -> Vec<(File, Vec<IdeDiagnostic>)> {
-    check(db, crate::file_order::ordered_library_files(db), None)
+    errors_only(check(
+        db,
+        crate::file_order::ordered_library_files(db),
+        None,
+    ))
+}
+
+/// The ERRORS of the workspace's files, and only the errors: what refuses a
+/// library checked in its own folder before `rk fetch <url>` adds it.
+pub fn collect_errors(db: &RootDatabase) -> Vec<(File, Vec<IdeDiagnostic>)> {
+    errors_only(collect_diagnostics(db, false))
+}
+
+/// The errors of each file, the files with none left out.
+fn errors_only(per_file: Vec<(File, Vec<IdeDiagnostic>)>) -> Vec<(File, Vec<IdeDiagnostic>)> {
+    per_file
         .into_iter()
         .map(|(file, diagnostics)| {
             let errors: Vec<IdeDiagnostic> = diagnostics

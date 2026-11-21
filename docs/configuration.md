@@ -72,6 +72,7 @@ The configuration decides, and the same programs can run in another plant with a
 
 - A workspace has one configuration (`E1402`).
 - Another PLC is another workspace.
+- A library has none: the program that lists it declares the configuration (`E1433`), see [Dependencies](dependencies.md).
 
 Like a namespace, a configuration can be split across files.
 Blocks with the same name are one configuration:

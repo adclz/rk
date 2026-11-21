@@ -21,6 +21,7 @@
 mod aliases;
 mod async_calls;
 mod built_ins;
+mod components;
 mod enums;
 mod flags;
 mod lists;
@@ -212,7 +213,8 @@ pub(super) fn wrapped(
     mir: &mir::MirModule,
     core: &[u8],
 ) -> rk::component::Component {
-    wrapped_with(db, mir, core, &wasi_packages())
+    let wasi = crate::tests::utils::wasi_wit();
+    wrapped_with(db, mir, core, &[wasi.path().join("wit")])
 }
 
 /// A component on a wasmtime host, built from the declarations generated

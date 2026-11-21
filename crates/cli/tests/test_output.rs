@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! What `rk test` writes: the component it ran, unoptimized, named after the
-//! project, with the WIT that types it.
+//! project, and what a failed test wrote.
 
 use std::process::Command;
 
@@ -12,6 +12,19 @@ fn rk(args: &[&str], ws: &std::path::Path) -> std::process::Output {
         .arg(ws)
         .args(args)
         .env("RK_STDLIB_PATH", "")
+        .env("RK_HOME", ws.join("home"))
+        .output()
+        .expect("run rk")
+}
+
+/// [`rk`] with the standard library built into the compiler, as a user
+/// runs it.
+fn rk_with_std(args: &[&str], ws: &std::path::Path) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_rk"))
+        .arg("--workspace")
+        .arg(ws)
+        .args(args)
+        .env_remove("RK_STDLIB_PATH")
         .env("RK_HOME", ws.join("home"))
         .output()
         .expect("run rk")
@@ -69,50 +82,6 @@ END_FUNCTION
     );
 }
 
-/// The declarations `Std.Console` reaches WASI through, as the stdlib has
-/// them, for a workspace that has no standard library.
-const CONSOLE_WASI: &[(&str, &str)] = &[
-    (
-        "wasi-cli-types.st",
-        include_str!("../../../stdlib/generated/wasi-cli-types.st"),
-    ),
-    (
-        "wasi-cli-stdout.st",
-        include_str!("../../../stdlib/generated/wasi-cli-stdout.st"),
-    ),
-    (
-        "wasi-cli-stderr.st",
-        include_str!("../../../stdlib/generated/wasi-cli-stderr.st"),
-    ),
-];
-
-/// The folder `from` and what it holds, copied into `to`.
-fn copy_folder(from: &std::path::Path, to: &std::path::Path) {
-    std::fs::create_dir_all(to).unwrap();
-    for entry in std::fs::read_dir(from).unwrap() {
-        let path = entry.unwrap().path();
-        let into = to.join(path.file_name().unwrap());
-        match path.is_dir() {
-            true => copy_folder(&path, &into),
-            false => {
-                std::fs::copy(&path, &into).unwrap();
-            }
-        }
-    }
-}
-
-/// `Std.Console`, for a workspace that has no standard library: the blocks
-/// a test writes with, as the stdlib has them, without its own tests, which
-/// read `Std.Unit`. It reaches WASI through [`CONSOLE_WASI`].
-fn console() -> String {
-    let source = include_str!("../../../stdlib/Console.st");
-    let tests = "\tNAMESPACE Test\n";
-    let end = "\tEND_NAMESPACE\n";
-    let start = source.find(tests).expect("Console's tests");
-    let stop = source.rfind(end).expect("the end of Console's tests") + end.len();
-    format!("{}{}", &source[..start], &source[stop..])
-}
-
 /// What a failed test wrote is under its failure in the report, on its
 /// line in the concise format, and the record's `output` in `json-lines`.
 /// A test that passes shows none.
@@ -124,13 +93,8 @@ fn rk_test_shows_what_a_failed_test_wrote() {
         "[project]\nname = \"plant\"\nversion = \"0.1.0\"\n",
     )
     .unwrap();
-    std::fs::write(ws.path().join("console.st"), console()).unwrap();
-    for (name, text) in CONSOLE_WASI {
-        std::fs::write(ws.path().join(name), text).unwrap();
-    }
-    // The WIT of what they import, as Std ships it: the workspace's own.
-    let std_wit = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../stdlib/wit");
-    copy_folder(&std_wit, &ws.path().join("wit"));
+    // The standard library's console, which writes through WASI's command
+    // line, its binary typing the imports.
     std::fs::write(
         ws.path().join("main.st"),
         r#"
@@ -157,7 +121,7 @@ END_FUNCTION
     )
     .unwrap();
 
-    let out = rk(&["test"], ws.path());
+    let out = rk_with_std(&["test"], ws.path());
     assert!(!out.status.success(), "a test fails");
     let full = String::from_utf8_lossy(&out.stdout);
     assert!(
@@ -166,14 +130,14 @@ END_FUNCTION
     );
     assert!(!full.contains("not shown"), "{full}");
 
-    let out = rk(&["--output-format", "concise", "test"], ws.path());
+    let out = rk_with_std(&["--output-format", "concise", "test"], ws.path());
     let concise = String::from_utf8_lossy(&out.stdout);
     assert!(
         concise.contains(r#" [output: "reading the sensor\npressure is high\n"]"#),
         "{concise}"
     );
 
-    let out = rk(&["--output-format", "json-lines", "test"], ws.path());
+    let out = rk_with_std(&["--output-format", "json-lines", "test"], ws.path());
     let lines = String::from_utf8_lossy(&out.stdout);
     assert!(
         lines.contains(r#""output":"reading the sensor\npressure is high\n""#),

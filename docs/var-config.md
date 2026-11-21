@@ -56,6 +56,8 @@ END_CONFIGURATION
 - **The address** is complete, in the variable's area and as wide as its type (`E1424`).
 - **An instance left without an address** is `E1425`.
 
+A test's instance has no path from a resource, since `rk test` makes it: a test holds no block with a partial address (`E1425`), see [Tests](tests.md).
+
 A variable of a `PROGRAM` takes a partial address too, and is located the same way: `Main.L1.level AT %IW2 : INT;`.
 
 ## A start value for one instance
@@ -78,7 +80,7 @@ The path can go on into a `STRUCT`, to give one of its fields a value, and the o
 A library is code for any machine: it names no address.
 Its blocks declare `AT %I*`, `%Q*` or `%M*`, and your configuration locates each instance, as above.
 A complete address in a library, in an `AT` or written in a body, is `E1432`.
-This holds for every dependency, a `path` as a `url`, and for the standard library.
+This holds for every dependency, a `path` as a `url`, and for the standard library, and in the library's own folder too, see [Dependencies](dependencies.md).
 
 A library that reads a signal of the machine declares the variable `VAR_EXTERNAL`.
 Your configuration declares the `VAR_GLOBAL` and its address:

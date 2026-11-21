@@ -74,6 +74,71 @@ pub fn library_root(db: &dyn WorkspaceDataBase, file: File) -> Option<Root> {
     library_roots(db).get(id as usize).copied()
 }
 
+/// Whether `file` is a library's code: a file of a library the workspace
+/// reads, or any file of a workspace that is itself a library
+/// (`type = "library"`), checked in its own folder. A library's rules hold
+/// in both. [`library_root`] tells the first only: in its own folder, a
+/// library's files are read at the top level, as a workspace's are.
+pub fn is_library_code(db: &dyn WorkspaceDataBase, file: File) -> bool {
+    if db.library_of(file).is_some() {
+        return true;
+    }
+    match Workspace::try_get(db) {
+        Some(workspace) => workspace.is_library(db),
+        None => {
+            // As in `library_roots`: the singleton's existence is no read
+            // salsa records.
+            db.report_untracked_read();
+            false
+        }
+    }
+}
+
+/// Whose declarations a lookup takes. A library uses nothing but itself and
+/// the standard library: its code sees no other library, and nothing of the
+/// program that reads it, though every library the program lists is read
+/// into one program with it. The program's code sees everything.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Seen {
+    /// What the code of this file sees.
+    From(File),
+    /// Every declaration, whoever's: what a library's code reached for, to
+    /// say whose it is (E1008).
+    Everything,
+}
+
+impl Seen {
+    /// Whether a declaration of `declared_in` is seen.
+    pub fn sees(self, db: &dyn WorkspaceDataBase, declared_in: File) -> bool {
+        let Seen::From(from) = self else {
+            return true;
+        };
+        let Some(own) = db.library_of(from) else {
+            return true;
+        };
+        match db.library_of(declared_in) {
+            Some(other) => other == own || is_standard(db, other),
+            None => false,
+        }
+    }
+}
+
+/// Whether the library `id` is the standard library.
+fn is_standard(db: &dyn WorkspaceDataBase, id: db::dependencies::LibraryId) -> bool {
+    Workspace::try_get(db).is_some_and(|workspace| {
+        workspace
+            .libraries(db)
+            .get(id as usize)
+            .is_some_and(|library| library.standard)
+    })
+}
+
+/// Whose a declaration of `file` is, as E1008 names it: a library's name,
+/// or `None` for the program's.
+pub fn owner_of(db: &dyn WorkspaceDataBase, file: File) -> Option<Ident> {
+    library_root(db, file).map(|root| root.spelling)
+}
+
 /// A namespace path of `file`, `written` as paths are matched and
 /// `written_with_case` as the author spelled it, as the indexes key it and
 /// as it is shown: with the file's root before it, unless it is written

@@ -61,6 +61,19 @@ impl<'db> InitInference<'db> {
                 .to_diagnostic(db, self.scope.file(db)),
             );
         }
+        // E1425: a test's own, which no VAR_CONFIG path reaches.
+        if get_scope(db, var.get_scope_id(db)).is_test(db) {
+            use crate::check::errors::e14_config::{PartlyUnlocated, UnreachablePlace};
+            self.errors.push(
+                ConfigError::PartlyLocatedUnlocated(PartlyUnlocated::Unreachable {
+                    var: *var,
+                    member: Vec::new(),
+                    address: compact_str::CompactString::from(dv.to_address(db)),
+                    place: UnreachablePlace::Test,
+                })
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
         true
     }
 
@@ -102,7 +115,7 @@ impl<'db> InitInference<'db> {
     /// E1425: an instance whose type holds a variable declared `AT %I*`,
     /// held where no VAR_CONFIG path can name it, or where a call copies over
     /// it: an array's element, a STRUCT's field, a VAR_GLOBAL, an instance
-    /// made for each call, a VAR_INPUT. Returns whether it reported.
+    /// made for each call, a VAR_INPUT, a test's. Returns whether it reported.
     fn check_unreachable_partly(
         &mut self,
         db: &'db dyn WorkspaceDataBase,
@@ -139,9 +152,10 @@ impl<'db> InitInference<'db> {
                 None => return false,
             },
         };
+        let scope = get_scope(db, var.get_scope_id(db));
         let per_call = var.is_temp(db)
             || matches!(
-                get_scope(db, var.get_scope_id(db)).kind,
+                scope.kind,
                 ScopeKind::Pou(Pou::Function(_)) | ScopeKind::MethodDecl(_)
             );
         let place = if in_struct {
@@ -150,6 +164,10 @@ impl<'db> InitInference<'db> {
             UnreachablePlace::Array
         } else if var.is_global(db) {
             UnreachablePlace::Global
+        } else if scope.is_test(db) {
+            // A test FUNCTION's is made for each call too, but nothing could
+            // hold it where a VAR_CONFIG path reaches.
+            UnreachablePlace::Test
         } else if per_call {
             UnreachablePlace::PerCall
         } else if var.is_input(db) {
@@ -622,9 +640,11 @@ impl<'db> InitInference<'db> {
             // (E0207). Cycle-safe here where a named global type resolves
             // freely; inside signature inference the same resolution
             // re-enters `infer_signature`. Absence is E0206, the signature's,
-            // and an `ARRAY[*]` one is E0509.
+            // and an `ARRAY[*]` one is E0509. A library's has no global to
+            // agree with (E1008).
             if var.kind(db) == crate::hir_def::pous::variable::VariableKind::External
                 && var.conformand(db).is_none()
+                && !crate::hir_ty::library::is_library_code(db, self.scope.file(db))
                 && let Some(global) =
                     crate::hir_ty::index_graphs::external_var_lookup(db, var.get_name_ident(db))
                 && !Type::resolve_spec(db, var.spec(db)).is_never()
@@ -650,8 +670,7 @@ impl<'db> InitInference<'db> {
             {
                 let address = compact_str::CompactString::from(dv.to_address(db));
                 // A library names no address: it is code for any machine.
-                let in_library =
-                    crate::check::check_duplicates::is_library_file(db, self.scope.file(db));
+                let in_library = crate::hir_ty::library::is_library_code(db, self.scope.file(db));
                 let banded = dv.area(db).filter(|_| {
                     !in_library
                         && ((var.kind(db) == crate::hir_def::pous::variable::VariableKind::Global

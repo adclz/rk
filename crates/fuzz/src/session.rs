@@ -75,6 +75,7 @@ pub(crate) fn load(source: &str) -> Option<(RootDatabase, File)> {
             standard: false,
         }],
         Some(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../stdlib/config.toml")),
+        db::config_file::ProjectKind::Program,
         PositionEncodingKind::UTF8,
     );
     let library_url = Url::parse(LIBRARY_URL).expect("a valid url");

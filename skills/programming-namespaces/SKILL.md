@@ -203,6 +203,9 @@ END_NAMESPACE
 The error lands on the workspace side whichever file the compiler reads first — the library is never the one told to rename.
 A duplicate between two WORKSPACE files is the same `E0102`.
 
+What the workspace adds is the workspace's: the library's own code does not see it.
+A library sees its own declarations and the standard library's, nothing of another library or of the workspace (`E1008`).
+
 A LOCAL declaration still wins over a name reached through `USING`, silently and by design: that is shadowing an import, not redefining a namespace's member.
 
 ## Error codes

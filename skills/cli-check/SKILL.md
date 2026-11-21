@@ -15,6 +15,8 @@ Runs the static analyzer over the workspace.
 Nothing is compiled and nothing is written.
 
 Reports every compilation error, plus the linter's warnings, hints and info.
+The errors of the libraries the workspace lists are reported too, as `rk compile` reports them, and the summary says how many are theirs: `1 error(s) (1 in library files)`.
+Their warnings are left to their authors.
 
 ## Usage
 

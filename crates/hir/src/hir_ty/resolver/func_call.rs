@@ -142,7 +142,8 @@ fn resolve_call<'db>(
     let arg_types = call_input_arg_types(db, resolver, func_call, callable, ctx);
     let unresolved_argument = arg_types.inputs.iter().any(|t| t.is_never())
         || arg_types.outputs.iter().any(|(_, t)| t.is_never());
-    let pick = select_overload(db, callable, expected, unresolved_argument, |f| {
+    let seen = crate::hir_ty::library::Seen::From(ctx.scope.file(db));
+    let pick = select_overload(db, seen, callable, expected, unresolved_argument, |f| {
         candidate_fit(db, resolver, func_call, f, ctx)
     });
     let (callable, stand_in) = match pick {

@@ -42,7 +42,7 @@ fn calls(record: &TestRecord) -> Vec<(String, u32)> {
 
 /// The tests of `component`, run as `rk test` runs them.
 fn run(component: &[u8], budget: Option<Duration>) -> Vec<TestRecord> {
-    rk::test_host::run_each(component, None, budget, |_| {}).expect("the tests run")
+    rk::test_host::run_each(component, &[], None, budget, |_| {}).expect("the tests run")
 }
 
 /// The tests of `build`'s component, run as `rk test` runs them.
