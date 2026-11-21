@@ -111,6 +111,101 @@ NAMESPACE INTERNAL Wasi
 					END_IF;
 				END_IF;
 			END_FUNCTION_BLOCK
+
+			/* Reads what `read-via-stream` gives through a stream of bytes, a request
+			   at a time. */
+			FUNCTION_BLOCK READ_VIA_STREAM_READER
+			VAR_INPUT
+				/* A rising edge reads what comes next, 4096 bytes at most; the first calls
+				   `read-via-stream`. An edge while `BUSY` is ignored, and one after the
+				   stream ended is `DONE` at once, `OUT` empty. */
+				REQ : BOOL;
+				/* A rising edge lets go of the stream, once no read is under way. */
+				CLOSE : BOOL;
+			END_VAR
+			VAR_OUTPUT
+				/* TRUE while a read waits for bytes. */
+				BUSY : BOOL;
+				/* TRUE in the call where a read has given what came, in `OUT`. */
+				DONE : BOOL;
+				/* What the last read gave: empty once the stream has ended, nothing more
+				   coming. */
+				OUT : STRING[4096];
+				/* TRUE once the `result<_, error-code>` from `read-via-stream` is an
+				   error, whose `error-code` is in `ERRORID`. */
+				ERROR : BOOL;
+				/* The `error-code` of the `result<_, error-code>` from `read-via-stream`,
+				   when it is an error, which turns `ERROR` TRUE. */
+				ERRORID : Wasi.Cli.Types.ERROR_CODE;
+				/* TRUE once the stream has ended and the `future<result<_, error-code>>`
+				   from `read-via-stream` has its value. */
+				ENDED : BOOL;
+			END_VAR
+			VAR
+				open : BOOL;
+				requested : BOOL;
+				closing : BOOL;
+				shut : BOOL;
+				stream : UDINT;
+				future : UDINT;
+				read : BYTES_STREAM_READ;
+				answer : RESULT_FUTURE_GET;
+				came : BOOL;
+			END_VAR
+				DONE := FALSE;
+				// The stream, given by the function at the first request.
+				IF REQ AND NOT open THEN
+					Wasi.Cli.Stdin.READ_VIA_STREAM(item0 => stream, item1 => future);
+					open := TRUE;
+				END_IF;
+				IF open THEN
+					// An edge while BUSY is ignored.
+					IF REQ AND NOT requested AND NOT BUSY THEN
+						IF stream <> 0 THEN
+							BUSY := TRUE;
+						ELSE
+							// The stream has ended: nothing more comes.
+							OUT := '';
+							DONE := TRUE;
+						END_IF;
+					END_IF;
+					requested := REQ;
+					IF BUSY THEN
+						// Starts the read, or checks the one running.
+						read(stream := stream);
+						IF read.DONE THEN
+							OUT := read.data;
+							BUSY := FALSE;
+							DONE := TRUE;
+							IF read.closed THEN
+								// The writer left: the reading end goes too.
+								BYTES_STREAM_DROP_READABLE(stream := stream);
+								stream := 0;
+							END_IF;
+						END_IF;
+					END_IF;
+					// The reading end goes on CLOSE, once no read is under way.
+					IF CLOSE AND NOT closing THEN
+						shut := TRUE;
+					END_IF;
+					closing := CLOSE;
+					IF shut AND NOT BUSY THEN
+						IF stream <> 0 THEN
+							BYTES_STREAM_DROP_READABLE(stream := stream);
+							stream := 0;
+						END_IF;
+						shut := FALSE;
+					END_IF;
+					// The answer, read once it comes, and kept.
+					answer(future := future);
+					IF answer.DONE THEN
+						ERRORID := answer.error;
+						came := TRUE;
+					END_IF;
+					ENDED := stream = 0 AND came;
+					ERROR := answer.failed;
+				END_IF;
+			END_FUNCTION_BLOCK
 		END_NAMESPACE
 	END_NAMESPACE
 END_NAMESPACE

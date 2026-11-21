@@ -280,7 +280,7 @@ NAMESPACE INTERNAL Wasi
 				// The stream, made at the first request and handed to the function.
 				IF REQ AND NOT open THEN
 					stream();
-					future := WRITE_VIA_STREAM(data := stream.readable);
+					future := Wasi.Cli.Stdout.WRITE_VIA_STREAM(data := stream.readable);
 					open := TRUE;
 				END_IF;
 				IF open THEN
