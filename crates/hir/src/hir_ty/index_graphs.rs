@@ -277,9 +277,14 @@ pub fn config_located<'db>(
 pub struct LocatedView {
     /// The widest address the workspace mentions that contains this one.
     pub owner: LocatedAddress,
-    /// Where this address's low bit sits in the owner's value. The image is
-    /// little-endian, so byte 1 of `%IW0` is its high byte and `%IX0.3` is
-    /// bit 3 of it.
+    /// Where this address's low bit sits in the owner's cell, which holds
+    /// the owner's value in the processor's own order: the bit of that value
+    /// it is, and the bit of the cell's memory. In a little-endian area the
+    /// image's bytes go up through the cell, so byte 1 of `%IW0` is its high
+    /// byte and `%IX0.3` is bit 3 of it. In a big-endian area they go through
+    /// it back to front, so byte 1 of `%IW0` is its low byte and `%IX0.3` is
+    /// bit 11: which byte an address names changes, and no read or write
+    /// swaps a value.
     pub shift: u32,
 }
 
@@ -366,7 +371,8 @@ pub fn located_declarations_at<'db>(
 /// is the WIDEST container mentioned, so a whole nest shares one cell.
 /// `None` when nothing mentioned contains it, or it has no byte reading.
 pub fn located_view(db: &dyn WorkspaceDataBase, address: &LocatedAddress) -> Option<LocatedView> {
-    let numbering = db::config_file::get_config(db).addresses().numbering;
+    let settings = db::config_file::get_config(db).addresses();
+    let numbering = settings.numbering;
     let bits = address.image_bits(numbering)?;
     let mut owner: Option<(&LocatedAddress, std::ops::Range<u64>)> = None;
     {
@@ -390,7 +396,16 @@ pub fn located_view(db: &dyn WorkspaceDataBase, address: &LocatedAddress) -> Opt
     }
     owner.map(|(owner, range)| LocatedView {
         owner: owner.clone(),
-        shift: (bits.start - range.start) as u32,
+        shift: match settings.byte_order {
+            db::config_file::ByteOrder::Little => (bits.start - range.start) as u32,
+            // Back to front: the cell's first byte is the owner's last, and
+            // this address's lowest byte its last one, a bit keeping its place
+            // in its byte. An owner is a byte or more, so its end is a byte's.
+            db::config_file::ByteOrder::Big => {
+                let last = bits.end.div_ceil(8);
+                ((range.end / 8 - last) * 8 + bits.start % 8) as u32
+            }
+        },
     })
 }
 

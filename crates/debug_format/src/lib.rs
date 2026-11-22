@@ -1010,9 +1010,12 @@ pub struct LocatedVar {
 pub struct LocatedPart {
     /// The owner's address, as its own entry lists it.
     pub owner: String,
-    /// The part's low bit in the owner's value. Each size counts in its own
-    /// units and the image is little-endian, so `%IB1` is bits 8 to 15 of
-    /// `%IW0` and `%IX1.2` is bit 10.
+    /// The part's low bit in the owner's value, as the workspace's
+    /// `[addresses]` number them and order their bytes. By default each size
+    /// counts in its own units and the image is little-endian, so `%IB1` is
+    /// bits 8 to 15 of `%IW0` and `%IX1.2` is bit 10; big-endian, `%IB1` is
+    /// bits 0 to 7 and `%IX1.2` bit 2. The owner's value is in the
+    /// processor's own order either way.
     pub shift: u16,
 }
 
