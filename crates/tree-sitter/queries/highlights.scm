@@ -24,7 +24,7 @@
 
 [
   "VAR" "END_VAR" "VAR_INPUT" "VAR_OUTPUT" "VAR_IN_OUT" "VAR_TEMP"
-  "VAR_EXTERNAL" "VAR_GLOBAL" "RETAIN" "NON_RETAIN" "CONSTANT" "AT"
+  "VAR_EXTERNAL" "VAR_GLOBAL" "VAR_CONSTANT" "RETAIN" "NON_RETAIN" "CONSTANT" "AT"
   "REF_TO" "REF" "R_EDGE" "F_EDGE"
 ] @keyword.storage
 ; The grammar makes `REF_TO` a node of its own, which the string above

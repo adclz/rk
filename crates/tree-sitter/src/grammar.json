@@ -22,6 +22,10 @@
           },
           {
             "type": "SYMBOL",
+            "name": "constant_var_decls"
+          },
+          {
+            "type": "SYMBOL",
             "name": "data_type_decl"
           },
           {
@@ -6278,6 +6282,92 @@
         }
       ]
     },
+    "constant_var_decls": {
+      "type": "PREC_RIGHT",
+      "value": 0,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "ALIAS",
+            "content": {
+              "type": "TOKEN",
+              "content": {
+                "type": "PREC",
+                "value": 0,
+                "content": {
+                  "type": "PATTERN",
+                  "value": "[vV][aA][rR]_[cC][oO][nN][sS][tT][aA][nN][tT]"
+                }
+              }
+            },
+            "named": false,
+            "value": "VAR_CONSTANT"
+          },
+          {
+            "type": "REPEAT",
+            "content": {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "var_decl_init_list"
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "ERR_variable_with_no_spec"
+                    }
+                  ]
+                },
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "STRING",
+                      "value": ";"
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "ALIAS",
+            "content": {
+              "type": "TOKEN",
+              "content": {
+                "type": "PREC",
+                "value": 0,
+                "content": {
+                  "type": "PATTERN",
+                  "value": "[eE][nN][dD]_[vV][aA][rR]"
+                }
+              }
+            },
+            "named": false,
+            "value": "END_VAR"
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "STRING",
+                "value": ";"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        ]
+      }
+    },
     "global_var_decls": {
       "type": "PREC_RIGHT",
       "value": 0,
@@ -11217,6 +11307,10 @@
       "content": {
         "type": "CHOICE",
         "members": [
+          {
+            "type": "SYMBOL",
+            "name": "constant_var_decls"
+          },
           {
             "type": "SYMBOL",
             "name": "data_type_decl"

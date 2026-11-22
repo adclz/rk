@@ -2776,6 +2776,25 @@
     }
   },
   {
+    "type": "constant_var_decls",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "ERR_variable_with_no_spec",
+          "named": true
+        },
+        {
+          "type": "var_decl_init_list",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "data_sink",
     "named": true,
     "fields": {},
@@ -5193,6 +5212,10 @@
           "named": true
         },
         {
+          "type": "constant_var_decls",
+          "named": true
+        },
+        {
           "type": "data_type_decl",
           "named": true
         },
@@ -6561,6 +6584,10 @@
         },
         {
           "type": "config_decl",
+          "named": true
+        },
+        {
+          "type": "constant_var_decls",
           "named": true
         },
         {
@@ -8425,6 +8452,10 @@
   },
   {
     "type": "VAR_CONFIG",
+    "named": false
+  },
+  {
+    "type": "VAR_CONSTANT",
     "named": false
   },
   {
