@@ -49,9 +49,9 @@ fn addresses_that_share_bytes_are_retained_alike(mut with_db: db::RootDatabase) 
         |
      12 |         second AT %MW8 : WORD;
         |                   ^^|^
-        |                     `--- 'second' is not RETAIN but is stored with 'first', which is
+        |                     `--- 'second' is not RETAIN, but is stored with 'first', which is RETAIN
         |
-        | Help: declare 'second' RETAIN too
+        | Help: move 'second' into a RETAIN block
         |
         | Note: addresses that share bytes are stored together, and persist together or not at all
     ----'
@@ -152,11 +152,11 @@ END_CONFIGURATION
     ");
 }
 
-/// VAR_CONFIG gives `%MW8` to an instance's variable with a starting value,
+/// VAR_CONFIG gives `%MW8` to an instance's variable with an initial value,
 /// beside a VAR_GLOBAL at `%MW7`: the value would set part of it, and is
 /// refused the same way.
 #[rstest]
-fn a_configured_address_that_shares_bytes_has_no_starting_value(mut with_db: db::RootDatabase) {
+fn a_configured_address_that_shares_bytes_has_no_initial_value(mut with_db: db::RootDatabase) {
     let _config = with_config(&mut with_db, BY_BYTE);
     let source = "
 FUNCTION_BLOCK Motor
@@ -190,15 +190,15 @@ END_CONFIGURATION
 ";
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1435] Error: initial value on shared bytes
-        ,-[ file:///test0.st:23:16 ]
+        ,-[ file:///test0.st:23:25 ]
         |
      20 |         other AT %MW7 : WORD;
         |         ^^|^^
         |           `---- 'other' is declared here
         |
      23 |         R.L1.a.speed AT %MW8 : WORD := WORD#16#1234;
-        |                ^^|^^
-        |                  `---- '%MW8' shares bytes with '%MW7' and cannot have an initial value
+        |                         ^^|^
+        |                           `--- '%MW8' shares bytes with '%MW7' and cannot have an initial value
         |
         | Help: locate a variable at '%MD7', which holds all their bytes, and give it the initial value
         |
@@ -259,24 +259,179 @@ END_CONFIGURATION
         |         ^^^|^^
         |            `---- 'second' is declared here
         |
-        | Help: declare it with a type that has no initial value
+        | Help: declare it as 'INT'
         |
         | Note: the initial value of 'Tally' would set part of '%MW8' too
     ----'
     [E1435] Error: initial value on shared bytes
-        ,-[ file:///test0.st:27:16 ]
+        ,-[ file:///test0.st:27:25 ]
         |
      24 |         second AT %MW8 : WORD;
         |         ^^^|^^
         |            `---- 'second' is declared here
         |
      27 |         R.L1.a.speed AT %MW9 : Tally;
-        |                ^^|^^
-        |                  `---- '%MW9' shares bytes with '%MW8' and cannot have an initial value
+        |                         ^^|^
+        |                           `--- '%MW9' shares bytes with '%MW8' and cannot have an initial value
         |
-        | Help: declare it with a type that has no initial value
+        | Help: declare it as 'INT'
         |
         | Note: the initial value of 'Tally' would set part of '%MW8' too
     ----'
     ");
 }
+
+/// A named-value type starts at its first value and a subrange at its lower
+/// limit, but neither can be located (E1422, and E1424 through VAR_CONFIG):
+/// that is the one error each, with nothing said of the start value.
+#[rstest]
+fn a_type_no_address_takes_is_refused_once(mut with_db: db::RootDatabase) {
+    let _config = with_config(&mut with_db, BY_BYTE);
+    let source = "
+TYPE Light : INT (Red := 1, Amber := 2, Green := 3); END_TYPE
+TYPE Band : INT (10..20); END_TYPE
+
+FUNCTION_BLOCK Motor
+VAR
+    light AT %M* : Light;
+END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Line
+VAR a : Motor; END_VAR
+    a();
+END_PROGRAM
+
+CONFIGURATION C
+    VAR_GLOBAL
+        first AT %MW7 : WORD;
+        lit AT %MW20 : Light;
+        next AT %MW21 : WORD;
+        band AT %MW40 : Band;
+        other AT %MW41 : WORD;
+    END_VAR
+    VAR_CONFIG
+        R.L1.a.light AT %MW8 : Light;
+    END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM L1 WITH T : Line;
+    END_RESOURCE
+END_CONFIGURATION
+";
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1422] Error: location type mismatch
+        ,-[ file:///test0.st:19:24 ]
+        |
+     19 |         lit AT %MW20 : Light;
+        |                        ^^|^^
+        |                          `---- 'lit' is 'Light', not an elementary type, while '%MW20' is 16 bits
+        |
+        | Help: declare it as an elementary type of 16 bits, such as WORD, INT or UINT
+        |
+        | Note: a located variable holds one value as wide as its address
+    ----'
+    [E1422] Error: location type mismatch
+        ,-[ file:///test0.st:21:25 ]
+        |
+     21 |         band AT %MW40 : Band;
+        |                         ^^|^
+        |                           `--- 'band' is 'Band', not an elementary type, while '%MW40' is 16 bits
+        |
+        | Help: declare it as an elementary type of 16 bits, such as WORD, INT or UINT
+        |
+        | Note: a located variable holds one value as wide as its address
+    ----'
+    [E1424] Error: location refused
+        ,-[ file:///test0.st:25:16 ]
+        |
+     25 |         R.L1.a.light AT %MW8 : Light;
+        |                ^^|^^
+        |                  `---- 'light' is 'Light', not an elementary type, while '%MW8' is 16 bits
+        |
+        | Help: give it an address of its type's width
+        |
+        | Note: the variable holds one value as wide as its address
+    ----'
+    ");
+}
+
+/// A member VAR_CONFIG locates beside a VAR_GLOBAL, both at addresses that
+/// share bytes, in a RETAIN instance: the instance is refused for holding
+/// it (E1420), and nothing reaches the bytes it shares.
+#[rstest]
+fn a_retain_instance_holding_a_configured_member_is_refused(mut with_db: db::RootDatabase) {
+    let _config = with_config(&mut with_db, BY_BYTE);
+    let source =
+        CONFIGURED_BESIDE_FIRST.replace("VAR a : Motor; END_VAR", "VAR RETAIN a : Motor; END_VAR");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @r"
+    [E1420] Error: RETAIN on an I/O location
+        ,-[ file:///test0.st:11:12 ]
+        |
+     11 | VAR RETAIN a : Motor; END_VAR
+        |            |
+        |            `-- 'a' is RETAIN and holds 'speed', declared AT %M*, with no storage of its own to retain
+        |
+        | Help: to persist a marker, declare it located in full, RETAIN, in a PROGRAM or as a VAR_GLOBAL
+        |
+        | Note: a variable VAR_CONFIG locates points at its marker and has no storage of its own to retain
+    ----'
+    ");
+}
+
+/// A member VAR_CONFIG locates is never RETAIN (E1420): beside a RETAIN
+/// VAR_GLOBAL it shares a byte with, it would persist all the same, and the
+/// entry is refused (E1434).
+#[rstest]
+fn a_configured_member_beside_a_retain_one_is_refused(mut with_db: db::RootDatabase) {
+    let _config = with_config(&mut with_db, BY_BYTE);
+    let source = CONFIGURED_BESIDE_FIRST.replace("    VAR_GLOBAL\n", "    VAR_GLOBAL RETAIN\n");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @r"
+    [E1434] Error: RETAIN mismatch on shared bytes
+        ,-[ file:///test0.st:21:25 ]
+        |
+     18 |         first AT %MW7 : WORD;
+        |         ^^|^^
+        |           `---- 'first' is declared here
+        |
+     21 |         R.L1.a.speed AT %MW8 : WORD;
+        |                         ^^|^
+        |                           `--- 'speed' is not RETAIN, but is stored with 'first', which is RETAIN
+        |
+        | Help: locate it at an address that shares no bytes with 'first'
+        |
+        | Note: addresses that share bytes are stored together, and persist together or not at all
+    ----'
+    ");
+}
+
+/// A member of `Motor` VAR_CONFIG locates at `%MW8`, beside `first` at
+/// `%MW7`.
+const CONFIGURED_BESIDE_FIRST: &str = "
+FUNCTION_BLOCK Motor
+VAR
+    speed AT %M* : WORD;
+END_VAR
+    speed := WORD#1;
+END_FUNCTION_BLOCK
+
+PROGRAM Line
+VAR_EXTERNAL first : WORD; END_VAR
+VAR a : Motor; END_VAR
+    a();
+    first := WORD#2;
+END_PROGRAM
+
+CONFIGURATION C
+    VAR_GLOBAL
+        first AT %MW7 : WORD;
+    END_VAR
+    VAR_CONFIG
+        R.L1.a.speed AT %MW8 : WORD;
+    END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM L1 WITH T : Line;
+    END_RESOURCE
+END_CONFIGURATION
+";
