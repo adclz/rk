@@ -132,10 +132,15 @@ static SURROUND_SPACES: &str = r##"
 (extern_result ")" @prepend_antispace)
 (pragma_string) @leaf
 
+; A pragma above a POU or a METHOD starts its own line, whatever the
+; source did: without this an `{allow}` glued onto the preceding END_VAR,
+; and the others onto the END_FUNCTION of a POU that ends on the line
+; before. An `{extern}` had a softline instead, a line break when the pragma
+; spanned two lines: it took its own line once, and joined the previous
+; END_FUNCTION the second time.
+(pou_pragma) @prepend_hardline
+
 ; Allow pragma: normalize spacing between children
-; In pou_pragma position (above a POU or METHOD) it gets its own line —
-; without this it glues onto the preceding END_VAR.
-(pou_pragma (allow_pragma) @prepend_hardline)
 (allow_pragma "{" @append_antispace)
 (allow_pragma "allow" @append_space)
 (allow_pragma rule: (pragma_string) @append_space)
@@ -252,7 +257,6 @@ static NEW_LINES: &str = r##"
     "TASK"
     "PROGRAM"
     "RESOURCE"
-    (extern_pragma)
 ] @prepend_spaced_softline
 
 ; A statement starts its own line. The `;` decides nothing here: it used to

@@ -1284,6 +1284,39 @@ END_FUNCTION
     ");
 }
 
+/// A pragma above a POU starts its own line, after a POU that ends on the
+/// line before as well, and formatting again leaves it there: an `extern`
+/// written over two lines took its own line once and joined the previous
+/// `END_FUNCTION` the second time, the others joined it at once.
+#[rstest]
+#[case::extern_pragma_over_two_lines("{\nextern 'm' 'n'}")]
+#[case::extern_pragma("{extern 'm' 'n'}")]
+#[case::test_pragma("{test}")]
+#[case::export_pragma("{export}")]
+#[case::once_pragma("{once}")]
+#[case::must_call_pragma("{must_call}")]
+#[case::allow_pragma("{allow 'L0201'}")]
+pub fn a_pou_pragma_starts_its_own_line(mut with_db: RootDatabase, #[case] pragma: &str) {
+    let source =
+        format!("FUNCTION B : INT\nEND_FUNCTION{pragma}\nFUNCTION C : INT\nEND_FUNCTION\n");
+    let once = fmt(add_source(&mut with_db, &source).document(&with_db));
+    let pragma = once.lines().nth(2).unwrap_or_default().to_string();
+    assert_eq!(
+        once.lines().take(4).collect::<Vec<_>>(),
+        [
+            "FUNCTION B: INT",
+            "END_FUNCTION",
+            pragma.as_str(),
+            "FUNCTION C: INT"
+        ],
+        "{once}"
+    );
+    assert!(pragma.starts_with('{') && pragma.ends_with('}'), "{once}");
+    let mut again = crate::tests::utils::with_db();
+    let twice = fmt(add_source(&mut again, &once).document(&again));
+    assert_eq!(twice, once);
+}
+
 /// `async` sits between `extern` and the module, a space on each side.
 #[rstest]
 pub fn async_extern_pragma_formatting(mut with_db: RootDatabase) {

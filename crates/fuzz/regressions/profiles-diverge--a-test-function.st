@@ -1,0 +1,3 @@
+{test}
+FUNCTION my_test : INT
+END_FUNCTION

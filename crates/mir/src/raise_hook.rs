@@ -7,8 +7,9 @@
 //! that call, and a test that fails on a raise failed at the last one.
 //!
 //! No other build imports it: a debug and a release build of a program
-//! differ in their custom sections only, so that what a monitor or a
-//! retain file holds of one holds of the other.
+//! differ in their custom sections only, and in the body of the control
+//! interface's `run-test`, which a release leaves empty, so that what a
+//! monitor or a retain file holds of one holds of the other.
 
 use compact_str::CompactString;
 use db::WorkspaceDataBase;

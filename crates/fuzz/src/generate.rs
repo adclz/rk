@@ -88,7 +88,9 @@
 //! 0 and -1 (`DINT#-2147483648 / -1` traps), an index is wrapped into its
 //! array's range by the expression itself, and loops have literal bounds.
 //! A call that changes state (an FB, a method) is a statement of its own,
-//! so no evaluation order is assumed. A `VAR_IN_OUT` is modelled as
+//! so no evaluation order is assumed; a walk call that assigns its result
+//! writes it where no index reads the array the call writes, nor a
+//! reference, which may point into it. A `VAR_IN_OUT` is modelled as
 //! copy-in, copy-out, the same thing here: nothing else runs meanwhile.
 
 use std::fmt::Write as _;
@@ -963,6 +965,11 @@ struct Generator<'a> {
     /// How many indexes are being written, one inside the other: an index
     /// reads no array element past the first level.
     indexing: u32,
+    /// The array a walk call writes, while its target is chosen: no index
+    /// of the target reads it, nor anything through a reference, which may
+    /// point into it. When the index is computed, before the call or after
+    /// it, is the compiler's to choose, and the evaluator assumed after.
+    unread: Option<usize>,
     /// The class method being written, for its THIS and SUPER calls.
     this: Option<ThisCtx>,
 }
@@ -1320,7 +1327,12 @@ impl Generator<'_> {
             return out;
         }
         let arrays: Vec<(usize, Ty)> = self.d.arrays.iter().map(|a| a.ty).enumerate().collect();
+        // Within an index of a walk call's target, nothing the call writes.
+        let guarded = self.indexing > 0 && self.unread.is_some();
         for (a, elem) in arrays {
+            if guarded && self.unread == Some(a) {
+                continue;
+            }
             if elem == ty {
                 let index = self.index(a, vars);
                 out.push(Place::Index(a, Box::new(index)));
@@ -1335,6 +1347,9 @@ impl Generator<'_> {
             }
         }
         for (r, reference) in self.d.refs.iter().enumerate() {
+            if guarded {
+                break;
+            }
             match reference.target {
                 t if t == ty => out.push(Place::Deref(r)),
                 Ty::Struct(k) => {
@@ -2374,7 +2389,15 @@ impl Generator<'_> {
         };
         let target = match host {
             Host::Block => None,
-            _ => Some(self.target(result)?),
+            _ => {
+                self.unread = match bound {
+                    Bound::Array(a) => Some(a),
+                    _ => None,
+                };
+                let target = self.target(result);
+                self.unread = None;
+                Some(target?)
+            }
         };
         let k = writes.then(|| self.expr(view, 2, readable));
         Some(Stmt::Walk(WalkCall {
@@ -2552,6 +2575,7 @@ pub fn program(bytes: &[u8]) -> String {
         d: Decls::default(),
         budget: 28,
         indexing: 0,
+        unread: None,
         this: None,
     };
 
@@ -5437,6 +5461,52 @@ mod tests {
             }
         }
         assert!(checked >= 3, "only {checked} seeds called a walker");
+    }
+
+    /// A walk call's target reads nothing the call writes: no index of it
+    /// reads the array the call is bound to, nor anything through a
+    /// reference, which may point into it. Whether such an index is computed
+    /// before the call or after it is the compiler's to choose, and the
+    /// evaluator assumed after: `arr1[i(arr1)] := walk1(a := arr1, ...)`
+    /// stored 2 where the evaluator said 3.
+    #[test]
+    fn a_walk_call_s_target_reads_nothing_it_writes() {
+        let mut seed = 0xD1B5_4A32_D192_ED03u64;
+        let mut indexed = 0;
+        for _ in 0..3000 {
+            let text = random_program(&mut seed);
+            let Some(body) = text.split("\nPROGRAM P").nth(1) else {
+                continue;
+            };
+            for line in body.lines() {
+                let Some((target, call)) = line.trim().split_once(" := ") else {
+                    continue;
+                };
+                let walks = call.starts_with("walk") || call.contains(".run(a := ");
+                let Some(bound) = call.split("(a := ").nth(1).filter(|_| walks) else {
+                    continue;
+                };
+                // A matrix is no place a reference points into, and no
+                // index reads it.
+                let bound = bound.split([',', ')']).next().unwrap_or_default();
+                if !bound.starts_with("arr") {
+                    continue;
+                }
+                let Some(at) = target.find('[') else {
+                    continue;
+                };
+                indexed += 1;
+                let index = &target[at + 1..];
+                assert!(
+                    !index.contains(&format!("{bound}[")) && !index.contains('^'),
+                    "the index of `{target}` reads what the call writes\n{line}"
+                );
+            }
+        }
+        assert!(
+            indexed >= 20,
+            "only {indexed} walk calls had an indexed target"
+        );
     }
 
     /// A program for each route a recursive body closes its cycle by: each

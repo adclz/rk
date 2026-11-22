@@ -744,3 +744,108 @@ END_FUNCTION
     sink.drain_into(&mut builder);
     assert!(!builder.build().data.is_empty());
 }
+
+/// The tokens of a file, each with its line, its column, its length and its
+/// kind, in the order the sink gives them.
+fn tokens_of(db: &mut RootDatabase, source: &str) -> Vec<(u32, u32, u32, &'static str)> {
+    let file = add_source(db, source);
+    let sema = semantic_index(db, file);
+    let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
+    let _ = sema.walk_hir(db, &mut |node| {
+        node.semantic_tokens(db, &mut sink);
+        std::ops::ControlFlow::Continue(())
+    });
+    let mut builder = SemanticTokensBuilder::new("".into());
+    sink.drain_into(&mut builder);
+    let (mut line, mut column) = (0, 0);
+    builder
+        .build()
+        .data
+        .iter()
+        .map(|token| {
+            if token.delta_line > 0 {
+                column = 0;
+            }
+            line += token.delta_line;
+            column += token.delta_start;
+            let kind = SUPPORTED_TYPES[token.token_type as usize].as_str();
+            (line, column, token.length, kind)
+        })
+        .collect()
+}
+
+/// Each token ends before the next starts, which a client needs: the
+/// tokens of a named value whose type is written with a path, valid as
+/// `Shapes.Step#A`, or recovered from `h.s ! Step#A`, the `!` no operator.
+#[rstest]
+#[case::a_qualified_type(
+    "NAMESPACE Shapes
+    TYPE Step : (A := 5, B, C); END_TYPE
+END_NAMESPACE
+FUNCTION test : INT
+VAR
+    s : Shapes.Step;
+END_VAR
+    IF s = Shapes.Step#A THEN test := test + 1; END_IF;
+END_FUNCTION
+"
+)]
+#[case::a_path_before_a_stray_operator(
+    "TYPE
+    Step : (A := 5, B, C);
+    Holder : STRUCT s : Step; END_STRUCT;
+END_TYPE
+FUNCTION test : INT
+VAR
+    h : Holder;
+END_VAR
+    IF h.s ! Step#A THEN test := test + 1; END_IF;
+END_FUNCTION
+"
+)]
+fn the_tokens_of_a_named_value_do_not_overlap(mut with_db: RootDatabase, #[case] source: &str) {
+    let tokens = tokens_of(&mut with_db, source);
+    for pair in tokens.windows(2) {
+        let ((line, column, length, _), (next_line, next_column, ..)) = (pair[0], pair[1]);
+        assert!(
+            line < next_line || column + length <= next_column,
+            "{:?} overlaps {:?}: {tokens:?}",
+            pair[0],
+            pair[1]
+        );
+    }
+}
+
+/// A named value whose type is written with a path is coloured one segment
+/// at a time: its namespace as one, its type as the enum, its value as one
+/// of the enum's.
+#[rstest]
+fn a_qualified_named_value_is_coloured_by_segment(mut with_db: RootDatabase) {
+    let source = "NAMESPACE Shapes
+    TYPE Step : (A := 5, B, C); END_TYPE
+END_NAMESPACE
+FUNCTION test : INT
+VAR
+    s : Shapes.Step;
+END_VAR
+    IF s = Shapes.Step#A THEN test := 1; END_IF;
+END_FUNCTION
+";
+    let lines: Vec<&str> = source.lines().collect();
+    let tokens: Vec<String> = tokens_of(&mut with_db, source)
+        .into_iter()
+        .filter(|(at, ..)| *at == 5 || *at == 7)
+        .map(|(at, column, length, kind)| {
+            let (start, end) = (column as usize, (column + length) as usize);
+            format!("{}: {} {kind}", at + 1, &lines[at as usize][start..end])
+        })
+        .collect();
+    assert_snapshot!(tokens.join("\n"), @r"
+    6: s variable
+    6: Step enum
+    8: s variable
+    8: Step enum
+    8: A enumMember
+    8: test function
+    ");
+}
