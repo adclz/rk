@@ -965,6 +965,10 @@ pub struct AreaSize {
 }
 
 /// One located variable.
+///
+/// When the workspace counts addresses in bytes, two entries can overlap:
+/// `%MW7` and `%MW8` share byte 8, are stored together, and each is listed
+/// at its own bytes, so a write to one changes what the other reads.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LocatedVar {
     /// The address as written: `%IX0.0`, `%MW1.7.9`. This is the key a host
