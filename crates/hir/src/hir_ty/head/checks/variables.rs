@@ -751,12 +751,14 @@ impl<'db> InitInference<'db> {
                         } else {
                             located_width(declared.normalize(db))
                         };
-                        if !declared.is_never()
-                            && let Some((_, address_bits)) = dv
-                                .size_letter(db)
-                                .and_then(crate::hir_ty::infer::normalize::access_size)
-                            && declared_bits != Some(address_bits)
-                        {
+                        let address_bits = dv
+                            .size_letter(db)
+                            .and_then(crate::hir_ty::infer::normalize::access_size)
+                            .map(|(_, bits)| bits);
+                        let type_refused = !declared.is_never()
+                            && address_bits.is_some()
+                            && declared_bits != address_bits;
+                        if type_refused && let Some(address_bits) = address_bits {
                             self.errors.push(
                                 ConfigError::LocationWidthMismatch {
                                     var: *var,
@@ -830,6 +832,81 @@ impl<'db> InitInference<'db> {
                                     != crate::hir_def::pous::variable::LocationArea::Input
                             {
                                 refuse(WiderAddressUse::Initializer(owner));
+                            }
+                        }
+                        // Sharing bytes with addresses none of which holds
+                        // them all, the variable is stored with them: they
+                        // persist together or not at all (E1434), and no
+                        // initial value of one would leave the others whole
+                        // (E1435).
+                        if let Some(located) =
+                            crate::hir_def::pous::variable::LocatedAddress::of(db, dv)
+                            && let Some(cell) =
+                                crate::hir_ty::index_graphs::located_cell(db, &located)
+                        {
+                            use crate::hir_ty::index_graphs::{
+                                located_declaration, located_declarations_at, located_group,
+                                located_holder, located_mention, located_neighbor,
+                            };
+                            // Only `%M` can be RETAIN: E1420 took `%I`/`%Q`.
+                            let retained = cell.retain
+                                && located.area
+                                    == crate::hir_def::pous::variable::LocationArea::Marker
+                                && !var.qualifier(db).contains(crate::Qualifier::RETAIN);
+                            if retained
+                                && let Some(retained) =
+                                    located_group(db, &located).find_map(|other| {
+                                        located_declarations_at(db, other).into_iter().find(|v| {
+                                            v.qualifier(db).contains(crate::Qualifier::RETAIN)
+                                        })
+                                    })
+                            {
+                                self.errors.push(
+                                    ConfigError::SharedBytesRetain {
+                                        site: dv.as_call_site(db),
+                                        name: compact_str::CompactString::from(
+                                            var.name_with_case(db).text(db).as_str(),
+                                        ),
+                                        retained,
+                                        configured: false,
+                                    }
+                                    .to_diagnostic(db, self.scope.file(db)),
+                                );
+                            }
+                            // Its own initial value, or the one its type starts
+                            // every value at, and the type it renames. A type
+                            // E1422 refused says nothing more here. On an input
+                            // E1419 below says it.
+                            let ty = var.spec(db).infer(db);
+                            let from_type = (var.init(db).is_none()
+                                && !crate::hir_ty::head::instances::type_default_inits(db, ty)
+                                    .is_empty())
+                            .then(|| {
+                                (
+                                    compact_str::CompactString::from(ty.type_name(db)),
+                                    compact_str::CompactString::from(
+                                        ty.normalize(db).type_name(db),
+                                    ),
+                                )
+                            });
+                            if !type_refused
+                                && (var.init(db).is_some() || from_type.is_some())
+                                && located.area
+                                    != crate::hir_def::pous::variable::LocationArea::Input
+                                && let Some(other) = located_neighbor(db, &located)
+                            {
+                                self.errors.push(
+                                    ConfigError::SharedBytesInitializer {
+                                        site: dv.as_call_site(db),
+                                        address: located.text.clone(),
+                                        other: other.text.clone(),
+                                        other_decl: located_declaration(db, other),
+                                        other_mention: located_mention(db, other),
+                                        holder: located_holder(db, &located),
+                                        from_type,
+                                    }
+                                    .to_diagnostic(db, self.scope.file(db)),
+                                );
                             }
                         }
                     }

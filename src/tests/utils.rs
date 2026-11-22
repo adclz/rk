@@ -35,6 +35,37 @@ pub fn with_db() -> RootDatabase {
     RootDatabase::default()
 }
 
+/// Give the workspace a `config.toml` holding `section` after a `[project]`,
+/// as the loader names the file of a workspace on disk: for a test whose
+/// sources mean what a setting says (`[addresses]`). The folder returned
+/// holds the file, which the compiler reads while it lives.
+pub fn with_config(db: &mut RootDatabase, section: &str) -> tempfile::TempDir {
+    use auto_lsp::salsa::Setter;
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let path = folder.path().join("config.toml");
+    std::fs::write(
+        &path,
+        format!("[project]\nname = \"T\"\nversion = \"0.0\"\n{section}"),
+    )
+    .expect("config.toml is written");
+    match db::workspace::Workspace::try_get(db) {
+        Some(workspace) => {
+            workspace.set_config_file(db).to(Some(path));
+        }
+        None => {
+            db::workspace::Workspace::new(
+                db,
+                None,
+                Vec::new(),
+                Some(path),
+                db::config_file::ProjectKind::Program,
+                auto_lsp::lsp_types::PositionEncodingKind::UTF8,
+            );
+        }
+    }
+    folder
+}
+
 /// Std's WIT folder, `stdlib/wit/`: the world of the WASI interfaces the
 /// standard library calls, and in `deps/` the files of WASI's packages that
 /// declare them.

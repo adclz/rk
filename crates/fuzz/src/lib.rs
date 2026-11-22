@@ -89,6 +89,27 @@ pub fn check_generated(source: &str) -> Result<pipeline::Verdict, Finding> {
     Ok(verdict)
 }
 
+/// The `[addresses]` section an input is read with, as `config.toml` would
+/// say it, or `None` for the one a workspace has when it says nothing: what
+/// to write beside the input to reproduce a finding with `rk check`.
+pub fn read_with(source: &str) -> Option<String> {
+    let addresses = session::addresses_of(source);
+    if addresses == db::config_file::AddressesConfig::default() {
+        return None;
+    }
+    let numbering = match addresses.numbering {
+        db::config_file::Numbering::Width => "width",
+        db::config_file::Numbering::Byte => "byte",
+    };
+    let order = match addresses.byte_order {
+        db::config_file::ByteOrder::Little => "little",
+        db::config_file::ByteOrder::Big => "big",
+    };
+    Some(format!(
+        "[addresses] numbering = \"{numbering}\", byte-order = \"{order}\""
+    ))
+}
+
 /// The input as text, or `None` when it is not UTF-8 or too large to be
 /// worth an iteration. The editor never hands the compiler anything else.
 pub fn as_source(case: &[u8]) -> Option<&str> {

@@ -56,6 +56,33 @@ fn line_col(src: &str, byte: usize) -> (usize, usize) {
 /// Compile the example and render its report the way `rk check` prints it.
 /// The sources are added with their leading blank lines trimmed, which is
 /// also how the site displays them, so the spans line up.
+/// Point `db`'s workspace at a `config.toml` holding `config`, the example
+/// `code` needs, behind a `[project]` of its own when it names none, as a
+/// project's file would be read. The file is in the system's temporary
+/// folder, for the caller to remove once the example has compiled.
+pub fn configure(db: &RootDatabase, code: &str, config: &str) -> std::path::PathBuf {
+    let text = match config.contains("[project]") {
+        true => config.to_string(),
+        false => format!("[project]\nname = \"example\"\nversion = \"0.0\"\n\n{config}\n"),
+    };
+    // The compiler reads a file it cannot parse as no setting at all, and
+    // the example would say what it does not show.
+    if let Err(e) = db::config_file::parse_config(&text) {
+        panic!("crates/doc/examples/{code}.md: its config.toml does not parse: {e}");
+    }
+    let path = std::env::temp_dir().join(format!("rk-doc-{}-{code}.toml", std::process::id()));
+    std::fs::write(&path, text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    db::workspace::Workspace::new(
+        db,
+        None,
+        Vec::new(),
+        Some(path.clone()),
+        db::config_file::ProjectKind::Program,
+        auto_lsp::lsp_types::PositionEncodingKind::UTF8,
+    );
+    path
+}
+
 pub fn compile_and_render(
     db: &mut RootDatabase,
     sources_str: &[&str],

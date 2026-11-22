@@ -293,8 +293,17 @@ fn main() {
             continue;
         }
         let mut db = RootDatabase::default();
+        // An example that needs a setting is compiled with its
+        // `config.toml`, which the compiler reads from disk.
+        let config = ex
+            .config
+            .as_deref()
+            .map(|config| render::configure(&db, &ex.code, config));
         let sources: Vec<&str> = ex.sources.iter().map(String::as_str).collect();
         let (ansi, spans) = render::compile_and_render(&mut db, &sources, ex.lint_rule.as_deref());
+        if let Some(path) = config {
+            let _ = fs::remove_file(path);
+        }
         produced.push((&ex.code, verify::codes_in_output(&ansi)));
         entries.push(DiagEntry {
             ex,
@@ -399,13 +408,21 @@ fn main() {
                     .iter()
                     .map(|s| format!("\"{}\"", json_escape(s)))
                     .collect();
+                // The `config.toml` the sources need, when they need one.
+                let config = e
+                    .ex
+                    .config
+                    .as_ref()
+                    .map(|config| format!(r#","config":"{}""#, json_escape(config)))
+                    .unwrap_or_default();
                 format!(
-                    r#"  {{"code":"{}","category":"{}","title":"{}","description":"{}","sources":[{}]}}"#,
+                    r#"  {{"code":"{}","category":"{}","title":"{}","description":"{}","sources":[{}]{}}}"#,
                     json_escape(&e.ex.code),
                     json_escape(e.ex.category),
                     json_escape(&e.ex.title),
                     json_escape(&e.ex.description),
-                    sources.join(",")
+                    sources.join(","),
+                    config
                 )
             })
             .collect();
@@ -431,6 +448,9 @@ fn main() {
                     "## {} {}\n\n{}\n\n",
                     e.ex.code, e.ex.title, e.ex.description
                 );
+                if let Some(config) = &e.ex.config {
+                    entry_md.push_str(&format!("```toml\n{config}\n```\n\n"));
+                }
                 for (i, s) in e.ex.sources.iter().enumerate() {
                     let marks: Vec<Mark> = e
                         .spans
@@ -474,6 +494,7 @@ fn main() {
                         })
                         .collect::<String>(),
                     "text": text,
+                    "config_html": e.ex.config.as_deref().map(escape),
                     "sources_html": sources_html,
                     "report_html": e.report_html,
                 }));

@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! One source in a fresh database, as `rk check` sees a single file, read
-//! beside one library.
+//! beside one library, with one of the four ways `[addresses]` can number
+//! the addresses it names.
 
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::{DiagnosticSeverity, PositionEncodingKind, Url};
+use db::config_file::{AddressesConfig, ByteOrder, Numbering};
 use db::{RootDatabase, WorkspaceDataBase};
 use hir::hir_def::semantic_index::semantic_index;
 use ide_diagnostic::IdeDiagnostic;
@@ -58,14 +60,61 @@ END_FUNCTION
 
 pub(crate) const LIBRARY_URL: &str = "file:///lib/Lib.st";
 
+/// The `[addresses]` an input is read with: one of the four, picked from
+/// its text, so that a seed naming addresses is also read counting bytes
+/// and big-endian, and a finding reproduces from the text alone. A source
+/// that names no address reads the same with any of them.
+pub(crate) fn addresses_of(source: &str) -> AddressesConfig {
+    // FNV-1a, which no toolchain changes, unlike the standard hasher.
+    let hash = source.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+    });
+    AddressesConfig {
+        numbering: match hash & 1 {
+            0 => Numbering::Width,
+            _ => Numbering::Byte,
+        },
+        byte_order: match hash & 2 {
+            0 => ByteOrder::Little,
+            _ => ByteOrder::Big,
+        },
+    }
+}
+
+/// The `config.toml` that says `addresses`: the standard library's, which
+/// sets nothing, or a copy of it with an `[addresses]` section, in
+/// `configs/`.
+fn config_file(addresses: AddressesConfig) -> std::path::PathBuf {
+    let crate_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    if addresses == AddressesConfig::default() {
+        return crate_dir.join("../../stdlib/config.toml");
+    }
+    let numbering = match addresses.numbering {
+        Numbering::Width => "width",
+        Numbering::Byte => "byte",
+    };
+    let order = match addresses.byte_order {
+        ByteOrder::Little => "little",
+        ByteOrder::Big => "big",
+    };
+    crate_dir.join(format!("configs/{numbering}-{order}.toml"))
+}
+
 /// A database holding `source` as its only workspace file, beside
-/// [`LIBRARY`], or `None` when the parser gives up on it (tree-sitter only
-/// does on a timeout or cancellation).
+/// [`LIBRARY`], read with the `[addresses]` [`addresses_of`] picks for it,
+/// or `None` when the parser gives up on it (tree-sitter only does on a
+/// timeout or cancellation).
 pub(crate) fn load(source: &str) -> Option<(RootDatabase, File)> {
+    load_with(source, addresses_of(source))
+}
+
+/// [`load`] with `addresses`: for an oracle that reads two sources of one
+/// input, both as the input says.
+pub(crate) fn load_with(source: &str, addresses: AddressesConfig) -> Option<(RootDatabase, File)> {
     let mut db = RootDatabase::default();
     // The library's name is the root its declarations are under; the
-    // config file named is the standard library's, with no settings, so
-    // that no report carries the "no config.toml" hint.
+    // config file named is the standard library's, with no settings but
+    // `[addresses]`, so that no report carries the "no config.toml" hint.
     db::workspace::Workspace::new(
         &db,
         None,
@@ -74,7 +123,7 @@ pub(crate) fn load(source: &str) -> Option<(RootDatabase, File)> {
             dir: std::path::PathBuf::from("/lib"),
             standard: false,
         }],
-        Some(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../stdlib/config.toml")),
+        Some(config_file(addresses)),
         db::config_file::ProjectKind::Program,
         PositionEncodingKind::UTF8,
     );

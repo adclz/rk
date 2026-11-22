@@ -2469,11 +2469,66 @@ fn check_config_entries<'db>(
                     }
                     .to_diagnostic(db, file),
                 ),
-                (None, EntryLocation::Given(address)) => locations.push(ConfigLocation {
-                    instance: entry.instance,
-                    members: entry.members.clone(),
-                    address: address.clone(),
-                }),
+                (None, EntryLocation::Given(address)) => {
+                    use crate::hir_ty::index_graphs::{
+                        located_cell, located_declaration, located_declarations_at, located_group,
+                        located_holder, located_mention, located_neighbor,
+                    };
+                    // The variable's type starts it at a value, which `__init`
+                    // writes at the address: one that shares bytes cannot take
+                    // it (E1435).
+                    let ty = var.spec(db).infer(db);
+                    if address.area != crate::hir_def::pous::variable::LocationArea::Input
+                        && let Some(other) = located_neighbor(db, address)
+                        && !crate::hir_ty::head::instances::type_default_inits(db, ty).is_empty()
+                    {
+                        errors.push(
+                            ConfigError::SharedBytesInitializer {
+                                site: dv.as_call_site(db),
+                                address: address.text.clone(),
+                                other: other.text.clone(),
+                                other_decl: located_declaration(db, other),
+                                other_mention: located_mention(db, other),
+                                holder: located_holder(db, address),
+                                from_type: Some((
+                                    compact_str::CompactString::from(ty.type_name(db)),
+                                    compact_str::CompactString::from(
+                                        ty.normalize(db).type_name(db),
+                                    ),
+                                )),
+                            }
+                            .to_diagnostic(db, file),
+                        );
+                    }
+                    // A variable VAR_CONFIG locates is never RETAIN (E1420):
+                    // stored with a RETAIN declaration, it would persist all
+                    // the same (E1434).
+                    if address.area == crate::hir_def::pous::variable::LocationArea::Marker
+                        && located_cell(db, address).is_some_and(|cell| cell.retain)
+                        && let Some(retained) = located_group(db, address).find_map(|other| {
+                            located_declarations_at(db, other)
+                                .into_iter()
+                                .find(|v| v.qualifier(db).contains(crate::Qualifier::RETAIN))
+                        })
+                    {
+                        errors.push(
+                            ConfigError::SharedBytesRetain {
+                                site: dv.as_call_site(db),
+                                name: compact_str::CompactString::from(
+                                    name_of_place(db, *var, &entry.elements).text(db).as_str(),
+                                ),
+                                retained,
+                                configured: true,
+                            }
+                            .to_diagnostic(db, file),
+                        );
+                    }
+                    locations.push(ConfigLocation {
+                        instance: entry.instance,
+                        members: entry.members.clone(),
+                        address: address.clone(),
+                    })
+                }
                 (None, EntryLocation::Refused(_)) => {}
             }
         }
@@ -2629,6 +2684,28 @@ fn check_config_value<'db>(
                 owner_mention: crate::hir_ty::index_graphs::located_mention(db, &view.owner),
                 owner: view.owner.text,
                 usage: WiderAddressUse::Initializer(owner),
+            }
+            .to_diagnostic(db, file),
+        );
+        return None;
+    }
+    // Sharing bytes with addresses none of which holds them all, the channel
+    // has no value of its own to start from (E1435).
+    if let Some(other) = crate::hir_ty::index_graphs::located_neighbor(db, &channel) {
+        // At the entry's address, when it gives one.
+        let site = match &entry.location {
+            Some((dv, _)) => dv.as_call_site(db),
+            None => crate::CallSite::from_scoped(db, &entry.path),
+        };
+        errors.push(
+            ConfigError::SharedBytesInitializer {
+                site,
+                address: channel.text.clone(),
+                other: other.text.clone(),
+                other_decl: located_declaration(db, other),
+                other_mention: crate::hir_ty::index_graphs::located_mention(db, other),
+                holder: crate::hir_ty::index_graphs::located_holder(db, &channel),
+                from_type: None,
             }
             .to_diagnostic(db, file),
         );

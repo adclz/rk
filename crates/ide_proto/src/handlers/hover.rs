@@ -601,10 +601,11 @@ impl<'db> HoverHandler<'db> for Type<'db> {
 
 impl<'db> HoverHandler<'db> for DirectVariable<'db> {
     /// What an address is: its area and width, the wider address it is part
-    /// of, and the declarations located at it.
+    /// of or the addresses it shares bytes with, and the declarations located
+    /// at it.
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<Hover> {
         use hir::hir_def::pous::variable::{LocatedAddress, LocationArea};
-        use hir::hir_ty::index_graphs::{located_declarations_at, located_view};
+        use hir::hir_ty::index_graphs::{located_declarations_at, located_neighbors, located_view};
 
         let written = self.to_address(db);
         let area = match self.area(db) {
@@ -653,6 +654,21 @@ impl<'db> HoverHandler<'db> for DirectVariable<'db> {
                         true => format!("{part} of `{}`.", view.owner.text),
                         false => format!("{part} of `{}` ({}).", view.owner.text, owner.join(", ")),
                     });
+                }
+                let shared: Vec<String> = located_neighbors(db, &address)
+                    .map(|other| {
+                        let at: Vec<String> = located_declarations_at(db, other)
+                            .iter()
+                            .map(declared)
+                            .collect();
+                        match at.is_empty() {
+                            true => format!("`{}`", other.text),
+                            false => format!("`{}` ({})", other.text, at.join(", ")),
+                        }
+                    })
+                    .collect();
+                if !shared.is_empty() {
+                    lines.push(format!("Shares bytes with {}.", shared.join(" and ")));
                 }
                 let here: Vec<String> = located_declarations_at(db, &address)
                     .iter()

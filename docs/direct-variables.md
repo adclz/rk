@@ -66,7 +66,7 @@ A declaration's type is an elementary type as wide as the address (`E1422`): `%I
 ## Parts of a wider address
 
 When the program names an address and a narrower one inside it, the narrower one is part of the wider one: it has no storage of its own.
-Each size counts in its own units, and the bytes are little-endian:
+By default, each size counts in its own units, and the bytes are little-endian:
 
 ```diagram
                         %QW0
@@ -80,6 +80,57 @@ bit  15 14 13 12 11 10  9  8  7  6  5  4  3  2  1  0
 
 A part can be read, assigned, bound to an output, and bound to a `VAR_IN_OUT` a `FUNCTION_BLOCK` keeps as a member, which is copied in and back.
 A bit cannot be passed to a `VAR_IN_OUT` of a `FUNCTION` or a `METHOD`, which binds its address, or referenced with `REF()`, and no part can be `RETAIN` or `NON_RETAIN`, or have an initial value (`E1423`).
+
+## Numbering by byte
+
+The number of an address says where its bytes are.
+By default, each size counts in its own units: `%MW1` is the second word, bytes 2 and 3.
+Some PLCs count bytes for every size instead: `%MW1` is bytes 1 and 2.
+
+`[addresses]` in `config.toml` says how your workspace numbers its addresses:
+
+```toml
+[addresses]
+numbering = "byte"
+byte-order = "big"
+```
+
+- **`numbering = "width"`** counts each size in its own units. This is the default.
+- **`numbering = "byte"`** counts bytes for every size.
+- **`byte-order = "little"`** puts the low byte of a value first. This is the default.
+- **`byte-order = "big"`** puts the high byte first.
+
+A bit is numbered the same way in both: `%MX1.2` is bit 2 of byte 1.
+
+Counting bytes, big-endian, `%MB208` is the high byte of `%MW208`:
+
+```diagram
+                       %MW208
+bit  15 14 13 12 11 10  9  8  7  6  5  4  3  2  1  0
+    ┌───────────────────────┬───────────────────────┐
+    │         %MB208        │         %MB209        │
+    └───────────────────────┴───────────────────────┘
+                     ▲                    ▲
+                 %MX208.2             %MX209.3
+```
+
+After `%MW208 := 16#1234`, `%MW208` reads `16#1234` in both orders.
+`%MB208` reads `16#12` big-endian, and `16#34` little-endian.
+
+> [!NOTE]
+> IEC 61131-3 leaves both choices to the implementation.
+
+### Addresses that share bytes
+
+Counting bytes, two addresses can overlap without either holding the other: `%MW7` is bytes 7 and 8, and `%MW8` is bytes 8 and 9.
+They are stored together.
+A write to one changes what the other reads.
+
+- **They are all `RETAIN`, or none of them is.** A declaration that is not, beside one that is, is `E1434`.
+- **None of them has an initial value.** It would set part of the others (`E1435`).
+
+To give them an initial value, declare a variable at an address that holds all their bytes, like `%MD7`.
+`%MW7` and `%MW8` are then parts of it.
 
 ## In function blocks
 

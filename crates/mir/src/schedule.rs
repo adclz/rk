@@ -363,12 +363,10 @@ fn lower_single<'db>(
     };
     // The base of what holds it, the bytes from there, and the bits past them.
     let (base, bytes, bits) = match &read.source {
-        // A bit of its own cell, or of the wider address that holds it.
+        // A bit of its own cell, or of the cell that holds it.
         SingleSource::Address(address) => {
-            let (cell, shift) = match hir::hir_ty::index_graphs::located_view(db, address) {
-                Some(view) => (view.owner, view.shift),
-                None => (address.clone(), 0),
-            };
+            let (cell, shift) = hir::hir_ty::index_graphs::located_place(db, address);
+            let shift = shift as u32;
             let key = Ident::new(db, cell.text.clone());
             let (base, _) = globals
                 .get(&key)

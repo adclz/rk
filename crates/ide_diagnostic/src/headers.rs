@@ -237,6 +237,8 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E1431", "partial access to a type without parts"),
     ("E1432", "address in a library"),
     ("E1433", "configuration in a library"),
+    ("E1434", "RETAIN mismatch on shared bytes"),
+    ("E1435", "initial value on shared bytes"),
     (
         "E1501",
         "extern pragma outside a FUNCTION or FUNCTION_BLOCK",

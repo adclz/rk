@@ -163,6 +163,9 @@ fn main() -> ExitCode {
             }
             Ok(Err(finding)) => {
                 println!("FAIL   {} [{}]", file.display(), finding.oracle);
+                if let Some(setting) = rk_fuzz::read_with(source) {
+                    println!("         read with {setting}");
+                }
                 for line in finding.detail.lines() {
                     println!("         {line}");
                 }
@@ -183,6 +186,9 @@ fn main() -> ExitCode {
             Err(_) => {
                 let site = PANIC_SITE.lock().unwrap().take().unwrap_or_default();
                 println!("PANIC  {} at {site}", file.display());
+                if let Some(setting) = rk_fuzz::read_with(source) {
+                    println!("         read with {setting}");
+                }
                 // The site groups them; the message can hold the input.
                 let key = site.split(": ").next().unwrap_or_default().to_string();
                 failures
