@@ -32,25 +32,74 @@ fn custom_section<'a>(wasm: &'a [u8], name: &str) -> Option<&'a [u8]> {
         })
 }
 
+/// The export of the control interface that runs a test: the one function
+/// whose body the profiles build differently. A debug build's calls the
+/// wrapper of the test it is asked for; a release's runs none, so that the
+/// optimizer can drop the tests (`control_run_test` in wasm_codegen).
+fn run_test_export() -> String {
+    format!("{}#run-test", debug_format::wit::CONTROL_INTERFACE)
+}
+
 /// A section's content with the section itself, for comparing two modules.
-/// Custom sections are left out: they are what the profiles differ by.
+/// Custom sections are left out: they are what the profiles differ by. So
+/// is the body of the function that runs a test ([`run_test_export`]),
+/// though not its place: the code section is each body with its length, the
+/// one of `run-test` empty.
 fn code_and_data(wasm: &[u8]) -> Vec<(u8, Vec<u8>)> {
-    wasmparser::Parser::new(0)
-        .parse_all(wasm)
-        .filter_map(|payload| match payload.ok()? {
-            Payload::CodeSectionStart { range, .. } => Some((10, wasm[range].to_vec())),
-            Payload::DataSection(r) => Some((11, wasm[r.range()].to_vec())),
-            Payload::GlobalSection(r) => Some((6, wasm[r.range()].to_vec())),
-            Payload::ImportSection(r) => Some((2, wasm[r.range()].to_vec())),
-            _ => None,
-        })
-        .collect()
+    let mut sections = Vec::new();
+    let mut imported = 0;
+    let mut run_test = None;
+    let mut bodies: Vec<&[u8]> = Vec::new();
+    for payload in wasmparser::Parser::new(0).parse_all(wasm) {
+        let Ok(payload) = payload else { continue };
+        match payload {
+            Payload::ImportSection(r) => {
+                sections.push((2, wasm[r.range()].to_vec()));
+                imported += r
+                    .into_imports()
+                    .filter(|import| {
+                        matches!(
+                            import,
+                            Ok(wasmparser::Import {
+                                ty: wasmparser::TypeRef::Func(_),
+                                ..
+                            })
+                        )
+                    })
+                    .count();
+            }
+            Payload::GlobalSection(r) => sections.push((6, wasm[r.range()].to_vec())),
+            Payload::ExportSection(r) => {
+                run_test = r
+                    .into_iter()
+                    .flatten()
+                    .find(|export| {
+                        export.kind == wasmparser::ExternalKind::Func
+                            && export.name == run_test_export()
+                    })
+                    .map(|export| export.index as usize);
+            }
+            Payload::CodeSectionEntry(body) => bodies.push(&wasm[body.range()]),
+            Payload::DataSection(r) => sections.push((11, wasm[r.range()].to_vec())),
+            _ => {}
+        }
+    }
+    let skipped = run_test.and_then(|index| index.checked_sub(imported));
+    let mut code = Vec::new();
+    for (at, body) in bodies.into_iter().enumerate() {
+        let body = if Some(at) == skipped { &[][..] } else { body };
+        code.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        code.extend_from_slice(body);
+    }
+    sections.push((10, code));
+    sections
 }
 
 /// "One loader, two profiles: only the sections differ" (`Profile` in
-/// wasm_codegen). The release keeps every function, test wrappers included,
-/// so the memory layout, and therefore every address a monitor or a retain
-/// file holds, is the debug build's.
+/// wasm_codegen), and the body of `run-test` ([`run_test_export`]). The
+/// release keeps every function, test wrappers included, so the memory
+/// layout, and therefore every address a monitor or a retain file holds,
+/// is the debug build's.
 pub(crate) fn same_program(debug: &[u8], release: &[u8]) -> Result<(), Finding> {
     let (d, r) = (code_and_data(debug), code_and_data(release));
     for (id, name) in [(2, "import"), (6, "global"), (10, "code"), (11, "data")] {
@@ -726,5 +775,56 @@ fn ended(result: wasmtime::Result<()>, unit: &str) -> Result<Option<String>, Fin
     match broken {
         Some(oracle) => Err(Finding::new(oracle, format!("{unit}: {trap}"))),
         None => Ok(Some(format!("{unit}: {trap}"))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wasm_codegen::Profile;
+
+    /// The debug and the release module of `source`.
+    fn profiles(source: &str) -> (Vec<u8>, Vec<u8>) {
+        let (db, file) = crate::session::load(source).expect("it parses");
+        let mir = crate::session::lower(&db, file).expect("it lowers");
+        let build = |profile| wasm_codegen::generate_wasm_profile(&db, &mir, profile).finish();
+        (build(Profile::Debug), build(Profile::Release))
+    }
+
+    /// The range of each function body in `wasm`.
+    fn bodies(wasm: &[u8]) -> Vec<std::ops::Range<usize>> {
+        wasmparser::Parser::new(0)
+            .parse_all(wasm)
+            .filter_map(|payload| match payload.ok()? {
+                Payload::CodeSectionEntry(body) => Some(body.range()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// A program with a test is one program in both profiles, though they
+    /// build `run-test` differently; a byte changed in the body of any
+    /// other function makes two. Exactly one body is left out, and the
+    /// regression `profiles-diverge--a-test-function.st` says it is
+    /// `run-test`'s.
+    #[test]
+    fn only_the_body_of_run_test_may_differ() {
+        let (debug, release) = profiles("{test}\nFUNCTION t : INT\n    t := 7;\nEND_FUNCTION\n");
+        same_program(&debug, &release).expect("the profiles are one program");
+        let unnoticed: Vec<usize> = bodies(&release)
+            .into_iter()
+            .enumerate()
+            .filter(|(_, range)| {
+                let mut changed = release.clone();
+                changed[range.start + range.len() / 2] ^= 0x01;
+                same_program(&debug, &changed).is_ok()
+            })
+            .map(|(at, _)| at)
+            .collect();
+        assert_eq!(
+            unnoticed.len(),
+            1,
+            "the bodies a change goes unnoticed in: {unnoticed:?}"
+        );
     }
 }
