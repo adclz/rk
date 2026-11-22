@@ -152,8 +152,8 @@ fn the_byte_order_says_which_byte_of_a_value_is_which(
 ) {
     let (_, wasm) = built(&mut with_db, section, ORDERED);
     let run = |name: &str| execute_wasm::<(), i32>(&wasm, name, ());
-    let [low, last, bit, byte, set, referenced, part] = values;
-    assert_eq!(run("byte_209"), low, "%MB209 of %MW208 := 16#1234");
+    let [byte_209, last, bit, byte, set, referenced, part] = values;
+    assert_eq!(run("byte_209"), byte_209, "%MB209 of %MW208 := 16#1234");
     assert_eq!(run("last_word"), last, "%MW102 of %MD100 := 16#11223344");
     assert_eq!(run("bit_read"), bit, "%MX209.5 of %MW208 := 16#0020");
     assert_eq!(run("byte_written"), byte, "%MW208 after %MB209 := 16#AB");
@@ -235,8 +235,8 @@ END_CONFIGURATION
 /// `%IW208` declared, `%IX209.5` is in the second byte of the word
 /// little-endian and in the first big-endian, and a host writing the word
 /// raises it with the bit that is `%IX209.5` in its order. So it is when
-/// the word shares a byte with `%IW207`, stored in that one's cell or the
-/// other way round.
+/// the word shares a byte with `%IW207`, whichever of the two the byte order
+/// puts first.
 #[rstest]
 #[case::little(BY_BYTE, "", 1, 0x2000)]
 #[case::big(BY_BYTE_BIG, "", 0, 0x0020)]
@@ -457,7 +457,8 @@ fn declared_addresses_that_share_bytes_are_stored_together(
 /// A host finds each address that shares bytes at its own place: its own
 /// bytes, one of them in the other's, in the order memory holds them. A
 /// part inside one of them is listed in that one, as a part of any address
-/// is, and a part inside both in the lower one, its bit counted from there.
+/// is, and a part inside both in the one with the lower address, its bit
+/// counted from there.
 #[rstest]
 #[case::little(BY_BYTE, 1, 10, 11)]
 #[case::big(BY_BYTE_BIG, -1, 2, 3)]
