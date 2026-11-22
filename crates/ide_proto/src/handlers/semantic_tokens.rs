@@ -270,9 +270,14 @@ impl<'db> SemanticTokensHandler<'db> for Expr<'db> {
         let typ = self.infer(db);
 
         if let ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) = self.expr(db) {
+            // The type's own name, the last segment of its path: the walk
+            // colours each segment of the path too, `Shapes` of
+            // `Shapes.Step#A` a namespace, and one token over the whole path
+            // ran over theirs, which a client refuses.
+            let file = name.get_scope_id(db).file(db);
+            let type_name = super::references::last_segment(db, file, name.get_span(db));
             builder.push(
-                hir::denormalize(db, name.get_scope_id(db).file(db), &name.get_span(db))
-                    .unwrap_or_default(),
+                hir::denormalize(db, file, &type_name).unwrap_or_default(),
                 SUPPORTED_TYPES.iter().position(|x| *x == ENUM).unwrap() as u32,
                 0,
             );
