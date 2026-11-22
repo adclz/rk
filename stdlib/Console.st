@@ -56,7 +56,7 @@ NAMESPACE Std.Console
 			output: Wasi.Cli.Stdout.WRITE_VIA_STREAM_WRITER;
 		END_VAR
 
-		output(REQ := REQ, IN := IN);
+		output(REQ := REQ, IN := IN, CLOSE := FALSE);
 		BUSY := output.BUSY;
 		DONE := output.DONE;
 		ERROR := output.ERROR;
@@ -88,7 +88,7 @@ NAMESPACE Std.Console
 			output: Wasi.Cli.Stderr.WRITE_VIA_STREAM_WRITER;
 		END_VAR
 
-		output(REQ := REQ, IN := IN);
+		output(REQ := REQ, IN := IN, CLOSE := FALSE);
 		BUSY := output.BUSY;
 		DONE := output.DONE;
 		ERROR := output.ERROR;

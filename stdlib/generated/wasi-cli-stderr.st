@@ -193,6 +193,146 @@ NAMESPACE INTERNAL Wasi
 				END_IF;
 			END_FUNCTION_BLOCK
 
+			/* The subscript of the first byte of `IN`, which
+			   `BYTES_STREAM_ARRAY_WRITER` writes from. */
+			FUNCTION PRIVATE BYTES_STREAM_ARRAY_FIRST : LINT
+			VAR_INPUT
+				IN : ARRAY[*] OF BYTE;
+			END_VAR
+			VAR
+				DIM : DINT := 1;
+			END_VAR
+				{wasm 'array.lower_bound' (params IN DIM) (result BYTES_STREAM_ARRAY_FIRST)}
+			END_FUNCTION
+
+			/* How many bytes `IN` holds, which `BYTES_STREAM_ARRAY_WRITER` writes at
+			   most. */
+			FUNCTION PRIVATE BYTES_STREAM_ARRAY_LEN : LINT
+			VAR_INPUT
+				IN : ARRAY[*] OF BYTE;
+			END_VAR
+			VAR
+				DIM : DINT := 1;
+				lower : LINT;
+				upper : LINT;
+			END_VAR
+				{wasm 'array.lower_bound' (params IN DIM) (result lower)}
+				{wasm 'array.upper_bound' (params IN DIM) (result upper)}
+				BYTES_STREAM_ARRAY_LEN := upper - lower + 1;
+			END_FUNCTION
+
+			/* Writes bytes from an array to a stream of bytes it makes at its first
+			   call, for the function `readable` is handed to. */
+			FUNCTION_BLOCK BYTES_STREAM_ARRAY_WRITER
+			VAR_INPUT
+				/* A rising edge writes the first `COUNT` bytes of `IN`. An edge while
+				   `BUSY` is ignored. */
+				REQ : BOOL;
+				/* How many bytes of `IN` a request writes, from its first on. */
+				COUNT : UDINT;
+				/* A rising edge ends the stream, once no write is under way. */
+				CLOSE : BOOL;
+			END_VAR
+			VAR_IN_OUT
+				/* The bytes to write. The host reads them where they are while `BUSY`:
+				   they stay as they are until `DONE`. */
+				IN : ARRAY[*] OF BYTE;
+			END_VAR
+			VAR_OUTPUT
+				/* The stream's reading end, to hand to the function that reads it. */
+				readable : UDINT;
+				/* TRUE while the reader has not taken all `COUNT` bytes. */
+				BUSY : BOOL;
+				/* TRUE in the call where the reader has taken all `COUNT` bytes, at once
+				   for none. */
+				DONE : BOOL;
+				/* TRUE once a write finds the reader gone, or a request comes after
+				   `CLOSE`: the stream does not open again. */
+				ERROR : BOOL;
+			END_VAR
+			VAR
+				writable : UDINT;
+				requested : BOOL;
+				closing : BOOL;
+				shut : BOOL;
+				closed : BOOL;
+				total : UDINT;
+				sent : UDINT;
+				base : LINT;
+				write : BYTES_STREAM_WRITE_ARRAY;
+			END_VAR
+			VAR_TEMP
+				again : BOOL;
+				offset : LINT;
+			END_VAR
+				IF writable = 0 AND NOT closed THEN
+					BYTES_STREAM_NEW(readable => readable, writable => writable);
+				END_IF;
+				DONE := FALSE;
+				// An edge while BUSY is ignored.
+				IF REQ AND NOT requested AND NOT BUSY THEN
+					ERROR := closed;
+					IF NOT closed THEN
+						// A write of no bytes asks the reader whether it is ready,
+						// which it may answer late: none is done here.
+						IF COUNT = 0 THEN
+							DONE := TRUE;
+						ELSIF COUNT > BYTES_STREAM_ARRAY_LEN(IN) THEN
+							__RAISE('COUNT is past the end of IN');
+						ELSE
+							total := COUNT;
+							sent := 0;
+							base := BYTES_STREAM_ARRAY_FIRST(IN);
+							BUSY := TRUE;
+						END_IF;
+					END_IF;
+				END_IF;
+				requested := REQ;
+				IF BUSY THEN
+					// Each pass after the first hands over a byte at least, so the
+					// loop ends.
+					REPEAT
+						again := FALSE;
+						offset := sent;
+						// Starts the write of the bytes not taken yet, from where they
+						// are, or checks the one running.
+						write(stream := writable, data := REF(IN[base + offset]), count := total - sent);
+						IF write.DONE THEN
+							IF write.closed THEN
+								// The reader left: the writing end goes too.
+								BYTES_STREAM_DROP_WRITABLE(stream := writable);
+								writable := 0;
+								closed := TRUE;
+								BUSY := FALSE;
+								ERROR := TRUE;
+							ELSIF write.written < total - sent THEN
+								// The reader took a part: the rest goes next, at once while
+								// it takes some.
+								sent := sent + write.written;
+								again := write.written > 0;
+							ELSE
+								BUSY := FALSE;
+								DONE := TRUE;
+							END_IF;
+						END_IF;
+					UNTIL NOT again
+					END_REPEAT;
+				END_IF;
+				// The writing end goes once no write is under way.
+				IF CLOSE AND NOT closing THEN
+					shut := TRUE;
+				END_IF;
+				closing := CLOSE;
+				IF shut AND NOT BUSY THEN
+					IF writable <> 0 THEN
+						BYTES_STREAM_DROP_WRITABLE(stream := writable);
+						writable := 0;
+					END_IF;
+					closed := TRUE;
+					shut := FALSE;
+				END_IF;
+			END_FUNCTION_BLOCK
+
 			/* Reads the value the future holds, which comes back after `DONE`. */
 			{extern async 'wasi:cli/stderr@0.3.0' '[future-read-1]write-via-stream'}
 			FUNCTION_BLOCK RESULT_FUTURE_READ
@@ -279,12 +419,73 @@ NAMESPACE INTERNAL Wasi
 			END_VAR
 				// The stream, made at the first request and handed to the function.
 				IF REQ AND NOT open THEN
-					stream();
+					stream(REQ := FALSE, IN := IN, CLOSE := FALSE);
 					future := Wasi.Cli.Stderr.WRITE_VIA_STREAM(data := stream.readable);
 					open := TRUE;
 				END_IF;
 				IF open THEN
 					stream(REQ := REQ, IN := IN, CLOSE := CLOSE);
+					BUSY := stream.BUSY;
+					DONE := stream.DONE;
+					// The answer, read once it comes, and kept.
+					answer(future := future);
+					IF answer.DONE THEN
+						ERRORID := answer.error;
+						ENDED := TRUE;
+					END_IF;
+					ERROR := stream.ERROR OR answer.failed;
+				END_IF;
+			END_FUNCTION_BLOCK
+
+			/* Writes bytes from an array to `write-via-stream` through a stream of
+			   bytes it opens at the first request. */
+			FUNCTION_BLOCK WRITE_VIA_STREAM_ARRAY_WRITER
+			VAR_INPUT
+				/* A rising edge writes the first `COUNT` bytes of `IN`; the first opens
+				   the stream and calls `write-via-stream` with it. An edge while `BUSY` is
+				   ignored. */
+				REQ : BOOL;
+				/* How many bytes of `IN` a request writes, from its first on. */
+				COUNT : UDINT;
+				/* A rising edge ends the stream, once no write is under way. */
+				CLOSE : BOOL;
+			END_VAR
+			VAR_IN_OUT
+				/* The bytes to write. The host reads them where they are while `BUSY`:
+				   they stay as they are until `DONE`. */
+				IN : ARRAY[*] OF BYTE;
+			END_VAR
+			VAR_OUTPUT
+				/* TRUE while the reader has not taken all `COUNT` bytes. */
+				BUSY : BOOL;
+				/* TRUE in the call where the reader has taken all `COUNT` bytes, at once
+				   for none. */
+				DONE : BOOL;
+				/* TRUE once a write finds the reader gone, a request comes after `CLOSE`,
+				   or the `result<_, error-code>` from `write-via-stream` is an error,
+				   whose `error-code` is in `ERRORID`. */
+				ERROR : BOOL;
+				/* The `error-code` of the `result<_, error-code>` from `write-via-stream`,
+				   when it is an error, which turns `ERROR` TRUE. */
+				ERRORID : Wasi.Cli.Types.ERROR_CODE;
+				/* TRUE once the `future<result<_, error-code>>` from `write-via-stream`
+				   has its value. */
+				ENDED : BOOL;
+			END_VAR
+			VAR
+				open : BOOL;
+				stream : BYTES_STREAM_ARRAY_WRITER;
+				future : UDINT;
+				answer : RESULT_FUTURE_GET;
+			END_VAR
+				// The stream, made at the first request and handed to the function.
+				IF REQ AND NOT open THEN
+					stream(REQ := FALSE, COUNT := COUNT, CLOSE := FALSE, IN := IN);
+					future := Wasi.Cli.Stderr.WRITE_VIA_STREAM(data := stream.readable);
+					open := TRUE;
+				END_IF;
+				IF open THEN
+					stream(REQ := REQ, COUNT := COUNT, CLOSE := CLOSE, IN := IN);
 					BUSY := stream.BUSY;
 					DONE := stream.DONE;
 					// The answer, read once it comes, and kept.
