@@ -122,7 +122,8 @@ pub fn build_core_profile(
 
 /// The module `rk test` runs: the debug build, which also tells its host
 /// where each raise is ([`mir::raise_hook`]). No other build does: a debug
-/// and a release build differ in their custom sections only.
+/// and a release build differ in their custom sections only, and in the
+/// body of `run-test`, empty in a release.
 pub fn build_test_core(
     db: &RootDatabase,
     workspace: &std::path::Path,
