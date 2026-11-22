@@ -353,15 +353,20 @@ pub struct LocatedAddress {
 
 impl LocatedAddress {
     /// The bits of its area the address covers, read as a byte-addressed
-    /// image: each size counts in its own units, so `%IWn` is bytes 2n and
-    /// 2n+1 and `%IDn` bytes 4n to 4n+3, and `%IXn.b` is bit b of byte n:
-    /// every narrower address lies inside exactly one wider one, and two of
-    /// the same size never overlap.
+    /// image, as the workspace numbers addresses. `%IXn.b` is bit b of byte n
+    /// either way. By width, each size counts in its own units, so `%IWn` is
+    /// bytes 2n and 2n+1 and `%IDn` bytes 4n to 4n+3: every narrower address
+    /// lies inside exactly one wider one, and two of the same size never
+    /// overlap. By byte, every size counts bytes, so `%IWn` is bytes n and
+    /// n+1, and `%IW7` and `%IW8` share byte 8.
     ///
     /// `None` for an address with no such reading — one level for a bit, two
     /// for anything wider, three or more, or a bit past 7 — which is a cell
     /// of its own.
-    pub fn image_bits(&self) -> Option<std::ops::Range<u64>> {
+    pub fn image_bits(
+        &self,
+        numbering: db::config_file::Numbering,
+    ) -> Option<std::ops::Range<u64>> {
         match (self.width, self.levels.as_slice()) {
             (1, &[byte, bit]) if bit < 8 => {
                 let at = u64::from(byte) * 8 + u64::from(bit);
@@ -369,7 +374,11 @@ impl LocatedAddress {
             }
             (1, _) => None,
             (width, &[n]) => {
-                let at = u64::from(n) * u64::from(width);
+                let unit = match numbering {
+                    db::config_file::Numbering::Width => u64::from(width),
+                    db::config_file::Numbering::Byte => 8,
+                };
+                let at = u64::from(n) * unit;
                 Some(at..at + u64::from(width))
             }
             _ => None,

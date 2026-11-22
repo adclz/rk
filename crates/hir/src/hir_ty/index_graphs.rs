@@ -366,7 +366,8 @@ pub fn located_declarations_at<'db>(
 /// is the WIDEST container mentioned, so a whole nest shares one cell.
 /// `None` when nothing mentioned contains it, or it has no byte reading.
 pub fn located_view(db: &dyn WorkspaceDataBase, address: &LocatedAddress) -> Option<LocatedView> {
-    let bits = address.image_bits()?;
+    let numbering = db::config_file::get_config(db).addresses().numbering;
+    let bits = address.image_bits(numbering)?;
     let mut owner: Option<(&LocatedAddress, std::ops::Range<u64>)> = None;
     {
         let mentioned = located_by_file(db).flat_map(|m| m.keys());
@@ -374,7 +375,7 @@ pub fn located_view(db: &dyn WorkspaceDataBase, address: &LocatedAddress) -> Opt
             if other.area != address.area || other == address {
                 continue;
             }
-            let Some(range) = other.image_bits() else {
+            let Some(range) = other.image_bits(numbering) else {
                 continue;
             };
             let contains = range.start <= bits.start && bits.end <= range.end;
