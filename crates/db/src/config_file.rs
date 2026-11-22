@@ -18,6 +18,9 @@ pub struct Config {
     pub project: ProjectInfo,
     pub settings: Option<SettingsConfig>,
     pub linter: Option<LinterConfig>,
+    /// How the program's located variables are numbered and in which order
+    /// their bytes go: what IEC 61131-3 leaves to each implementation.
+    pub addresses: Option<AddressesConfig>,
     /// The libraries this workspace reads beside its own files, each under
     /// the name of its own `config.toml` (see [`crate::dependencies`]). A
     /// library has none. A name keeps its place in the file, for the
@@ -44,6 +47,46 @@ impl Config {
     pub fn output(&self) -> Option<&OutputConfig> {
         self.settings.as_ref()?.output.as_ref()
     }
+
+    /// The workspace's `[addresses]`, each setting its default when the
+    /// section or the setting is left out.
+    pub fn addresses(&self) -> AddressesConfig {
+        self.addresses.unwrap_or_default()
+    }
+}
+
+/// `[addresses]`: how a located variable's address names its bytes.
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AddressesConfig {
+    #[serde(default)]
+    pub numbering: Numbering,
+    #[serde(default, rename = "byte-order")]
+    pub byte_order: ByteOrder,
+}
+
+/// What the number of an address counts.
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Numbering {
+    /// Each size counts in its own units: `%MW7` is the eighth word, bytes 14
+    /// and 15, and two addresses of one size never share a byte.
+    #[default]
+    Width,
+    /// Every size counts bytes: `%MW7` is bytes 7 and 8, and `%MW8` shares
+    /// byte 8 with it.
+    Byte,
+}
+
+/// Which byte of a value of 16 bits or more comes first in its area.
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ByteOrder {
+    /// The least significant: byte 1 of `%MW0` is its high byte.
+    #[default]
+    Little,
+    /// The most significant: byte 1 of `%MW0` is its low byte.
+    Big,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
