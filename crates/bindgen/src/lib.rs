@@ -1052,8 +1052,10 @@ impl Generator<'_> {
                 managers: &managers,
                 namespace: &namespace,
             };
-            function_writer(&blocks, &mut out, &mut taken, function, declared);
-            function_reader(&blocks, &mut out, &mut taken, function, declared);
+            for form in [Form::Text, Form::Array] {
+                function_writer(&blocks, &mut out, &mut taken, function, declared, form);
+                function_reader(&blocks, &mut out, &mut taken, function, declared, form);
+            }
         }
 
         let mut text = header(&[package.to_string()]);
@@ -1735,6 +1737,7 @@ fn function_writer(
     taken: &mut HashMap<String, String>,
     function: &Function,
     declared: &Declared,
+    form: Form,
 ) {
     let Blocks {
         resolve, managers, ..
@@ -1752,7 +1755,10 @@ fn function_writer(
     }
     let Some(writer) = managers
         .get(&(Carrier::Stream, type_key(resolve, Some(Type::U8))))
-        .and_then(|managers| managers.writer.clone())
+        .and_then(|managers| match form {
+            Form::Text => managers.writer.clone(),
+            Form::Array => managers.array_writer.clone(),
+        })
     else {
         return;
     };
@@ -1777,10 +1783,14 @@ fn function_writer(
             _ => return,
         },
     };
-    let block = spare(taken, format!("{}_WRITER", declared.pou));
+    let (suffix, what) = match form {
+        Form::Text => ("WRITER", "writer"),
+        Form::Array => ("ARRAY_WRITER", "array writer"),
+    };
+    let block = spare(taken, format!("{}_{suffix}", declared.pou));
     taken.insert(
         block.to_ascii_uppercase(),
-        format!("the writer of `{}`", function.name),
+        format!("the {what} of `{}`", function.name),
     );
 
     // The function by its namespace's path, which no name of the block's
@@ -1788,10 +1798,16 @@ fn function_writer(
     let pou = &blocks.called(&declared.pou);
     let shown = shown_name(resolve, function);
     let mut held = Held::new(
-        &[
-            "REQ", "IN", "CLOSE", "BUSY", "DONE", "ERROR", "ERRORID", "ENDED", "open", "future",
-            "stream", "answer", "call",
-        ],
+        match form {
+            Form::Text => &[
+                "REQ", "IN", "CLOSE", "BUSY", "DONE", "ERROR", "ERRORID", "ENDED", "open",
+                "future", "stream", "answer", "call",
+            ],
+            Form::Array => &[
+                "REQ", "IN", "COUNT", "CLOSE", "BUSY", "DONE", "ERROR", "ERRORID", "ENDED", "open",
+                "future", "stream", "answer", "call",
+            ],
+        },
         "writer",
     );
     let var = |name: &str, ty: &str| Var {
@@ -1825,30 +1841,66 @@ fn function_writer(
         Answer::Call(_) => "starts",
         _ => "calls",
     };
+    let (moved, written) = match form {
+        Form::Text => ("text", "`IN`"),
+        Form::Array => ("bytes from an array", "the first `COUNT` bytes of `IN`"),
+    };
     out.prose(&format!(
-        "Writes text to `{shown}` through a stream of bytes it opens at the first request."
+        "Writes {moved} to `{shown}` through a stream of bytes it opens at the first request."
     ));
     out.line(&format!("FUNCTION_BLOCK {block}"));
     let text = format!("STRING[{STRING_LIMIT}]");
-    let mut inputs_documented = vec![
-        documented(
-            var("REQ", "BOOL"),
-            format!(
-                "A rising edge writes `IN`; the first opens the stream and {starts} `{shown}` with it. An edge while `BUSY` is ignored."
-            ),
+    let req = documented(
+        var("REQ", "BOOL"),
+        format!(
+            "A rising edge writes {written}; the first opens the stream and {starts} `{shown}` with it. An edge while `BUSY` is ignored."
         ),
-        documented(var("IN", &text), WRITER_IN.to_string()),
-        documented(var("CLOSE", "BOOL"), WRITER_CLOSE.to_string()),
-    ];
+    );
+    let close = documented(var("CLOSE", "BOOL"), WRITER_CLOSE.to_string());
+    let mut inputs_documented = match form {
+        Form::Text => vec![
+            req,
+            documented(var("IN", &text), WRITER_IN.to_string()),
+            close,
+        ],
+        Form::Array => vec![
+            req,
+            documented(var("COUNT", "UDINT"), WRITER_COUNT.to_string()),
+            close,
+        ],
+    };
     inputs_documented.extend(
         inputs
             .iter()
             .map(|(var, _, doc)| documented(var.clone(), doc.clone())),
     );
     out.documented_vars("VAR_INPUT", &inputs_documented);
+    if form == Form::Array {
+        out.documented_vars(
+            "VAR_IN_OUT",
+            &[documented(
+                var("IN", "ARRAY[*] OF BYTE"),
+                WRITER_ARRAY_IN.to_string(),
+            )],
+        );
+    }
     let mut outputs = vec![
-        documented(var("BUSY", "BOOL"), WRITER_BUSY.to_string()),
-        documented(var("DONE", "BOOL"), WRITER_DONE.to_string()),
+        documented(
+            var("BUSY", "BOOL"),
+            match form {
+                Form::Text => WRITER_BUSY,
+                Form::Array => WRITER_ARRAY_BUSY,
+            }
+            .to_string(),
+        ),
+        documented(
+            var("DONE", "BOOL"),
+            match form {
+                Form::Text => WRITER_DONE,
+                Form::Array => WRITER_ARRAY_DONE,
+            }
+            .to_string(),
+        ),
         documented(
             var("ERROR", "BOOL"),
             error_doc(
@@ -1920,7 +1972,12 @@ fn function_writer(
     }
     out.line("IF REQ AND NOT open THEN");
     out.depth += 1;
-    out.line("stream();");
+    // Every input passed, none requested yet: the call only makes the
+    // stream.
+    out.line(match form {
+        Form::Text => "stream(REQ := FALSE, IN := IN, CLOSE := FALSE);",
+        Form::Array => "stream(REQ := FALSE, COUNT := COUNT, CLOSE := FALSE, IN := IN);",
+    });
     match &answer {
         Answer::Nothing => out.line(&format!("{pou}({arguments});")),
         Answer::Unread(drop) => out.line(&format!("{drop}(future := {pou}({arguments}));")),
@@ -1947,7 +2004,10 @@ fn function_writer(
         out.depth -= 1;
         out.line("END_IF;");
     }
-    out.line("stream(REQ := REQ, IN := IN, CLOSE := CLOSE);");
+    out.line(match form {
+        Form::Text => "stream(REQ := REQ, IN := IN, CLOSE := CLOSE);",
+        Form::Array => "stream(REQ := REQ, COUNT := COUNT, CLOSE := CLOSE, IN := IN);",
+    });
     out.line("BUSY := stream.BUSY;");
     out.line("DONE := stream.DONE;");
     if let Answer::Future(..) = answer {
@@ -2202,6 +2262,7 @@ fn function_reader(
     taken: &mut HashMap<String, String>,
     function: &Function,
     declared: &Declared,
+    form: Form,
 ) {
     let Blocks {
         resolve, managers, ..
@@ -2246,7 +2307,13 @@ fn function_reader(
         };
     let Some((read, drop)) = managers
         .get(&(Carrier::Stream, type_key(resolve, Some(Type::U8))))
-        .and_then(|managers| Some((managers.read.clone()?, managers.drop_readable.clone())))
+        .and_then(|managers| {
+            let read = match form {
+                Form::Text => managers.read.clone(),
+                Form::Array => managers.read_array.clone(),
+            };
+            Some((read?, managers.drop_readable.clone()))
+        })
     else {
         return;
     };
@@ -2261,10 +2328,14 @@ fn function_reader(
             None => return,
         },
     };
-    let block = spare(taken, format!("{}_READER", declared.pou));
+    let (suffix, what) = match form {
+        Form::Text => ("READER", "reader"),
+        Form::Array => ("ARRAY_READER", "array reader"),
+    };
+    let block = spare(taken, format!("{}_{suffix}", declared.pou));
     taken.insert(
         block.to_ascii_uppercase(),
-        format!("the reader of `{}`", function.name),
+        format!("the {what} of `{}`", function.name),
     );
 
     // The function by its namespace's path, which no name of the block's
@@ -2278,6 +2349,7 @@ fn function_reader(
             "BUSY",
             "DONE",
             "OUT",
+            "COUNT",
             "ERROR",
             "ERRORID",
             "ENDED",
@@ -2311,15 +2383,19 @@ fn function_reader(
     } = kept_values(resolve, kept, answered, &shown, &mut held);
     let documented = |var: Var, text: String| held.documented(var, text, &shown);
 
+    let (into, at_most, nothing) = match form {
+        Form::Text => ("", STRING_LIMIT, "`OUT` empty"),
+        Form::Array => (" into an array", BYTES_AT_ONCE, "`COUNT` 0"),
+    };
     out.prose(&format!(
-        "Reads what `{shown}` gives through a stream of bytes, a request at a time."
+        "Reads what `{shown}` gives through a stream of bytes{into}, a request at a time."
     ));
     out.line(&format!("FUNCTION_BLOCK {block}"));
     let mut inputs_documented = vec![
         documented(
             var("REQ", "BOOL"),
             format!(
-                "A rising edge reads what comes next, {STRING_LIMIT} bytes at most; the first calls `{shown}`. An edge while `BUSY` is ignored, and one after the stream ended is `DONE` at once, `OUT` empty."
+                "A rising edge reads what comes next, {at_most} bytes at most; the first calls `{shown}`. An edge while `BUSY` is ignored, and one after the stream ended is `DONE` at once, {nothing}."
             ),
         ),
         documented(
@@ -2333,7 +2409,7 @@ fn function_reader(
             .map(|(var, _, doc)| documented(var.clone(), doc.clone())),
     );
     out.documented_vars("VAR_INPUT", &inputs_documented);
-    let mut outputs = vec![
+    let mut outputs: Vec<(Var, String)> = vec![
         documented(
             var("BUSY", "BOOL"),
             "TRUE while a read waits for bytes.".to_string(),
@@ -2342,12 +2418,25 @@ fn function_reader(
             var("DONE", "BOOL"),
             "TRUE in the call where a read has given what came, in `OUT`.".to_string(),
         ),
-        documented(
+    ];
+    match form {
+        Form::Text => outputs.push(documented(
             var("OUT", &format!("STRING[{STRING_LIMIT}]")),
             "What the last read gave: empty once the stream has ended, nothing more coming."
                 .to_string(),
-        ),
-    ];
+        )),
+        Form::Array => {
+            outputs.push(documented(
+                var("OUT", &format!("ARRAY[0..{}] OF BYTE", BYTES_AT_ONCE - 1)),
+                "The bytes the last read gave, its first `COUNT`.".to_string(),
+            ));
+            outputs.push(documented(
+                var("COUNT", "UDINT"),
+                "How many bytes the last read gave: 0 once the stream has ended, nothing more coming."
+                    .to_string(),
+            ));
+        }
+    }
     // A result's error, the one the reader reports.
     if let Some(doc) = error_doc(resolve, None, result, &shown) {
         outputs.push(documented(var("ERROR", "BOOL"), doc));
@@ -2428,7 +2517,13 @@ fn function_reader(
         (2, "BUSY := TRUE;"),
         (1, "ELSE"),
         (2, "// The stream has ended: nothing more comes."),
-        (2, "OUT := '';"),
+        (
+            2,
+            match form {
+                Form::Text => "OUT := '';",
+                Form::Array => "COUNT := 0;",
+            },
+        ),
         (2, "DONE := TRUE;"),
         (1, "END_IF;"),
         (0, "END_IF;"),
@@ -2438,12 +2533,20 @@ fn function_reader(
         (1, "read(stream := stream);"),
         (1, "IF read.DONE THEN"),
         (2, "OUT := read.data;"),
+        (
+            2,
+            match form {
+                Form::Text => "",
+                Form::Array => "COUNT := read.read;",
+            },
+        ),
         (2, "BUSY := FALSE;"),
         (2, "DONE := TRUE;"),
         (2, "IF read.closed THEN"),
         (3, "// The writer left: the reading end goes too."),
     ];
-    for (depth, line) in lines {
+    // The text form has no count to set.
+    for (depth, line) in lines.into_iter().filter(|(_, line)| !line.is_empty()) {
         out.depth += depth;
         out.line(line);
         out.depth -= depth;
@@ -2739,6 +2842,249 @@ fn stream_writer(out: &mut Out, names: &Writer) {
         ),
         (4, "// it takes some.".to_string()),
         (4, format!("rest := {after}(rest, write.written);")),
+        (4, "again := write.written > 0;".to_string()),
+        (3, "ELSE".to_string()),
+        (4, "BUSY := FALSE;".to_string()),
+        (4, "DONE := TRUE;".to_string()),
+        (3, "END_IF;".to_string()),
+        (2, "END_IF;".to_string()),
+        (1, "UNTIL NOT again".to_string()),
+        (1, "END_REPEAT;".to_string()),
+        (0, "END_IF;".to_string()),
+        (
+            0,
+            "// The writing end goes once no write is under way.".to_string(),
+        ),
+        (0, "IF CLOSE AND NOT closing THEN".to_string()),
+        (1, "shut := TRUE;".to_string()),
+        (0, "END_IF;".to_string()),
+        (0, "closing := CLOSE;".to_string()),
+        (0, "IF shut AND NOT BUSY THEN".to_string()),
+        (1, "IF writable <> 0 THEN".to_string()),
+        (2, format!("{drop}(stream := writable);")),
+        (2, "writable := 0;".to_string()),
+        (1, "END_IF;".to_string()),
+        (1, "closed := TRUE;".to_string()),
+        (1, "shut := FALSE;".to_string()),
+        (0, "END_IF;".to_string()),
+    ];
+    let depth = out.depth + 1;
+    for (indent, line) in body {
+        out.depth = depth + indent;
+        out.line(&line);
+    }
+    out.depth = depth - 1;
+    out.line("END_FUNCTION_BLOCK");
+    out.line("");
+}
+
+/// What the inputs and outputs of a writer of bytes from an array say
+/// beside the text writer's.
+const WRITER_COUNT: &str = "How many bytes of `IN` a request writes, from its first on.";
+const WRITER_ARRAY_IN: &str = "The bytes to write. The host reads them where they are while `BUSY`: they stay as they are until `DONE`.";
+const WRITER_ARRAY_BUSY: &str = "TRUE while the reader has not taken all `COUNT` bytes.";
+const WRITER_ARRAY_DONE: &str =
+    "TRUE in the call where the reader has taken all `COUNT` bytes, at once for none.";
+
+/// What a writer or a reader moves: text, through a STRING, or bytes,
+/// through an array of them and a count.
+#[derive(Clone, Copy, PartialEq)]
+enum Form {
+    Text,
+    Array,
+}
+
+/// The names a stream's array writer uses: its own, those of its two
+/// helpers, an array's first subscript and its length, and those of the
+/// built-ins it calls.
+struct ArrayWriter {
+    writer: String,
+    first: String,
+    len: String,
+    new: String,
+    write: String,
+    drop: String,
+}
+
+/// The block that writes bytes from an array to a stream of bytes it makes
+/// itself, `names.writer`, as the text writer does (`stream_writer`), and
+/// its two helpers, private to the interface's namespace: the first
+/// subscript of the array and how many bytes it holds. They read the
+/// bounds with `{wasm}` intrinsics, as `Std.Arrays` does, so that the
+/// declarations need no library but their own, as the text writer's
+/// helpers. The host reads the bytes in place, from a reference to the
+/// first not taken yet; a count past the array raises, as a subscript past
+/// its bounds does.
+fn stream_array_writer(out: &mut Out, names: &ArrayWriter) {
+    let ArrayWriter {
+        writer,
+        first,
+        len,
+        new,
+        write,
+        drop,
+    } = names;
+    let var = |name: &str, ty: &str| Var {
+        name: name.to_string(),
+        ty: ty.to_string(),
+        flat: 1,
+        start: None,
+    };
+    let array = "ARRAY[*] OF BYTE";
+    // The bounds as LINTs, which hold any bound and the length: a bound
+    // that does not fit its variable raises. A COUNT compares with the
+    // length with no conversion.
+    let dimension = Var {
+        start: Some("1"),
+        ..var("DIM", "DINT")
+    };
+    out.prose(&format!(
+        "The subscript of the first byte of `IN`, which `{writer}` writes from."
+    ));
+    out.line(&format!("FUNCTION PRIVATE {first} : LINT"));
+    out.vars("VAR_INPUT", &[var("IN", array)]);
+    out.vars("VAR", std::slice::from_ref(&dimension));
+    out.depth += 1;
+    out.line(&format!(
+        "{{wasm 'array.lower_bound' (params IN DIM) (result {first})}}"
+    ));
+    out.depth -= 1;
+    out.line("END_FUNCTION");
+    out.line("");
+
+    out.prose(&format!(
+        "How many bytes `IN` holds, which `{writer}` writes at most."
+    ));
+    out.line(&format!("FUNCTION PRIVATE {len} : LINT"));
+    out.vars("VAR_INPUT", &[var("IN", array)]);
+    out.vars(
+        "VAR",
+        &[dimension, var("lower", "LINT"), var("upper", "LINT")],
+    );
+    out.depth += 1;
+    out.line("{wasm 'array.lower_bound' (params IN DIM) (result lower)}");
+    out.line("{wasm 'array.upper_bound' (params IN DIM) (result upper)}");
+    out.line(&format!("{len} := upper - lower + 1;"));
+    out.depth -= 1;
+    out.line("END_FUNCTION");
+    out.line("");
+
+    out.prose(
+        "Writes bytes from an array to a stream of bytes it makes at its first call, for the function `readable` is handed to.",
+    );
+    out.line(&format!("FUNCTION_BLOCK {writer}"));
+    let documented = |name: &str, ty: &str, doc: &str| (var(name, ty), doc.to_string());
+    out.documented_vars(
+        "VAR_INPUT",
+        &[
+            documented(
+                "REQ",
+                "BOOL",
+                "A rising edge writes the first `COUNT` bytes of `IN`. An edge while `BUSY` is ignored.",
+            ),
+            documented("COUNT", "UDINT", WRITER_COUNT),
+            documented("CLOSE", "BOOL", WRITER_CLOSE),
+        ],
+    );
+    out.documented_vars("VAR_IN_OUT", &[documented("IN", array, WRITER_ARRAY_IN)]);
+    out.documented_vars(
+        "VAR_OUTPUT",
+        &[
+            documented(
+                "readable",
+                "UDINT",
+                "The stream's reading end, to hand to the function that reads it.",
+            ),
+            documented("BUSY", "BOOL", WRITER_ARRAY_BUSY),
+            documented("DONE", "BOOL", WRITER_ARRAY_DONE),
+            documented("ERROR", "BOOL", WRITER_ERROR),
+        ],
+    );
+    out.vars(
+        "VAR",
+        &[
+            var("writable", "UDINT"),
+            var("requested", "BOOL"),
+            var("closing", "BOOL"),
+            var("shut", "BOOL"),
+            var("closed", "BOOL"),
+            var("total", "UDINT"),
+            var("sent", "UDINT"),
+            var("base", "LINT"),
+            var("write", write),
+        ],
+    );
+    out.vars("VAR_TEMP", &[var("again", "BOOL"), var("offset", "LINT")]);
+    let body = [
+        (0, "IF writable = 0 AND NOT closed THEN".to_string()),
+        (
+            1,
+            format!("{new}(readable => readable, writable => writable);"),
+        ),
+        (0, "END_IF;".to_string()),
+        (0, "DONE := FALSE;".to_string()),
+        (0, "// An edge while BUSY is ignored.".to_string()),
+        (0, "IF REQ AND NOT requested AND NOT BUSY THEN".to_string()),
+        (1, "ERROR := closed;".to_string()),
+        (1, "IF NOT closed THEN".to_string()),
+        (
+            2,
+            "// A write of no bytes asks the reader whether it is ready,".to_string(),
+        ),
+        (
+            2,
+            "// which it may answer late: none is done here.".to_string(),
+        ),
+        (2, "IF COUNT = 0 THEN".to_string()),
+        (3, "DONE := TRUE;".to_string()),
+        (2, format!("ELSIF COUNT > {len}(IN) THEN")),
+        (3, "__RAISE('COUNT is past the end of IN');".to_string()),
+        (2, "ELSE".to_string()),
+        (3, "total := COUNT;".to_string()),
+        (3, "sent := 0;".to_string()),
+        (3, format!("base := {first}(IN);")),
+        (3, "BUSY := TRUE;".to_string()),
+        (2, "END_IF;".to_string()),
+        (1, "END_IF;".to_string()),
+        (0, "END_IF;".to_string()),
+        (0, "requested := REQ;".to_string()),
+        (0, "IF BUSY THEN".to_string()),
+        (
+            1,
+            "// Each pass after the first hands over a byte at least, so the".to_string(),
+        ),
+        (1, "// loop ends.".to_string()),
+        (1, "REPEAT".to_string()),
+        (2, "again := FALSE;".to_string()),
+        (2, "offset := sent;".to_string()),
+        (
+            2,
+            "// Starts the write of the bytes not taken yet, from where they".to_string(),
+        ),
+        (2, "// are, or checks the one running.".to_string()),
+        (
+            2,
+            "write(stream := writable, data := REF(IN[base + offset]), count := total - sent);"
+                .to_string(),
+        ),
+        (2, "IF write.DONE THEN".to_string()),
+        (3, "IF write.closed THEN".to_string()),
+        (
+            4,
+            "// The reader left: the writing end goes too.".to_string(),
+        ),
+        (4, format!("{drop}(stream := writable);")),
+        (4, "writable := 0;".to_string()),
+        (4, "closed := TRUE;".to_string()),
+        (4, "BUSY := FALSE;".to_string()),
+        (4, "ERROR := TRUE;".to_string()),
+        (3, "ELSIF write.written < total - sent THEN".to_string()),
+        (
+            4,
+            "// The reader took a part: the rest goes next, at once while".to_string(),
+        ),
+        (4, "// it takes some.".to_string()),
+        (4, "sent := sent + write.written;".to_string()),
         (4, "again := write.written > 0;".to_string()),
         (3, "ELSE".to_string()),
         (4, "BUSY := FALSE;".to_string()),
@@ -3460,6 +3806,8 @@ fn built_in_set(
         get: None,
         drop_readable: pou("DROP_READABLE"),
         read: (bytes && given).then(|| pou("READ")),
+        array_writer: None,
+        read_array: (bytes && given).then(|| pou("READ_ARRAY")),
     };
     if let Some(outputs) = read_outputs {
         let get = pou("GET");
@@ -3488,6 +3836,17 @@ fn built_in_set(
         stream_writer(out, &names);
         managers.writer = Some(names.writer.clone());
         written.extend([names.len, names.after, names.writer]);
+        let names = ArrayWriter {
+            writer: pou("ARRAY_WRITER"),
+            first: pou("ARRAY_FIRST"),
+            len: pou("ARRAY_LEN"),
+            new: pou("NEW"),
+            write: pou("WRITE_ARRAY"),
+            drop: pou("DROP_WRITABLE"),
+        };
+        stream_array_writer(out, &names);
+        managers.array_writer = Some(names.writer.clone());
+        written.extend([names.first, names.len, names.writer]);
     }
     let cancels: Vec<String> = [("READ", given), ("WRITE", fed)]
         .into_iter()
@@ -3514,4 +3873,7 @@ struct Managers {
     drop_readable: String,
     /// A stream of bytes' read into a STRING, which a reader reads with.
     read: Option<String>,
+    /// A stream of bytes' writer from an array, and its read into one.
+    array_writer: Option<String>,
+    read_array: Option<String>,
 }
