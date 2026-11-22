@@ -275,6 +275,146 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     				END_IF;
     			END_FUNCTION_BLOCK
 
+    			/* The subscript of the first byte of `IN`, which
+    			   `BYTES_STREAM_ARRAY_WRITER` writes from. */
+    			FUNCTION PRIVATE BYTES_STREAM_ARRAY_FIRST : LINT
+    			VAR_INPUT
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR
+    				DIM : DINT := 1;
+    			END_VAR
+    				{wasm 'array.lower_bound' (params IN DIM) (result BYTES_STREAM_ARRAY_FIRST)}
+    			END_FUNCTION
+
+    			/* How many bytes `IN` holds, which `BYTES_STREAM_ARRAY_WRITER` writes at
+    			   most. */
+    			FUNCTION PRIVATE BYTES_STREAM_ARRAY_LEN : LINT
+    			VAR_INPUT
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR
+    				DIM : DINT := 1;
+    				lower : LINT;
+    				upper : LINT;
+    			END_VAR
+    				{wasm 'array.lower_bound' (params IN DIM) (result lower)}
+    				{wasm 'array.upper_bound' (params IN DIM) (result upper)}
+    				BYTES_STREAM_ARRAY_LEN := upper - lower + 1;
+    			END_FUNCTION
+
+    			/* Writes bytes from an array to a stream of bytes it makes at its first
+    			   call, for the function `readable` is handed to. */
+    			FUNCTION_BLOCK BYTES_STREAM_ARRAY_WRITER
+    			VAR_INPUT
+    				/* A rising edge writes the first `COUNT` bytes of `IN`. An edge while
+    				   `BUSY` is ignored. */
+    				REQ : BOOL;
+    				/* How many bytes of `IN` a request writes, from its first on. */
+    				COUNT : UDINT;
+    				/* A rising edge ends the stream, once no write is under way. */
+    				CLOSE : BOOL;
+    			END_VAR
+    			VAR_IN_OUT
+    				/* The bytes to write. The host reads them where they are while `BUSY`:
+    				   they stay as they are until `DONE`. */
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR_OUTPUT
+    				/* The stream's reading end, to hand to the function that reads it. */
+    				readable : UDINT;
+    				/* TRUE while the reader has not taken all `COUNT` bytes. */
+    				BUSY : BOOL;
+    				/* TRUE in the call where the reader has taken all `COUNT` bytes, at once
+    				   for none. */
+    				DONE : BOOL;
+    				/* TRUE once a write finds the reader gone, or a request comes after
+    				   `CLOSE`: the stream does not open again. */
+    				ERROR : BOOL;
+    			END_VAR
+    			VAR
+    				writable : UDINT;
+    				requested : BOOL;
+    				closing : BOOL;
+    				shut : BOOL;
+    				closed : BOOL;
+    				total : UDINT;
+    				sent : UDINT;
+    				base : LINT;
+    				write : BYTES_STREAM_WRITE_ARRAY;
+    			END_VAR
+    			VAR_TEMP
+    				again : BOOL;
+    				offset : LINT;
+    			END_VAR
+    				IF writable = 0 AND NOT closed THEN
+    					BYTES_STREAM_NEW(readable => readable, writable => writable);
+    				END_IF;
+    				DONE := FALSE;
+    				// An edge while BUSY is ignored.
+    				IF REQ AND NOT requested AND NOT BUSY THEN
+    					ERROR := closed;
+    					IF NOT closed THEN
+    						// A write of no bytes asks the reader whether it is ready,
+    						// which it may answer late: none is done here.
+    						IF COUNT = 0 THEN
+    							DONE := TRUE;
+    						ELSIF COUNT > BYTES_STREAM_ARRAY_LEN(IN) THEN
+    							__RAISE('COUNT is past the end of IN');
+    						ELSE
+    							total := COUNT;
+    							sent := 0;
+    							base := BYTES_STREAM_ARRAY_FIRST(IN);
+    							BUSY := TRUE;
+    						END_IF;
+    					END_IF;
+    				END_IF;
+    				requested := REQ;
+    				IF BUSY THEN
+    					// Each pass after the first hands over a byte at least, so the
+    					// loop ends.
+    					REPEAT
+    						again := FALSE;
+    						offset := sent;
+    						// Starts the write of the bytes not taken yet, from where they
+    						// are, or checks the one running.
+    						write(stream := writable, data := REF(IN[base + offset]), count := total - sent);
+    						IF write.DONE THEN
+    							IF write.closed THEN
+    								// The reader left: the writing end goes too.
+    								BYTES_STREAM_DROP_WRITABLE(stream := writable);
+    								writable := 0;
+    								closed := TRUE;
+    								BUSY := FALSE;
+    								ERROR := TRUE;
+    							ELSIF write.written < total - sent THEN
+    								// The reader took a part: the rest goes next, at once while
+    								// it takes some.
+    								sent := sent + write.written;
+    								again := write.written > 0;
+    							ELSE
+    								BUSY := FALSE;
+    								DONE := TRUE;
+    							END_IF;
+    						END_IF;
+    					UNTIL NOT again
+    					END_REPEAT;
+    				END_IF;
+    				// The writing end goes once no write is under way.
+    				IF CLOSE AND NOT closing THEN
+    					shut := TRUE;
+    				END_IF;
+    				closing := CLOSE;
+    				IF shut AND NOT BUSY THEN
+    					IF writable <> 0 THEN
+    						BYTES_STREAM_DROP_WRITABLE(stream := writable);
+    						writable := 0;
+    					END_IF;
+    					closed := TRUE;
+    					shut := FALSE;
+    				END_IF;
+    			END_FUNCTION_BLOCK
+
     			/* Reads the value the future holds, which comes back after `DONE`. */
     			{extern async 'acme:example/pipe@0.3.0' '[future-read-1]send'}
     			FUNCTION_BLOCK RESULT_FUTURE_READ
@@ -368,12 +508,71 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_VAR
     				// The stream, made at the first request and handed to the function.
     				IF REQ AND NOT open THEN
-    					stream();
+    					stream(REQ := FALSE, IN := IN, CLOSE := FALSE);
     					future := Acme.Example.Pipe.SEND(data := stream.readable);
     					open := TRUE;
     				END_IF;
     				IF open THEN
     					stream(REQ := REQ, IN := IN, CLOSE := CLOSE);
+    					BUSY := stream.BUSY;
+    					DONE := stream.DONE;
+    					// The answer, read once it comes, and kept.
+    					answer(future := future);
+    					IF answer.DONE THEN
+    						ERRORID := answer.error;
+    						ENDED := TRUE;
+    					END_IF;
+    					ERROR := stream.ERROR OR answer.failed;
+    				END_IF;
+    			END_FUNCTION_BLOCK
+
+    			/* Writes bytes from an array to `send` through a stream of bytes it opens
+    			   at the first request. */
+    			FUNCTION_BLOCK SEND_ARRAY_WRITER
+    			VAR_INPUT
+    				/* A rising edge writes the first `COUNT` bytes of `IN`; the first opens
+    				   the stream and calls `send` with it. An edge while `BUSY` is ignored. */
+    				REQ : BOOL;
+    				/* How many bytes of `IN` a request writes, from its first on. */
+    				COUNT : UDINT;
+    				/* A rising edge ends the stream, once no write is under way. */
+    				CLOSE : BOOL;
+    			END_VAR
+    			VAR_IN_OUT
+    				/* The bytes to write. The host reads them where they are while `BUSY`:
+    				   they stay as they are until `DONE`. */
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR_OUTPUT
+    				/* TRUE while the reader has not taken all `COUNT` bytes. */
+    				BUSY : BOOL;
+    				/* TRUE in the call where the reader has taken all `COUNT` bytes, at once
+    				   for none. */
+    				DONE : BOOL;
+    				/* TRUE once a write finds the reader gone, a request comes after `CLOSE`,
+    				   or the `result<_, error-code>` from `send` is an error, whose
+    				   `error-code` is in `ERRORID`. */
+    				ERROR : BOOL;
+    				/* The `error-code` of the `result<_, error-code>` from `send`, when it is
+    				   an error, which turns `ERROR` TRUE. */
+    				ERRORID : ERROR_CODE;
+    				/* TRUE once the `future<result<_, error-code>>` from `send` has its value. */
+    				ENDED : BOOL;
+    			END_VAR
+    			VAR
+    				open : BOOL;
+    				stream : BYTES_STREAM_ARRAY_WRITER;
+    				future : UDINT;
+    				answer : RESULT_FUTURE_GET;
+    			END_VAR
+    				// The stream, made at the first request and handed to the function.
+    				IF REQ AND NOT open THEN
+    					stream(REQ := FALSE, COUNT := COUNT, CLOSE := FALSE, IN := IN);
+    					future := Acme.Example.Pipe.SEND(data := stream.readable);
+    					open := TRUE;
+    				END_IF;
+    				IF open THEN
+    					stream(REQ := REQ, COUNT := COUNT, CLOSE := CLOSE, IN := IN);
     					BUSY := stream.BUSY;
     					DONE := stream.DONE;
     					// The answer, read once it comes, and kept.
@@ -449,6 +648,104 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     						read(stream := stream);
     						IF read.DONE THEN
     							OUT := read.data;
+    							BUSY := FALSE;
+    							DONE := TRUE;
+    							IF read.closed THEN
+    								// The writer left: the reading end goes too.
+    								BYTES_STREAM_DROP_READABLE(stream := stream);
+    								stream := 0;
+    							END_IF;
+    						END_IF;
+    					END_IF;
+    					// The reading end goes on CLOSE, once no read is under way.
+    					IF CLOSE AND NOT closing THEN
+    						shut := TRUE;
+    					END_IF;
+    					closing := CLOSE;
+    					IF shut AND NOT BUSY THEN
+    						IF stream <> 0 THEN
+    							BYTES_STREAM_DROP_READABLE(stream := stream);
+    							stream := 0;
+    						END_IF;
+    						shut := FALSE;
+    					END_IF;
+    					// The answer, read once it comes, and kept.
+    					answer(future := future);
+    					IF answer.DONE THEN
+    						ERRORID := answer.error;
+    						came := TRUE;
+    					END_IF;
+    					ENDED := stream = 0 AND came;
+    					ERROR := answer.failed;
+    				END_IF;
+    			END_FUNCTION_BLOCK
+
+    			/* Reads what `receive` gives through a stream of bytes into an array, a
+    			   request at a time. */
+    			FUNCTION_BLOCK RECEIVE_ARRAY_READER
+    			VAR_INPUT
+    				/* A rising edge reads what comes next, 8192 bytes at most; the first calls
+    				   `receive`. An edge while `BUSY` is ignored, and one after the stream
+    				   ended is `DONE` at once, `COUNT` 0. */
+    				REQ : BOOL;
+    				/* A rising edge lets go of the stream, once no read is under way. */
+    				CLOSE : BOOL;
+    			END_VAR
+    			VAR_OUTPUT
+    				/* TRUE while a read waits for bytes. */
+    				BUSY : BOOL;
+    				/* TRUE in the call where a read has given what came, in `OUT`. */
+    				DONE : BOOL;
+    				/* The bytes the last read gave, its first `COUNT`. */
+    				OUT : ARRAY[0..8191] OF BYTE;
+    				/* How many bytes the last read gave: 0 once the stream has ended, nothing
+    				   more coming. */
+    				COUNT : UDINT;
+    				/* TRUE once the `result<_, error-code>` from `receive` is an error, whose
+    				   `error-code` is in `ERRORID`. */
+    				ERROR : BOOL;
+    				/* The `error-code` of the `result<_, error-code>` from `receive`, when it
+    				   is an error, which turns `ERROR` TRUE. */
+    				ERRORID : ERROR_CODE;
+    				/* TRUE once the stream has ended and the `future<result<_, error-code>>`
+    				   from `receive` has its value. */
+    				ENDED : BOOL;
+    			END_VAR
+    			VAR
+    				open : BOOL;
+    				requested : BOOL;
+    				closing : BOOL;
+    				shut : BOOL;
+    				stream : UDINT;
+    				future : UDINT;
+    				read : BYTES_STREAM_READ_ARRAY;
+    				answer : RESULT_FUTURE_GET;
+    				came : BOOL;
+    			END_VAR
+    				DONE := FALSE;
+    				// The stream, given by the function at the first request.
+    				IF REQ AND NOT open THEN
+    					Acme.Example.Pipe.RECEIVE(item0 => stream, item1 => future);
+    					open := TRUE;
+    				END_IF;
+    				IF open THEN
+    					// An edge while BUSY is ignored.
+    					IF REQ AND NOT requested AND NOT BUSY THEN
+    						IF stream <> 0 THEN
+    							BUSY := TRUE;
+    						ELSE
+    							// The stream has ended: nothing more comes.
+    							COUNT := 0;
+    							DONE := TRUE;
+    						END_IF;
+    					END_IF;
+    					requested := REQ;
+    					IF BUSY THEN
+    						// Starts the read, or checks the one running.
+    						read(stream := stream);
+    						IF read.DONE THEN
+    							OUT := read.data;
+    							COUNT := read.read;
     							BUSY := FALSE;
     							DONE := TRUE;
     							IF read.closed THEN
@@ -675,6 +972,146 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     				END_IF;
     			END_FUNCTION_BLOCK
 
+    			/* The subscript of the first byte of `IN`, which
+    			   `BYTES_STREAM_ARRAY_WRITER` writes from. */
+    			FUNCTION PRIVATE BYTES_STREAM_ARRAY_FIRST : LINT
+    			VAR_INPUT
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR
+    				DIM : DINT := 1;
+    			END_VAR
+    				{wasm 'array.lower_bound' (params IN DIM) (result BYTES_STREAM_ARRAY_FIRST)}
+    			END_FUNCTION
+
+    			/* How many bytes `IN` holds, which `BYTES_STREAM_ARRAY_WRITER` writes at
+    			   most. */
+    			FUNCTION PRIVATE BYTES_STREAM_ARRAY_LEN : LINT
+    			VAR_INPUT
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR
+    				DIM : DINT := 1;
+    				lower : LINT;
+    				upper : LINT;
+    			END_VAR
+    				{wasm 'array.lower_bound' (params IN DIM) (result lower)}
+    				{wasm 'array.upper_bound' (params IN DIM) (result upper)}
+    				BYTES_STREAM_ARRAY_LEN := upper - lower + 1;
+    			END_FUNCTION
+
+    			/* Writes bytes from an array to a stream of bytes it makes at its first
+    			   call, for the function `readable` is handed to. */
+    			FUNCTION_BLOCK BYTES_STREAM_ARRAY_WRITER
+    			VAR_INPUT
+    				/* A rising edge writes the first `COUNT` bytes of `IN`. An edge while
+    				   `BUSY` is ignored. */
+    				REQ : BOOL;
+    				/* How many bytes of `IN` a request writes, from its first on. */
+    				COUNT : UDINT;
+    				/* A rising edge ends the stream, once no write is under way. */
+    				CLOSE : BOOL;
+    			END_VAR
+    			VAR_IN_OUT
+    				/* The bytes to write. The host reads them where they are while `BUSY`:
+    				   they stay as they are until `DONE`. */
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR_OUTPUT
+    				/* The stream's reading end, to hand to the function that reads it. */
+    				readable : UDINT;
+    				/* TRUE while the reader has not taken all `COUNT` bytes. */
+    				BUSY : BOOL;
+    				/* TRUE in the call where the reader has taken all `COUNT` bytes, at once
+    				   for none. */
+    				DONE : BOOL;
+    				/* TRUE once a write finds the reader gone, or a request comes after
+    				   `CLOSE`: the stream does not open again. */
+    				ERROR : BOOL;
+    			END_VAR
+    			VAR
+    				writable : UDINT;
+    				requested : BOOL;
+    				closing : BOOL;
+    				shut : BOOL;
+    				closed : BOOL;
+    				total : UDINT;
+    				sent : UDINT;
+    				base : LINT;
+    				write : BYTES_STREAM_WRITE_ARRAY;
+    			END_VAR
+    			VAR_TEMP
+    				again : BOOL;
+    				offset : LINT;
+    			END_VAR
+    				IF writable = 0 AND NOT closed THEN
+    					BYTES_STREAM_NEW(readable => readable, writable => writable);
+    				END_IF;
+    				DONE := FALSE;
+    				// An edge while BUSY is ignored.
+    				IF REQ AND NOT requested AND NOT BUSY THEN
+    					ERROR := closed;
+    					IF NOT closed THEN
+    						// A write of no bytes asks the reader whether it is ready,
+    						// which it may answer late: none is done here.
+    						IF COUNT = 0 THEN
+    							DONE := TRUE;
+    						ELSIF COUNT > BYTES_STREAM_ARRAY_LEN(IN) THEN
+    							__RAISE('COUNT is past the end of IN');
+    						ELSE
+    							total := COUNT;
+    							sent := 0;
+    							base := BYTES_STREAM_ARRAY_FIRST(IN);
+    							BUSY := TRUE;
+    						END_IF;
+    					END_IF;
+    				END_IF;
+    				requested := REQ;
+    				IF BUSY THEN
+    					// Each pass after the first hands over a byte at least, so the
+    					// loop ends.
+    					REPEAT
+    						again := FALSE;
+    						offset := sent;
+    						// Starts the write of the bytes not taken yet, from where they
+    						// are, or checks the one running.
+    						write(stream := writable, data := REF(IN[base + offset]), count := total - sent);
+    						IF write.DONE THEN
+    							IF write.closed THEN
+    								// The reader left: the writing end goes too.
+    								BYTES_STREAM_DROP_WRITABLE(stream := writable);
+    								writable := 0;
+    								closed := TRUE;
+    								BUSY := FALSE;
+    								ERROR := TRUE;
+    							ELSIF write.written < total - sent THEN
+    								// The reader took a part: the rest goes next, at once while
+    								// it takes some.
+    								sent := sent + write.written;
+    								again := write.written > 0;
+    							ELSE
+    								BUSY := FALSE;
+    								DONE := TRUE;
+    							END_IF;
+    						END_IF;
+    					UNTIL NOT again
+    					END_REPEAT;
+    				END_IF;
+    				// The writing end goes once no write is under way.
+    				IF CLOSE AND NOT closing THEN
+    					shut := TRUE;
+    				END_IF;
+    				closing := CLOSE;
+    				IF shut AND NOT BUSY THEN
+    					IF writable <> 0 THEN
+    						BYTES_STREAM_DROP_WRITABLE(stream := writable);
+    						writable := 0;
+    					END_IF;
+    					closed := TRUE;
+    					shut := FALSE;
+    				END_IF;
+    			END_FUNCTION_BLOCK
+
     			/* Reads the value the future holds, which comes back after `DONE`. */
     			{extern async 'acme:example/other@0.3.0' '[future-read-1]relay'}
     			FUNCTION_BLOCK RESULT_FUTURE_READ
@@ -761,12 +1198,72 @@ fn one_set_per_type_across_functions_and_interfaces(mut with_db: RootDatabase) {
     			END_VAR
     				// The stream, made at the first request and handed to the function.
     				IF REQ AND NOT open THEN
-    					stream();
+    					stream(REQ := FALSE, IN := IN, CLOSE := FALSE);
     					future := Acme.Example.Other.RELAY(data := stream.readable);
     					open := TRUE;
     				END_IF;
     				IF open THEN
     					stream(REQ := REQ, IN := IN, CLOSE := CLOSE);
+    					BUSY := stream.BUSY;
+    					DONE := stream.DONE;
+    					// The answer, read once it comes, and kept.
+    					answer(future := future);
+    					IF answer.DONE THEN
+    						ERRORID := answer.error;
+    						ENDED := TRUE;
+    					END_IF;
+    					ERROR := stream.ERROR OR answer.failed;
+    				END_IF;
+    			END_FUNCTION_BLOCK
+
+    			/* Writes bytes from an array to `relay` through a stream of bytes it opens
+    			   at the first request. */
+    			FUNCTION_BLOCK RELAY_ARRAY_WRITER
+    			VAR_INPUT
+    				/* A rising edge writes the first `COUNT` bytes of `IN`; the first opens
+    				   the stream and calls `relay` with it. An edge while `BUSY` is ignored. */
+    				REQ : BOOL;
+    				/* How many bytes of `IN` a request writes, from its first on. */
+    				COUNT : UDINT;
+    				/* A rising edge ends the stream, once no write is under way. */
+    				CLOSE : BOOL;
+    			END_VAR
+    			VAR_IN_OUT
+    				/* The bytes to write. The host reads them where they are while `BUSY`:
+    				   they stay as they are until `DONE`. */
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR_OUTPUT
+    				/* TRUE while the reader has not taken all `COUNT` bytes. */
+    				BUSY : BOOL;
+    				/* TRUE in the call where the reader has taken all `COUNT` bytes, at once
+    				   for none. */
+    				DONE : BOOL;
+    				/* TRUE once a write finds the reader gone, a request comes after `CLOSE`,
+    				   or the `result<_, error-code>` from `relay` is an error, whose
+    				   `error-code` is in `ERRORID`. */
+    				ERROR : BOOL;
+    				/* The `error-code` of the `result<_, error-code>` from `relay`, when it is
+    				   an error, which turns `ERROR` TRUE. */
+    				ERRORID : Acme.Example.Pipe.ERROR_CODE;
+    				/* TRUE once the `future<result<_, error-code>>` from `relay` has its
+    				   value. */
+    				ENDED : BOOL;
+    			END_VAR
+    			VAR
+    				open : BOOL;
+    				stream : BYTES_STREAM_ARRAY_WRITER;
+    				future : UDINT;
+    				answer : RESULT_FUTURE_GET;
+    			END_VAR
+    				// The stream, made at the first request and handed to the function.
+    				IF REQ AND NOT open THEN
+    					stream(REQ := FALSE, COUNT := COUNT, CLOSE := FALSE, IN := IN);
+    					future := Acme.Example.Other.RELAY(data := stream.readable);
+    					open := TRUE;
+    				END_IF;
+    				IF open THEN
+    					stream(REQ := REQ, COUNT := COUNT, CLOSE := CLOSE, IN := IN);
     					BUSY := stream.BUSY;
     					DONE := stream.DONE;
     					// The answer, read once it comes, and kept.
@@ -1006,6 +1503,146 @@ fn the_place_counts_streams_and_futures_together(mut with_db: RootDatabase) {
     								// The reader took a part: the rest goes next, at once while
     								// it takes some.
     								rest := BYTES_STREAM_TEXT_AFTER(rest, write.written);
+    								again := write.written > 0;
+    							ELSE
+    								BUSY := FALSE;
+    								DONE := TRUE;
+    							END_IF;
+    						END_IF;
+    					UNTIL NOT again
+    					END_REPEAT;
+    				END_IF;
+    				// The writing end goes once no write is under way.
+    				IF CLOSE AND NOT closing THEN
+    					shut := TRUE;
+    				END_IF;
+    				closing := CLOSE;
+    				IF shut AND NOT BUSY THEN
+    					IF writable <> 0 THEN
+    						BYTES_STREAM_DROP_WRITABLE(stream := writable);
+    						writable := 0;
+    					END_IF;
+    					closed := TRUE;
+    					shut := FALSE;
+    				END_IF;
+    			END_FUNCTION_BLOCK
+
+    			/* The subscript of the first byte of `IN`, which
+    			   `BYTES_STREAM_ARRAY_WRITER` writes from. */
+    			FUNCTION PRIVATE BYTES_STREAM_ARRAY_FIRST : LINT
+    			VAR_INPUT
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR
+    				DIM : DINT := 1;
+    			END_VAR
+    				{wasm 'array.lower_bound' (params IN DIM) (result BYTES_STREAM_ARRAY_FIRST)}
+    			END_FUNCTION
+
+    			/* How many bytes `IN` holds, which `BYTES_STREAM_ARRAY_WRITER` writes at
+    			   most. */
+    			FUNCTION PRIVATE BYTES_STREAM_ARRAY_LEN : LINT
+    			VAR_INPUT
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR
+    				DIM : DINT := 1;
+    				lower : LINT;
+    				upper : LINT;
+    			END_VAR
+    				{wasm 'array.lower_bound' (params IN DIM) (result lower)}
+    				{wasm 'array.upper_bound' (params IN DIM) (result upper)}
+    				BYTES_STREAM_ARRAY_LEN := upper - lower + 1;
+    			END_FUNCTION
+
+    			/* Writes bytes from an array to a stream of bytes it makes at its first
+    			   call, for the function `readable` is handed to. */
+    			FUNCTION_BLOCK BYTES_STREAM_ARRAY_WRITER
+    			VAR_INPUT
+    				/* A rising edge writes the first `COUNT` bytes of `IN`. An edge while
+    				   `BUSY` is ignored. */
+    				REQ : BOOL;
+    				/* How many bytes of `IN` a request writes, from its first on. */
+    				COUNT : UDINT;
+    				/* A rising edge ends the stream, once no write is under way. */
+    				CLOSE : BOOL;
+    			END_VAR
+    			VAR_IN_OUT
+    				/* The bytes to write. The host reads them where they are while `BUSY`:
+    				   they stay as they are until `DONE`. */
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR_OUTPUT
+    				/* The stream's reading end, to hand to the function that reads it. */
+    				readable : UDINT;
+    				/* TRUE while the reader has not taken all `COUNT` bytes. */
+    				BUSY : BOOL;
+    				/* TRUE in the call where the reader has taken all `COUNT` bytes, at once
+    				   for none. */
+    				DONE : BOOL;
+    				/* TRUE once a write finds the reader gone, or a request comes after
+    				   `CLOSE`: the stream does not open again. */
+    				ERROR : BOOL;
+    			END_VAR
+    			VAR
+    				writable : UDINT;
+    				requested : BOOL;
+    				closing : BOOL;
+    				shut : BOOL;
+    				closed : BOOL;
+    				total : UDINT;
+    				sent : UDINT;
+    				base : LINT;
+    				write : BYTES_STREAM_WRITE_ARRAY;
+    			END_VAR
+    			VAR_TEMP
+    				again : BOOL;
+    				offset : LINT;
+    			END_VAR
+    				IF writable = 0 AND NOT closed THEN
+    					BYTES_STREAM_NEW(readable => readable, writable => writable);
+    				END_IF;
+    				DONE := FALSE;
+    				// An edge while BUSY is ignored.
+    				IF REQ AND NOT requested AND NOT BUSY THEN
+    					ERROR := closed;
+    					IF NOT closed THEN
+    						// A write of no bytes asks the reader whether it is ready,
+    						// which it may answer late: none is done here.
+    						IF COUNT = 0 THEN
+    							DONE := TRUE;
+    						ELSIF COUNT > BYTES_STREAM_ARRAY_LEN(IN) THEN
+    							__RAISE('COUNT is past the end of IN');
+    						ELSE
+    							total := COUNT;
+    							sent := 0;
+    							base := BYTES_STREAM_ARRAY_FIRST(IN);
+    							BUSY := TRUE;
+    						END_IF;
+    					END_IF;
+    				END_IF;
+    				requested := REQ;
+    				IF BUSY THEN
+    					// Each pass after the first hands over a byte at least, so the
+    					// loop ends.
+    					REPEAT
+    						again := FALSE;
+    						offset := sent;
+    						// Starts the write of the bytes not taken yet, from where they
+    						// are, or checks the one running.
+    						write(stream := writable, data := REF(IN[base + offset]), count := total - sent);
+    						IF write.DONE THEN
+    							IF write.closed THEN
+    								// The reader left: the writing end goes too.
+    								BYTES_STREAM_DROP_WRITABLE(stream := writable);
+    								writable := 0;
+    								closed := TRUE;
+    								BUSY := FALSE;
+    								ERROR := TRUE;
+    							ELSIF write.written < total - sent THEN
+    								// The reader took a part: the rest goes next, at once while
+    								// it takes some.
+    								sent := sent + write.written;
     								again := write.written > 0;
     							ELSE
     								BUSY := FALSE;
@@ -1409,12 +2046,17 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
     );
     let (mir, module) = built(&mut with_db, &bindings.files, &[]);
     assert_abi(&bindings, &mir, &module);
-    // The writers of the functions, without the stream's own.
+    // The writers of the functions, without the stream's own; their array
+    // forms are shown on their own.
     let writers: String = bindings
         .files
         .iter()
         .flat_map(|file| file.text.split("\n\n"))
-        .filter(|block| block.contains("_WRITER\n") && !block.contains("BYTES_STREAM_WRITER\n"))
+        .filter(|block| {
+            block.contains("_WRITER\n")
+                && !block.contains("BYTES_STREAM_WRITER\n")
+                && !block.contains("_ARRAY_WRITER\n")
+        })
         .filter_map(|block| block.split_inclusive("END_FUNCTION_BLOCK").next())
         .map(|block| format!("{}\n\n", block.trim_matches('\n')))
         .collect();
@@ -1453,7 +2095,7 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
     END_VAR
     	// The stream, made at the first request and handed to the function.
     	IF REQ AND NOT open THEN
-    		stream();
+    		stream(REQ := FALSE, IN := IN, CLOSE := FALSE);
     		RESULT_FUTURE_DROP_READABLE(future := Acme.Example.Pipe.CHANNEL_SEND(data := stream.readable, self := self, req := req_));
     		open := TRUE;
     	END_IF;
@@ -1499,7 +2141,7 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
     END_VAR
     	// The stream, made at the first request and handed to the function.
     	IF REQ AND NOT open THEN
-    		stream();
+    		stream(REQ := FALSE, IN := IN, CLOSE := FALSE);
     		future := Acme.Example.Pipe.POST(data := stream.readable);
     		open := TRUE;
     	END_IF;
@@ -1545,7 +2187,7 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
     END_VAR
     	// The stream, made at the first request and handed to the function.
     	IF REQ AND NOT open THEN
-    		stream();
+    		stream(REQ := FALSE, IN := IN, CLOSE := FALSE);
     		Acme.Example.Pipe.SINK(data := stream.readable);
     		open := TRUE;
     	END_IF;
@@ -1585,7 +2227,7 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
     END_VAR
     	// The stream, made at the first request and handed to the function.
     	IF REQ AND NOT open THEN
-    		stream();
+    		stream(REQ := FALSE, IN := IN, CLOSE := FALSE);
     		Acme.Example.Pipe.DONE(data := stream.readable);
     		open := TRUE;
     	END_IF;
@@ -1633,7 +2275,7 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
     END_VAR
     	// The stream, made at the first request.
     	IF REQ AND NOT open THEN
-    		stream();
+    		stream(REQ := FALSE, IN := IN, CLOSE := FALSE);
     		open := TRUE;
     	END_IF;
     	IF open THEN
@@ -1684,7 +2326,7 @@ fn a_function_that_takes_a_stream_has_a_writer(mut with_db: RootDatabase) {
     END_VAR
     	// The stream, made at the first request.
     	IF REQ AND NOT open THEN
-    		stream();
+    		stream(REQ := FALSE, IN := IN, CLOSE := FALSE);
     		open := TRUE;
     	END_IF;
     	IF open THEN
@@ -1734,7 +2376,11 @@ fn a_writer_s_outputs_say_what_they_hold_in_wit(mut with_db: RootDatabase) {
         .files
         .iter()
         .flat_map(|file| file.text.split("\n\n"))
-        .filter(|block| block.contains("_WRITER\n") && !block.contains("BYTES_STREAM_WRITER\n"))
+        .filter(|block| {
+            block.contains("_WRITER\n")
+                && !block.contains("BYTES_STREAM_WRITER\n")
+                && !block.contains("_ARRAY_WRITER\n")
+        })
         .filter_map(|block| {
             let name = block
                 .lines()
@@ -1855,7 +2501,7 @@ fn a_function_that_gives_a_stream_has_a_reader(mut with_db: RootDatabase) {
         .files
         .iter()
         .flat_map(|file| file.text.split("\n\n"))
-        .filter(|block| block.contains("_READER\n"))
+        .filter(|block| block.contains("_READER\n") && !block.contains("_ARRAY_READER\n"))
         .filter_map(|block| block.split_inclusive("END_FUNCTION_BLOCK").next())
         .map(|block| format!("{}\n\n", block.trim_matches('\n')))
         .collect();
@@ -2281,6 +2927,332 @@ fn a_function_that_gives_a_stream_has_a_reader(mut with_db: RootDatabase) {
     			came := TRUE;
     		END_IF;
     		ENDED := stream = 0 AND came;
+    	END_IF;
+    END_FUNCTION_BLOCK
+    ");
+}
+
+/// Each writer and reader has an array form beside its text form: the
+/// stream's `BYTES_STREAM_ARRAY_WRITER` writes the first `COUNT` bytes of
+/// an `ARRAY[*] OF BYTE` in place, its bounds read with no `Std.Arrays`;
+/// a function's `_ARRAY_WRITER` holds it, and a function's
+/// `_ARRAY_READER` gives what each read brought in `OUT` and `COUNT`.
+#[rstest]
+fn a_writer_and_a_reader_have_an_array_form(mut with_db: RootDatabase) {
+    let bindings = generated(
+        r#"
+        package acme:example@0.3.0;
+
+        interface pipe {
+            post: func(data: stream<u8>) -> future<u32>;
+            tail: func() -> stream<u8>;
+        }
+
+        world example {
+            import pipe;
+        }
+    "#,
+    );
+    let (mir, module) = built(&mut with_db, &bindings.files, &[]);
+    assert_abi(&bindings, &mir, &module);
+    let arrays: String = bindings
+        .files
+        .iter()
+        .flat_map(|file| file.text.split("\n\n"))
+        .filter(|block| {
+            [
+                "_ARRAY_WRITER\n",
+                "_ARRAY_READER\n",
+                "_ARRAY_FIRST :",
+                "_ARRAY_LEN :",
+            ]
+            .iter()
+            .any(|name| block.contains(name))
+        })
+        .filter_map(|block| {
+            block
+                .split_inclusive("END_FUNCTION_BLOCK")
+                .next()
+                .and_then(|block| block.split_inclusive("END_FUNCTION\n").next())
+        })
+        .map(|block| format!("{}\n\n", block.trim_matches('\n')))
+        .collect();
+    assert_snapshot!(arrays, @r"
+    /* The subscript of the first byte of `IN`, which
+       `BYTES_STREAM_ARRAY_WRITER` writes from. */
+    FUNCTION PRIVATE BYTES_STREAM_ARRAY_FIRST : LINT
+    VAR_INPUT
+    	IN : ARRAY[*] OF BYTE;
+    END_VAR
+    VAR
+    	DIM : DINT := 1;
+    END_VAR
+    	{wasm 'array.lower_bound' (params IN DIM) (result BYTES_STREAM_ARRAY_FIRST)}
+    END_FUNCTION
+
+    /* How many bytes `IN` holds, which `BYTES_STREAM_ARRAY_WRITER` writes at
+       most. */
+    FUNCTION PRIVATE BYTES_STREAM_ARRAY_LEN : LINT
+    VAR_INPUT
+    	IN : ARRAY[*] OF BYTE;
+    END_VAR
+    VAR
+    	DIM : DINT := 1;
+    	lower : LINT;
+    	upper : LINT;
+    END_VAR
+    	{wasm 'array.lower_bound' (params IN DIM) (result lower)}
+    	{wasm 'array.upper_bound' (params IN DIM) (result upper)}
+    	BYTES_STREAM_ARRAY_LEN := upper - lower + 1;
+    END_FUNCTION
+
+    /* Writes bytes from an array to a stream of bytes it makes at its first
+       call, for the function `readable` is handed to. */
+    FUNCTION_BLOCK BYTES_STREAM_ARRAY_WRITER
+    VAR_INPUT
+    	/* A rising edge writes the first `COUNT` bytes of `IN`. An edge while
+    	   `BUSY` is ignored. */
+    	REQ : BOOL;
+    	/* How many bytes of `IN` a request writes, from its first on. */
+    	COUNT : UDINT;
+    	/* A rising edge ends the stream, once no write is under way. */
+    	CLOSE : BOOL;
+    END_VAR
+    VAR_IN_OUT
+    	/* The bytes to write. The host reads them where they are while `BUSY`:
+    	   they stay as they are until `DONE`. */
+    	IN : ARRAY[*] OF BYTE;
+    END_VAR
+    VAR_OUTPUT
+    	/* The stream's reading end, to hand to the function that reads it. */
+    	readable : UDINT;
+    	/* TRUE while the reader has not taken all `COUNT` bytes. */
+    	BUSY : BOOL;
+    	/* TRUE in the call where the reader has taken all `COUNT` bytes, at once
+    	   for none. */
+    	DONE : BOOL;
+    	/* TRUE once a write finds the reader gone, or a request comes after
+    	   `CLOSE`: the stream does not open again. */
+    	ERROR : BOOL;
+    END_VAR
+    VAR
+    	writable : UDINT;
+    	requested : BOOL;
+    	closing : BOOL;
+    	shut : BOOL;
+    	closed : BOOL;
+    	total : UDINT;
+    	sent : UDINT;
+    	base : LINT;
+    	write : BYTES_STREAM_WRITE_ARRAY;
+    END_VAR
+    VAR_TEMP
+    	again : BOOL;
+    	offset : LINT;
+    END_VAR
+    	IF writable = 0 AND NOT closed THEN
+    		BYTES_STREAM_NEW(readable => readable, writable => writable);
+    	END_IF;
+    	DONE := FALSE;
+    	// An edge while BUSY is ignored.
+    	IF REQ AND NOT requested AND NOT BUSY THEN
+    		ERROR := closed;
+    		IF NOT closed THEN
+    			// A write of no bytes asks the reader whether it is ready,
+    			// which it may answer late: none is done here.
+    			IF COUNT = 0 THEN
+    				DONE := TRUE;
+    			ELSIF COUNT > BYTES_STREAM_ARRAY_LEN(IN) THEN
+    				__RAISE('COUNT is past the end of IN');
+    			ELSE
+    				total := COUNT;
+    				sent := 0;
+    				base := BYTES_STREAM_ARRAY_FIRST(IN);
+    				BUSY := TRUE;
+    			END_IF;
+    		END_IF;
+    	END_IF;
+    	requested := REQ;
+    	IF BUSY THEN
+    		// Each pass after the first hands over a byte at least, so the
+    		// loop ends.
+    		REPEAT
+    			again := FALSE;
+    			offset := sent;
+    			// Starts the write of the bytes not taken yet, from where they
+    			// are, or checks the one running.
+    			write(stream := writable, data := REF(IN[base + offset]), count := total - sent);
+    			IF write.DONE THEN
+    				IF write.closed THEN
+    					// The reader left: the writing end goes too.
+    					BYTES_STREAM_DROP_WRITABLE(stream := writable);
+    					writable := 0;
+    					closed := TRUE;
+    					BUSY := FALSE;
+    					ERROR := TRUE;
+    				ELSIF write.written < total - sent THEN
+    					// The reader took a part: the rest goes next, at once while
+    					// it takes some.
+    					sent := sent + write.written;
+    					again := write.written > 0;
+    				ELSE
+    					BUSY := FALSE;
+    					DONE := TRUE;
+    				END_IF;
+    			END_IF;
+    		UNTIL NOT again
+    		END_REPEAT;
+    	END_IF;
+    	// The writing end goes once no write is under way.
+    	IF CLOSE AND NOT closing THEN
+    		shut := TRUE;
+    	END_IF;
+    	closing := CLOSE;
+    	IF shut AND NOT BUSY THEN
+    		IF writable <> 0 THEN
+    			BYTES_STREAM_DROP_WRITABLE(stream := writable);
+    			writable := 0;
+    		END_IF;
+    		closed := TRUE;
+    		shut := FALSE;
+    	END_IF;
+    END_FUNCTION_BLOCK
+
+    /* Writes bytes from an array to `post` through a stream of bytes it opens
+       at the first request. */
+    FUNCTION_BLOCK POST_ARRAY_WRITER
+    VAR_INPUT
+    	/* A rising edge writes the first `COUNT` bytes of `IN`; the first opens
+    	   the stream and calls `post` with it. An edge while `BUSY` is ignored. */
+    	REQ : BOOL;
+    	/* How many bytes of `IN` a request writes, from its first on. */
+    	COUNT : UDINT;
+    	/* A rising edge ends the stream, once no write is under way. */
+    	CLOSE : BOOL;
+    END_VAR
+    VAR_IN_OUT
+    	/* The bytes to write. The host reads them where they are while `BUSY`:
+    	   they stay as they are until `DONE`. */
+    	IN : ARRAY[*] OF BYTE;
+    END_VAR
+    VAR_OUTPUT
+    	/* TRUE while the reader has not taken all `COUNT` bytes. */
+    	BUSY : BOOL;
+    	/* TRUE in the call where the reader has taken all `COUNT` bytes, at once
+    	   for none. */
+    	DONE : BOOL;
+    	/* TRUE once a write finds the reader gone, or a request comes after
+    	   `CLOSE`: the stream does not open again. */
+    	ERROR : BOOL;
+    	/* TRUE once the `future<u32>` from `post` has its value. */
+    	ENDED : BOOL;
+    	/* The `u32` from `post`. */
+    	value : UDINT;
+    END_VAR
+    VAR
+    	open : BOOL;
+    	stream : BYTES_STREAM_ARRAY_WRITER;
+    	future : UDINT;
+    	answer : U32_FUTURE_GET;
+    END_VAR
+    	// The stream, made at the first request and handed to the function.
+    	IF REQ AND NOT open THEN
+    		stream(REQ := FALSE, COUNT := COUNT, CLOSE := FALSE, IN := IN);
+    		future := Acme.Example.Pipe.POST(data := stream.readable);
+    		open := TRUE;
+    	END_IF;
+    	IF open THEN
+    		stream(REQ := REQ, COUNT := COUNT, CLOSE := CLOSE, IN := IN);
+    		BUSY := stream.BUSY;
+    		DONE := stream.DONE;
+    		// The answer, read once it comes, and kept.
+    		answer(future := future);
+    		IF answer.DONE THEN
+    			value := answer.value;
+    			ENDED := TRUE;
+    		END_IF;
+    		ERROR := stream.ERROR;
+    	END_IF;
+    END_FUNCTION_BLOCK
+
+    /* Reads what `tail` gives through a stream of bytes into an array, a
+       request at a time. */
+    FUNCTION_BLOCK TAIL_ARRAY_READER
+    VAR_INPUT
+    	/* A rising edge reads what comes next, 8192 bytes at most; the first calls
+    	   `tail`. An edge while `BUSY` is ignored, and one after the stream ended
+    	   is `DONE` at once, `COUNT` 0. */
+    	REQ : BOOL;
+    	/* A rising edge lets go of the stream, once no read is under way. */
+    	CLOSE : BOOL;
+    END_VAR
+    VAR_OUTPUT
+    	/* TRUE while a read waits for bytes. */
+    	BUSY : BOOL;
+    	/* TRUE in the call where a read has given what came, in `OUT`. */
+    	DONE : BOOL;
+    	/* The bytes the last read gave, its first `COUNT`. */
+    	OUT : ARRAY[0..8191] OF BYTE;
+    	/* How many bytes the last read gave: 0 once the stream has ended, nothing
+    	   more coming. */
+    	COUNT : UDINT;
+    	/* TRUE once the stream has ended: the writer let go, or `CLOSE`. */
+    	ENDED : BOOL;
+    END_VAR
+    VAR
+    	open : BOOL;
+    	requested : BOOL;
+    	closing : BOOL;
+    	shut : BOOL;
+    	stream : UDINT;
+    	read : BYTES_STREAM_READ_ARRAY;
+    END_VAR
+    	DONE := FALSE;
+    	// The stream, given by the function at the first request.
+    	IF REQ AND NOT open THEN
+    		stream := Acme.Example.Pipe.TAIL();
+    		open := TRUE;
+    	END_IF;
+    	IF open THEN
+    		// An edge while BUSY is ignored.
+    		IF REQ AND NOT requested AND NOT BUSY THEN
+    			IF stream <> 0 THEN
+    				BUSY := TRUE;
+    			ELSE
+    				// The stream has ended: nothing more comes.
+    				COUNT := 0;
+    				DONE := TRUE;
+    			END_IF;
+    		END_IF;
+    		requested := REQ;
+    		IF BUSY THEN
+    			// Starts the read, or checks the one running.
+    			read(stream := stream);
+    			IF read.DONE THEN
+    				OUT := read.data;
+    				COUNT := read.read;
+    				BUSY := FALSE;
+    				DONE := TRUE;
+    				IF read.closed THEN
+    					// The writer left: the reading end goes too.
+    					BYTES_STREAM_DROP_READABLE(stream := stream);
+    					stream := 0;
+    				END_IF;
+    			END_IF;
+    		END_IF;
+    		// The reading end goes on CLOSE, once no read is under way.
+    		IF CLOSE AND NOT closing THEN
+    			shut := TRUE;
+    		END_IF;
+    		closing := CLOSE;
+    		IF shut AND NOT BUSY THEN
+    			IF stream <> 0 THEN
+    				BYTES_STREAM_DROP_READABLE(stream := stream);
+    				stream := 0;
+    			END_IF;
+    			shut := FALSE;
+    		END_IF;
+    		ENDED := stream = 0;
     	END_IF;
     END_FUNCTION_BLOCK
     ");
@@ -3157,6 +4129,146 @@ fn std_s_built_ins() {
     				END_IF;
     			END_FUNCTION_BLOCK
 
+    			/* The subscript of the first byte of `IN`, which
+    			   `BYTES_STREAM_ARRAY_WRITER` writes from. */
+    			FUNCTION PRIVATE BYTES_STREAM_ARRAY_FIRST : LINT
+    			VAR_INPUT
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR
+    				DIM : DINT := 1;
+    			END_VAR
+    				{wasm 'array.lower_bound' (params IN DIM) (result BYTES_STREAM_ARRAY_FIRST)}
+    			END_FUNCTION
+
+    			/* How many bytes `IN` holds, which `BYTES_STREAM_ARRAY_WRITER` writes at
+    			   most. */
+    			FUNCTION PRIVATE BYTES_STREAM_ARRAY_LEN : LINT
+    			VAR_INPUT
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR
+    				DIM : DINT := 1;
+    				lower : LINT;
+    				upper : LINT;
+    			END_VAR
+    				{wasm 'array.lower_bound' (params IN DIM) (result lower)}
+    				{wasm 'array.upper_bound' (params IN DIM) (result upper)}
+    				BYTES_STREAM_ARRAY_LEN := upper - lower + 1;
+    			END_FUNCTION
+
+    			/* Writes bytes from an array to a stream of bytes it makes at its first
+    			   call, for the function `readable` is handed to. */
+    			FUNCTION_BLOCK BYTES_STREAM_ARRAY_WRITER
+    			VAR_INPUT
+    				/* A rising edge writes the first `COUNT` bytes of `IN`. An edge while
+    				   `BUSY` is ignored. */
+    				REQ : BOOL;
+    				/* How many bytes of `IN` a request writes, from its first on. */
+    				COUNT : UDINT;
+    				/* A rising edge ends the stream, once no write is under way. */
+    				CLOSE : BOOL;
+    			END_VAR
+    			VAR_IN_OUT
+    				/* The bytes to write. The host reads them where they are while `BUSY`:
+    				   they stay as they are until `DONE`. */
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR_OUTPUT
+    				/* The stream's reading end, to hand to the function that reads it. */
+    				readable : UDINT;
+    				/* TRUE while the reader has not taken all `COUNT` bytes. */
+    				BUSY : BOOL;
+    				/* TRUE in the call where the reader has taken all `COUNT` bytes, at once
+    				   for none. */
+    				DONE : BOOL;
+    				/* TRUE once a write finds the reader gone, or a request comes after
+    				   `CLOSE`: the stream does not open again. */
+    				ERROR : BOOL;
+    			END_VAR
+    			VAR
+    				writable : UDINT;
+    				requested : BOOL;
+    				closing : BOOL;
+    				shut : BOOL;
+    				closed : BOOL;
+    				total : UDINT;
+    				sent : UDINT;
+    				base : LINT;
+    				write : BYTES_STREAM_WRITE_ARRAY;
+    			END_VAR
+    			VAR_TEMP
+    				again : BOOL;
+    				offset : LINT;
+    			END_VAR
+    				IF writable = 0 AND NOT closed THEN
+    					BYTES_STREAM_NEW(readable => readable, writable => writable);
+    				END_IF;
+    				DONE := FALSE;
+    				// An edge while BUSY is ignored.
+    				IF REQ AND NOT requested AND NOT BUSY THEN
+    					ERROR := closed;
+    					IF NOT closed THEN
+    						// A write of no bytes asks the reader whether it is ready,
+    						// which it may answer late: none is done here.
+    						IF COUNT = 0 THEN
+    							DONE := TRUE;
+    						ELSIF COUNT > BYTES_STREAM_ARRAY_LEN(IN) THEN
+    							__RAISE('COUNT is past the end of IN');
+    						ELSE
+    							total := COUNT;
+    							sent := 0;
+    							base := BYTES_STREAM_ARRAY_FIRST(IN);
+    							BUSY := TRUE;
+    						END_IF;
+    					END_IF;
+    				END_IF;
+    				requested := REQ;
+    				IF BUSY THEN
+    					// Each pass after the first hands over a byte at least, so the
+    					// loop ends.
+    					REPEAT
+    						again := FALSE;
+    						offset := sent;
+    						// Starts the write of the bytes not taken yet, from where they
+    						// are, or checks the one running.
+    						write(stream := writable, data := REF(IN[base + offset]), count := total - sent);
+    						IF write.DONE THEN
+    							IF write.closed THEN
+    								// The reader left: the writing end goes too.
+    								BYTES_STREAM_DROP_WRITABLE(stream := writable);
+    								writable := 0;
+    								closed := TRUE;
+    								BUSY := FALSE;
+    								ERROR := TRUE;
+    							ELSIF write.written < total - sent THEN
+    								// The reader took a part: the rest goes next, at once while
+    								// it takes some.
+    								sent := sent + write.written;
+    								again := write.written > 0;
+    							ELSE
+    								BUSY := FALSE;
+    								DONE := TRUE;
+    							END_IF;
+    						END_IF;
+    					UNTIL NOT again
+    					END_REPEAT;
+    				END_IF;
+    				// The writing end goes once no write is under way.
+    				IF CLOSE AND NOT closing THEN
+    					shut := TRUE;
+    				END_IF;
+    				closing := CLOSE;
+    				IF shut AND NOT BUSY THEN
+    					IF writable <> 0 THEN
+    						BYTES_STREAM_DROP_WRITABLE(stream := writable);
+    						writable := 0;
+    					END_IF;
+    					closed := TRUE;
+    					shut := FALSE;
+    				END_IF;
+    			END_FUNCTION_BLOCK
+
     			/* Reads the value the future holds, which comes back after `DONE`. */
     			{extern async 'wasi:cli/stdout@0.3.0' '[future-read-1]write-via-stream'}
     			FUNCTION_BLOCK RESULT_FUTURE_READ
@@ -3243,12 +4355,73 @@ fn std_s_built_ins() {
     			END_VAR
     				// The stream, made at the first request and handed to the function.
     				IF REQ AND NOT open THEN
-    					stream();
+    					stream(REQ := FALSE, IN := IN, CLOSE := FALSE);
     					future := Wasi.Cli.Stdout.WRITE_VIA_STREAM(data := stream.readable);
     					open := TRUE;
     				END_IF;
     				IF open THEN
     					stream(REQ := REQ, IN := IN, CLOSE := CLOSE);
+    					BUSY := stream.BUSY;
+    					DONE := stream.DONE;
+    					// The answer, read once it comes, and kept.
+    					answer(future := future);
+    					IF answer.DONE THEN
+    						ERRORID := answer.error;
+    						ENDED := TRUE;
+    					END_IF;
+    					ERROR := stream.ERROR OR answer.failed;
+    				END_IF;
+    			END_FUNCTION_BLOCK
+
+    			/* Writes bytes from an array to `write-via-stream` through a stream of
+    			   bytes it opens at the first request. */
+    			FUNCTION_BLOCK WRITE_VIA_STREAM_ARRAY_WRITER
+    			VAR_INPUT
+    				/* A rising edge writes the first `COUNT` bytes of `IN`; the first opens
+    				   the stream and calls `write-via-stream` with it. An edge while `BUSY` is
+    				   ignored. */
+    				REQ : BOOL;
+    				/* How many bytes of `IN` a request writes, from its first on. */
+    				COUNT : UDINT;
+    				/* A rising edge ends the stream, once no write is under way. */
+    				CLOSE : BOOL;
+    			END_VAR
+    			VAR_IN_OUT
+    				/* The bytes to write. The host reads them where they are while `BUSY`:
+    				   they stay as they are until `DONE`. */
+    				IN : ARRAY[*] OF BYTE;
+    			END_VAR
+    			VAR_OUTPUT
+    				/* TRUE while the reader has not taken all `COUNT` bytes. */
+    				BUSY : BOOL;
+    				/* TRUE in the call where the reader has taken all `COUNT` bytes, at once
+    				   for none. */
+    				DONE : BOOL;
+    				/* TRUE once a write finds the reader gone, a request comes after `CLOSE`,
+    				   or the `result<_, error-code>` from `write-via-stream` is an error,
+    				   whose `error-code` is in `ERRORID`. */
+    				ERROR : BOOL;
+    				/* The `error-code` of the `result<_, error-code>` from `write-via-stream`,
+    				   when it is an error, which turns `ERROR` TRUE. */
+    				ERRORID : Wasi.Cli.Types.ERROR_CODE;
+    				/* TRUE once the `future<result<_, error-code>>` from `write-via-stream`
+    				   has its value. */
+    				ENDED : BOOL;
+    			END_VAR
+    			VAR
+    				open : BOOL;
+    				stream : BYTES_STREAM_ARRAY_WRITER;
+    				future : UDINT;
+    				answer : RESULT_FUTURE_GET;
+    			END_VAR
+    				// The stream, made at the first request and handed to the function.
+    				IF REQ AND NOT open THEN
+    					stream(REQ := FALSE, COUNT := COUNT, CLOSE := FALSE, IN := IN);
+    					future := Wasi.Cli.Stdout.WRITE_VIA_STREAM(data := stream.readable);
+    					open := TRUE;
+    				END_IF;
+    				IF open THEN
+    					stream(REQ := REQ, COUNT := COUNT, CLOSE := CLOSE, IN := IN);
     					BUSY := stream.BUSY;
     					DONE := stream.DONE;
     					// The answer, read once it comes, and kept.

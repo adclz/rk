@@ -367,6 +367,75 @@ fn standard_input_copied_by_the_reader_and_the_writer(mut with_db: RootDatabase)
 }
 
 /// Bytes that are no text, zeros and invalid UTF-8 among them, copied from
+/// standard input to standard output through the array forms of the
+/// generated reader and writer alone: each read's bytes put in a buffer
+/// whose bounds start below 0, then written from it, `COUNT` of them. 1
+/// when the copy ended well, a negative number saying what went wrong
+/// otherwise.
+#[rstest]
+fn bytes_copied_by_the_array_reader_and_writer(mut with_db: RootDatabase) {
+    let bindings = generated(&world_of(&[
+        "wasi:cli/stdin@0.3.0",
+        "wasi:cli/stdout@0.3.0",
+    ]));
+    let program = r#"
+        PROGRAM P
+        VAR_EXTERNAL output : DINT; END_VAR
+        VAR
+            step : INT;
+            reader : Wasi.Cli.Stdin.READ_VIA_STREAM_ARRAY_READER;
+            writer : Wasi.Cli.Stdout.WRITE_VIA_STREAM_ARRAY_WRITER;
+            chunk : ARRAY[-100..8091] OF BYTE;
+            count : UDINT;
+            i : DINT;
+        END_VAR
+            CASE step OF
+            0:
+                reader(REQ := TRUE);
+                IF reader.DONE THEN
+                    IF reader.COUNT = 0 THEN
+                        step := 3;
+                    ELSE
+                        // What came, from the buffer's first byte on.
+                        FOR i := 0 TO 8191 DO
+                            chunk[i - 100] := reader.OUT[i];
+                        END_FOR;
+                        count := reader.COUNT;
+                        step := 1;
+                    END_IF;
+                END_IF;
+            1:
+                reader(REQ := FALSE);
+                writer(REQ := TRUE, COUNT := count, IN := chunk);
+                IF writer.ERROR THEN output := -1; RETURN; END_IF;
+                IF writer.DONE THEN step := 2; END_IF;
+            2:
+                writer(REQ := FALSE, COUNT := count, IN := chunk);
+                step := 0;
+            3:
+                reader(REQ := FALSE);
+                writer(REQ := FALSE, CLOSE := TRUE, COUNT := 0, IN := chunk);
+                IF reader.ENDED AND writer.ENDED THEN
+                    IF reader.ERROR OR writer.ERROR THEN
+                        output := -2;
+                    ELSE
+                        output := 1;
+                    END_IF;
+                END_IF;
+            END_CASE;
+        END_PROGRAM
+    "#;
+    // Every byte, three chunks' worth.
+    let bytes: Vec<u8> = (0..20_000u32).map(|at| (at * 7 % 256) as u8).collect();
+    let stdin = Pipe(Arc::new(Mutex::new(bytes.iter().copied().collect())));
+    let stdout = Pipe::default();
+    let mut plc = plc(&mut with_db, &bindings, program, stdin, stdout.clone());
+    assert_eq!(scan_until(&mut plc, 1, 300), 1);
+    let copied: Vec<u8> = stdout.0.lock().unwrap().iter().copied().collect();
+    assert_eq!(copied, bytes);
+}
+
+/// Bytes that are no text, zeros and invalid UTF-8 among them, copied from
 /// standard input to standard output through an array: each chunk read into
 /// it, then written from it by reference, the count saying how many.
 #[rstest]

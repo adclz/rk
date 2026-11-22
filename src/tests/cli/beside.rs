@@ -1520,6 +1520,140 @@ fn a_function_s_reader_reads_its_stream_to_the_end() {
     );
 }
 
+/// The program's tests of the array forms: [`DRAIN`]'s `take` written from
+/// an array whose bounds start below 0, `COUNT` of its bytes, a count of
+/// the whole array taken and one past it refused; [`FEED`]'s `tail` read
+/// into an array to its end.
+const ARRAY_WRITER_TESTS: &str = "
+{test}
+FUNCTION_BLOCK test_array_writer_answers
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    step : INT;
+    total : UDINT;
+    bytes : ARRAY[-2..5] OF BYTE;
+    w : Acme.Drain.Drain.TAKE_ARRAY_WRITER;
+END_VAR
+    CASE step OF
+        0:
+            bytes[-2] := 16#68;
+            bytes[-1] := 16#65;
+            bytes[0] := 16#6C;
+            bytes[1] := 16#6C;
+            bytes[2] := 16#6F;
+            w(REQ := TRUE, COUNT := 5, offset := 10, IN := bytes);
+            step := 1;
+        1:
+            w(REQ := TRUE, COUNT := 5, IN := bytes);
+            IF NOT w.BUSY THEN
+                w(REQ := FALSE, CLOSE := TRUE, COUNT := 5, IN := bytes);
+                step := 2;
+            END_IF;
+        2:
+            w(CLOSE := TRUE, COUNT := 5, IN := bytes);
+            IF w.ENDED THEN
+                IF w.value <> 5 OR Acme.Drain.Drain.CAME(index := 10) <> 16#68
+                    OR Acme.Drain.Drain.CAME(index := 14) <> 16#6F
+                THEN
+                    __RAISE('the answer is not the 5 bytes of hello, from 10 on');
+                END_IF;
+                DONE := TRUE;
+            END_IF;
+    END_CASE;
+    IF step > 0 THEN
+        total := Acme.Drain.Drain.ENDED();
+    END_IF;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_array_writer_takes_its_whole_array
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    bytes : ARRAY[0..3] OF BYTE;
+    w : Acme.Drain.Drain.TAKE_ARRAY_WRITER;
+END_VAR
+    w(REQ := TRUE, COUNT := 4, offset := 0, IN := bytes);
+    DONE := TRUE;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_array_writer_refuses_a_count_past_its_array
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    bytes : ARRAY[0..3] OF BYTE;
+    w : Acme.Drain.Drain.TAKE_ARRAY_WRITER;
+END_VAR
+    w(REQ := TRUE, COUNT := 5, offset := 0, IN := bytes);
+    DONE := TRUE;
+END_FUNCTION_BLOCK
+";
+
+/// [`ARRAY_WRITER_TESTS`]' reader, of [`FEED`]'s `tail`.
+const ARRAY_READER_TESTS: &str = "
+{test}
+FUNCTION_BLOCK test_array_reader_reads_to_the_end
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR
+    step : INT;
+    status : UDINT;
+    r : Acme.Feed.Feed.TAIL_ARRAY_READER;
+END_VAR
+    CASE step OF
+        0:
+            r(REQ := TRUE);
+            IF r.DONE THEN
+                IF r.COUNT <> 5 OR r.OUT[0] <> 16#68 OR r.OUT[4] <> 16#6F THEN
+                    __RAISE('the first read is not the 5 bytes of hello');
+                END_IF;
+                status := Acme.Feed.Feed.CLOSE();
+                step := 1;
+            END_IF;
+        1:
+            r(REQ := FALSE);
+            step := 2;
+        2:
+            r(REQ := TRUE);
+            IF r.DONE THEN
+                IF r.COUNT <> 0 OR NOT r.ENDED THEN
+                    __RAISE('the read after the writer left did not end the stream');
+                END_IF;
+                DONE := TRUE;
+            END_IF;
+    END_CASE;
+END_FUNCTION_BLOCK
+";
+
+/// The array forms of a writer and of a reader: bytes written from an
+/// array in place, whatever its bounds, a count past it refused, and a
+/// stream read into an array to its end.
+#[test]
+fn the_array_forms_write_and_read_on_a_component() {
+    super::disable_stdlib();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let drain = component_of_wat(DRAIN, "drainer", DRAIN_WAT);
+    library(&root, "drain", &declarations(&drain), Some(&drain));
+    let ws = program(&root, "drain = { path = \"../drain\" }\n", "0");
+    write(&ws, &[("main.st", ARRAY_WRITER_TESTS)]);
+    tested(&ws, Some("test_array_writer_answers")).expect("hello goes from the array");
+    tested(&ws, Some("test_array_writer_takes_its_whole_array"))
+        .expect("a count of the whole array goes");
+    assert!(
+        tested(
+            &ws,
+            Some("test_array_writer_refuses_a_count_past_its_array")
+        )
+        .is_err(),
+        "a count past the array raises"
+    );
+
+    let feed = component_of_wat(FEED, "feeder", FEED_WAT);
+    library(&root, "feed", &declarations(&feed), Some(&feed));
+    let ws = program(&root, "feed = { path = \"../feed\" }\n", "0");
+    write(&ws, &[("main.st", ARRAY_READER_TESTS)]);
+    tested(&ws, Some("test_array_reader_reads_to_the_end")).expect("hello, then the end");
+}
+
 /// A component that reads the stream it is given until the writer lets go:
 /// `take` keeps the reading end, where the bytes land from `offset` on, and
 /// answers with a future of how many came; `ended` reads on, a read at a
