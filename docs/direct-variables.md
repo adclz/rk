@@ -129,7 +129,7 @@ A write to one changes what the other reads.
 - **They are all `RETAIN`, or none of them is.** A declaration that is not, beside one that is, is `E1434`.
 - **None of them has an initial value.** It would set part of the others (`E1435`).
 
-To give them a starting value, declare a variable at an address that holds all their bytes, like `%MD7`.
+To give them an initial value, declare a variable at an address that holds all their bytes, like `%MD7`.
 `%MW7` and `%MW8` are then parts of it.
 
 ## In function blocks
