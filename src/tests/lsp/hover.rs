@@ -1131,6 +1131,44 @@ END_CONFIGURATION
     ");
 }
 
+/// Counting bytes, an address that shares bytes with others, none holding
+/// the rest, shows each of them: `%MW8` shares byte 8 with `%MW7` and byte
+/// 9 with `%MW9`.
+#[rstest]
+pub fn hover_on_a_direct_variable_that_shares_bytes(mut with_db: RootDatabase) {
+    let _config =
+        crate::tests::utils::with_config(&mut with_db, "[addresses]\nnumbering = \"byte\"\n");
+    let source = r#"
+PROGRAM P
+VAR w : WORD; END_VAR
+    w := %MW8;
+    %MW9 := w;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL first AT %MW7 : WORD; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    let file = add_source(&mut with_db, source);
+
+    let offset = source.find("%MW8;").unwrap() + 1;
+    let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
+    let hover = node.hover(&with_db, offset).expect("a hover");
+    assert_snapshot!(hover_markup(hover.contents).unwrap(), @r"
+    ```iecst
+    %MW8 : WORD
+    ```
+    ---
+    Memory, 16 bits.
+
+    Shares bytes with `%MW7` (`first : WORD`) and `%MW9`.
+    ");
+}
+
 /// Everything a VAR_CONFIG entry and a connection write shows what it is:
 /// the resource and the instance its path starts with, its type, and each
 /// address, wherever it is written.
