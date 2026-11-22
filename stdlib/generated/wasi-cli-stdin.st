@@ -23,15 +23,6 @@ NAMESPACE INTERNAL Wasi
 			END_VAR
 			END_FUNCTION
 
-			/* Makes a stream of `u8`, and gives its reading end, then its writing end. */
-			{extern 'wasi:cli/stdin@0.3.0' '[stream-new-0]read-via-stream'}
-			FUNCTION BYTES_STREAM_NEW
-			VAR_OUTPUT
-				readable : UDINT;
-				writable : UDINT;
-			END_VAR
-			END_FUNCTION
-
 			/* Reads the bytes that come next into `data`, as many as it holds at most:
 			   `read` of them, after `DONE`. `closed` is TRUE once the writer has let
 			   go. */
@@ -64,62 +55,11 @@ NAMESPACE INTERNAL Wasi
 			END_VAR
 			END_FUNCTION_BLOCK
 
-			/* Writes the bytes of `data`, as many as the reader takes: `written` of
-			   them, after `DONE`. `closed` is TRUE once the reader has let go. */
-			{extern async 'wasi:cli/stdin@0.3.0' '[stream-write-0]read-via-stream'}
-			FUNCTION_BLOCK BYTES_STREAM_WRITE
-			VAR_INPUT
-				stream : UDINT;
-				data : STRING[4096];
-			END_VAR
-			VAR_OUTPUT
-				DONE : BOOL;
-				written : UDINT;
-				closed : BOOL;
-			END_VAR
-			END_FUNCTION_BLOCK
-
-			/* Writes the `count` bytes from the one `data` points at, as many as the
-			   reader takes: `written` of them, after `DONE`. The host reads them where
-			   they are while the write runs, so they stay there, unchanged, until
-			   `DONE`. `closed` is TRUE once the reader has let go. */
-			{extern async 'wasi:cli/stdin@0.3.0' '[stream-write-0]read-via-stream'}
-			FUNCTION_BLOCK BYTES_STREAM_WRITE_ARRAY
-			VAR_INPUT
-				stream : UDINT;
-				data : REF_TO BYTE;
-				count : UDINT;
-			END_VAR
-			VAR_OUTPUT
-				DONE : BOOL;
-				written : UDINT;
-				closed : BOOL;
-			END_VAR
-			END_FUNCTION_BLOCK
-
 			/* Lets go of the stream's reading end, `stream`. */
 			{extern 'wasi:cli/stdin@0.3.0' '[stream-drop-readable-0]read-via-stream'}
 			FUNCTION BYTES_STREAM_DROP_READABLE
 			VAR_INPUT
 				stream : UDINT;
-			END_VAR
-			END_FUNCTION
-
-			/* Lets go of the stream's writing end, `stream`. */
-			{extern 'wasi:cli/stdin@0.3.0' '[stream-drop-writable-0]read-via-stream'}
-			FUNCTION BYTES_STREAM_DROP_WRITABLE
-			VAR_INPUT
-				stream : UDINT;
-			END_VAR
-			END_FUNCTION
-
-			/* Makes a future of `result<_, error-code>`, and gives its reading end,
-			   then its writing end. */
-			{extern 'wasi:cli/stdin@0.3.0' '[future-new-1]read-via-stream'}
-			FUNCTION RESULT_FUTURE_NEW
-			VAR_OUTPUT
-				readable : UDINT;
-				writable : UDINT;
 			END_VAR
 			END_FUNCTION
 
@@ -144,20 +84,229 @@ NAMESPACE INTERNAL Wasi
 			END_VAR
 			END_FUNCTION
 
-			/* Lets go of the future's writing end, `future`. */
-			{extern 'wasi:cli/stdin@0.3.0' '[future-drop-writable-1]read-via-stream'}
-			FUNCTION RESULT_FUTURE_DROP_WRITABLE
-			VAR_INPUT
+			/* Reads the value the future holds, which comes back after `DONE`, then
+			   lets go of the future's reading end: `future` is 0 from then on, and a
+			   call with `future` 0 does nothing. */
+			FUNCTION_BLOCK RESULT_FUTURE_GET
+			VAR_IN_OUT
 				future : UDINT;
 			END_VAR
-			END_FUNCTION
+			VAR_OUTPUT
+				DONE : BOOL;
+				failed : BOOL;
+				error : Wasi.Cli.Types.ERROR_CODE;
+			END_VAR
+			VAR
+				call : RESULT_FUTURE_READ;
+			END_VAR
+				DONE := FALSE;
+				IF future <> 0 THEN
+					call(future := future);
+					IF call.DONE THEN
+						failed := call.failed;
+						error := call.error;
+						RESULT_FUTURE_DROP_READABLE(future := future);
+						future := 0;
+						DONE := TRUE;
+					END_IF;
+				END_IF;
+			END_FUNCTION_BLOCK
+
+			/* Reads what `read-via-stream` gives through a stream of bytes, a request
+			   at a time. */
+			FUNCTION_BLOCK READ_VIA_STREAM_READER
+			VAR_INPUT
+				/* A rising edge reads what comes next, 4096 bytes at most; the first calls
+				   `read-via-stream`. An edge while `BUSY` is ignored, and one after the
+				   stream ended is `DONE` at once, `OUT` empty. */
+				REQ : BOOL;
+				/* A rising edge lets go of the stream, once no read is under way. */
+				CLOSE : BOOL;
+			END_VAR
+			VAR_OUTPUT
+				/* TRUE while a read waits for bytes. */
+				BUSY : BOOL;
+				/* TRUE in the call where a read has given what came, in `OUT`. */
+				DONE : BOOL;
+				/* What the last read gave: empty once the stream has ended, nothing more
+				   coming. */
+				OUT : STRING[4096];
+				/* TRUE once the `result<_, error-code>` from `read-via-stream` is an
+				   error, whose `error-code` is in `ERRORID`. */
+				ERROR : BOOL;
+				/* The `error-code` of the `result<_, error-code>` from `read-via-stream`,
+				   when it is an error, which turns `ERROR` TRUE. */
+				ERRORID : Wasi.Cli.Types.ERROR_CODE;
+				/* TRUE once the stream has ended and the `future<result<_, error-code>>`
+				   from `read-via-stream` has its value. */
+				ENDED : BOOL;
+			END_VAR
+			VAR
+				open : BOOL;
+				requested : BOOL;
+				closing : BOOL;
+				shut : BOOL;
+				stream : UDINT;
+				future : UDINT;
+				read : BYTES_STREAM_READ;
+				answer : RESULT_FUTURE_GET;
+				came : BOOL;
+			END_VAR
+				DONE := FALSE;
+				// The stream, given by the function at the first request.
+				IF REQ AND NOT open THEN
+					Wasi.Cli.Stdin.READ_VIA_STREAM(item0 => stream, item1 => future);
+					open := TRUE;
+				END_IF;
+				IF open THEN
+					// An edge while BUSY is ignored.
+					IF REQ AND NOT requested AND NOT BUSY THEN
+						IF stream <> 0 THEN
+							BUSY := TRUE;
+						ELSE
+							// The stream has ended: nothing more comes.
+							OUT := '';
+							DONE := TRUE;
+						END_IF;
+					END_IF;
+					requested := REQ;
+					IF BUSY THEN
+						// Starts the read, or checks the one running.
+						read(stream := stream);
+						IF read.DONE THEN
+							OUT := read.data;
+							BUSY := FALSE;
+							DONE := TRUE;
+							IF read.closed THEN
+								// The writer left: the reading end goes too.
+								BYTES_STREAM_DROP_READABLE(stream := stream);
+								stream := 0;
+							END_IF;
+						END_IF;
+					END_IF;
+					// The reading end goes on CLOSE, once no read is under way.
+					IF CLOSE AND NOT closing THEN
+						shut := TRUE;
+					END_IF;
+					closing := CLOSE;
+					IF shut AND NOT BUSY THEN
+						IF stream <> 0 THEN
+							BYTES_STREAM_DROP_READABLE(stream := stream);
+							stream := 0;
+						END_IF;
+						shut := FALSE;
+					END_IF;
+					// The answer, read once it comes, and kept.
+					answer(future := future);
+					IF answer.DONE THEN
+						ERRORID := answer.error;
+						came := TRUE;
+					END_IF;
+					ENDED := stream = 0 AND came;
+					ERROR := answer.failed;
+				END_IF;
+			END_FUNCTION_BLOCK
+
+			/* Reads what `read-via-stream` gives through a stream of bytes into an
+			   array, a request at a time. */
+			FUNCTION_BLOCK READ_VIA_STREAM_ARRAY_READER
+			VAR_INPUT
+				/* A rising edge reads what comes next, 8192 bytes at most; the first calls
+				   `read-via-stream`. An edge while `BUSY` is ignored, and one after the
+				   stream ended is `DONE` at once, `COUNT` 0. */
+				REQ : BOOL;
+				/* A rising edge lets go of the stream, once no read is under way. */
+				CLOSE : BOOL;
+			END_VAR
+			VAR_OUTPUT
+				/* TRUE while a read waits for bytes. */
+				BUSY : BOOL;
+				/* TRUE in the call where a read has given what came, in `OUT`. */
+				DONE : BOOL;
+				/* The bytes the last read gave, its first `COUNT`. */
+				OUT : ARRAY[0..8191] OF BYTE;
+				/* How many bytes the last read gave: 0 once the stream has ended, nothing
+				   more coming. */
+				COUNT : UDINT;
+				/* TRUE once the `result<_, error-code>` from `read-via-stream` is an
+				   error, whose `error-code` is in `ERRORID`. */
+				ERROR : BOOL;
+				/* The `error-code` of the `result<_, error-code>` from `read-via-stream`,
+				   when it is an error, which turns `ERROR` TRUE. */
+				ERRORID : Wasi.Cli.Types.ERROR_CODE;
+				/* TRUE once the stream has ended and the `future<result<_, error-code>>`
+				   from `read-via-stream` has its value. */
+				ENDED : BOOL;
+			END_VAR
+			VAR
+				open : BOOL;
+				requested : BOOL;
+				closing : BOOL;
+				shut : BOOL;
+				stream : UDINT;
+				future : UDINT;
+				read : BYTES_STREAM_READ_ARRAY;
+				answer : RESULT_FUTURE_GET;
+				came : BOOL;
+			END_VAR
+				DONE := FALSE;
+				// The stream, given by the function at the first request.
+				IF REQ AND NOT open THEN
+					Wasi.Cli.Stdin.READ_VIA_STREAM(item0 => stream, item1 => future);
+					open := TRUE;
+				END_IF;
+				IF open THEN
+					// An edge while BUSY is ignored.
+					IF REQ AND NOT requested AND NOT BUSY THEN
+						IF stream <> 0 THEN
+							BUSY := TRUE;
+						ELSE
+							// The stream has ended: nothing more comes.
+							COUNT := 0;
+							DONE := TRUE;
+						END_IF;
+					END_IF;
+					requested := REQ;
+					IF BUSY THEN
+						// Starts the read, or checks the one running.
+						read(stream := stream);
+						IF read.DONE THEN
+							OUT := read.data;
+							COUNT := read.read;
+							BUSY := FALSE;
+							DONE := TRUE;
+							IF read.closed THEN
+								// The writer left: the reading end goes too.
+								BYTES_STREAM_DROP_READABLE(stream := stream);
+								stream := 0;
+							END_IF;
+						END_IF;
+					END_IF;
+					// The reading end goes on CLOSE, once no read is under way.
+					IF CLOSE AND NOT closing THEN
+						shut := TRUE;
+					END_IF;
+					closing := CLOSE;
+					IF shut AND NOT BUSY THEN
+						IF stream <> 0 THEN
+							BYTES_STREAM_DROP_READABLE(stream := stream);
+							stream := 0;
+						END_IF;
+						shut := FALSE;
+					END_IF;
+					// The answer, read once it comes, and kept.
+					answer(future := future);
+					IF answer.DONE THEN
+						ERRORID := answer.error;
+						came := TRUE;
+					END_IF;
+					ENDED := stream = 0 AND came;
+					ERROR := answer.failed;
+				END_IF;
+			END_FUNCTION_BLOCK
 		END_NAMESPACE
 	END_NAMESPACE
 END_NAMESPACE
 /* Not generated:
-   - `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel
-     blocks the scan.
-   - `RESULT_FUTURE_WRITE`: no function of the interface takes a future of
-     `result<_, error-code>` from the program.
-   - `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel
-     blocks the scan. */
+   - `BYTES_STREAM_CANCEL_READ`: a cancel blocks the scan.
+   - `RESULT_FUTURE_CANCEL_READ`: a cancel blocks the scan. */

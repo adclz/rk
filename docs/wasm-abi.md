@@ -330,6 +330,18 @@ A future's read, `[future-read-N]f`, takes the future's reading end and gives af
 A future is a value, not a call: the function that gave it has returned, often with a stream beside it to read while the work runs, and the program reads the future when it wants, passes it on, or drops it, where a call that has started is followed to its end.
 A future's write is not imported yet (`E1516`).
 
+`rk bindgen` writes a type's built-ins for the ways the interface's functions pass it: its `new`, its writes and the drop of its writing end when a function takes one from the program, its reads when a function gives one to the program, and the drop of its reading end either way.
+Beside these imports, `rk bindgen` writes two blocks in ST that manage an end for the program.
+A future's `_GET`, `U32_FUTURE_GET` for a `future<u32>`, reads the future and lets go of its reading end in the call that sees `DONE`, setting the handle, an input and output, to 0: a later call does nothing.
+A stream of bytes that a function takes from the program has a `BYTES_STREAM_WRITER`, which makes the stream at its first call and gives `readable` to hand to the function, writes `IN` on a rising edge of `REQ`, handing over the rest when the reader takes a part, and lets go of the writing end on a rising edge of `CLOSE`, once no write is under way.
+A function that takes such a stream has a writer of its own, `WRITE_VIA_STREAM_WRITER` for `write-via-stream`, which holds both: at the first rising edge of `REQ` it makes the stream and calls the function with its reading end and with its other inputs, and writes as the stream's writer does.
+A `func` that answers with a future or nothing is called once, and its future read with its `_GET`, the writer keeping its value; a future no read gives back is let go of unread.
+The call of an `async func` is started the same way and its block called until it returns, once, the writer keeping its result.
+When what it keeps is a `result`, an error turns the writer's `ERROR` TRUE and its value is `ERRORID`, as a stream the reader left does: `WRITE_VIA_STREAM_WRITER` gives the `error-code` of the `result<_, error-code>` that `write-via-stream`'s future holds.
+A function that gives a stream of bytes, alone or in a tuple beside a future, has a reader, `READ_VIA_STREAM_READER` for stdin's `read-via-stream`: at the first rising edge of `REQ` it calls the function, then reads what comes at each rising edge with the stream's read into a STRING, `OUT`; once the stream has ended a request is done at once, `OUT` empty, and the reader lets go of the reading end once the writer left, or on a rising edge of `CLOSE`.
+Its future is read with its `_GET`, as a writer's is.
+Each writer and reader has an array form beside it, for bytes that are no text: `WRITE_VIA_STREAM_ARRAY_WRITER` writes the first `COUNT` bytes of an `ARRAY[*] OF BYTE` passed as `IN`, whatever its bounds, from a reference to them, so the host reads them in place and they stay as they are until `DONE`; a `COUNT` past the array raises. `READ_VIA_STREAM_ARRAY_READER` reads into `OUT`, an `ARRAY[0..8191] OF BYTE`, and gives how many came in `COUNT`.
+
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:
 
 | Import | Signature | What it does |
@@ -356,4 +368,4 @@ A component's host provides all four by providing WASI's command line interfaces
 A scan never waits for a write: one the host has not taken stays pending in the block, `BUSY`, and a later scan sees it end.
 The host's side of the stream runs while the host calls the component through wasmtime's async API; a synchronous call hands over only what the host takes within it.
 
-Each output's stream is made, and its future given up, with the built-ins named after its own `write-via-stream`. Both streams are written with the standard output's write: a stream's type is its element's, so one write takes any stream of bytes. The built-ins come from the component model, not from the host: a release build that writes only to the standard error imports only that interface. A debug build imports both.
+Each output's stream is made and written, and its future read, with the built-ins named after its own `write-via-stream`, through its interface's `WRITE_VIA_STREAM_WRITER`. The built-ins come from the component model, not from the host: a release build that writes only to the standard error imports only that interface. A debug build imports both.

@@ -24,107 +24,11 @@ takes at later calls, while `BUSY` stays TRUE.
 NAMESPACE Std.Console
 
 	/* The blocks reach WASI through what rk-bindgen writes in `generated/`
-	   from WASI's WIT. Each output's `WRITE_VIA_STREAM`, in `Wasi.Cli.Stdout`
-	   and in `Wasi.Cli.Stderr`, hands the host the reading end of a stream of
-	   bytes, which the interface's `BYTES_STREAM_NEW` makes, and answers with
-	   a future of how the writing went, which its
-	   `RESULT_FUTURE_DROP_READABLE` gives up unread: its error code is not
-	   kept, and a write only sees that the host let go. Both streams are
-	   written with the standard output's `BYTES_STREAM_WRITE`: a write is the
-	   component model's, and takes any stream of bytes. */
-
-	/* What `STDOUT` and `STDERR` write with, which they alone reach. */
-	NAMESPACE INTERNAL Streams
-
-		/* The bytes `IN` holds. */
-		FUNCTION TEXT_LEN: UDINT
-			VAR_INPUT
-				IN: STRING[4096];
-			END_VAR
-			{wasm 'str.byte_len' (params IN) (result TEXT_LEN)}
-		END_FUNCTION
-
-		/* `IN` without its first `L` bytes. */
-		FUNCTION TEXT_AFTER: STRING[4096]
-			VAR_INPUT
-				IN: STRING[4096];
-				L: UDINT;
-			END_VAR
-			VAR
-				P: UDINT := 1;
-			END_VAR
-			{wasm 'str.byte_delete' (params IN L P) (result TEXT_AFTER)}
-		END_FUNCTION
-
-		/* Writes `IN` to the stream of bytes whose writing end is `stream` on
-		   a rising edge of `REQ`, handing the host what it has not taken
-		   until it has all of it: the work of `STDOUT` and `STDERR`, which
-		   make the stream. */
-		FUNCTION_BLOCK WRITER
-			VAR_INPUT
-				REQ: BOOL;
-				IN: STRING[4096];
-				stream: UDINT;
-			END_VAR
-			VAR_OUTPUT
-				BUSY: BOOL;
-				DONE: BOOL;
-				ERROR: BOOL;
-			END_VAR
-			VAR
-				requested: BOOL;
-				closed: BOOL;
-				rest: STRING[4096];
-				write: Wasi.Cli.Stdout.BYTES_STREAM_WRITE;
-			END_VAR
-			VAR_TEMP
-				again: BOOL;
-			END_VAR
-
-			DONE := FALSE;
-			// An edge while BUSY is ignored.
-			IF REQ AND NOT requested AND NOT BUSY THEN
-				ERROR := closed;
-				IF NOT closed THEN
-					// A copy of no bytes asks the host whether it is ready,
-					// which it may answer late: an empty text is done here.
-					IF TEXT_LEN(IN) = 0 THEN
-						DONE := TRUE;
-					ELSE
-						rest := IN;
-						BUSY := TRUE;
-					END_IF;
-				END_IF;
-			END_IF;
-			requested := REQ;
-
-			IF BUSY THEN
-				// Each pass after the first hands over at least one byte, so
-				// the loop ends.
-				REPEAT
-					again := FALSE;
-					// Starts the copy of the rest, or checks the one running.
-					write(stream := stream, data := rest);
-					IF write.DONE THEN
-						IF write.closed THEN
-							closed := TRUE;
-							BUSY := FALSE;
-							ERROR := TRUE;
-						ELSIF write.written < TEXT_LEN(rest) THEN
-							// The host took a part: the rest goes next, at
-							// once while it takes some.
-							rest := TEXT_AFTER(rest, write.written);
-							again := write.written > 0;
-						ELSE
-							BUSY := FALSE;
-							DONE := TRUE;
-						END_IF;
-					END_IF;
-				UNTIL NOT again
-				END_REPEAT;
-			END_IF;
-		END_FUNCTION_BLOCK
-	END_NAMESPACE
+	   from WASI's WIT: each output's `WRITE_VIA_STREAM_WRITER`, in
+	   `Wasi.Cli.Stdout` and in `Wasi.Cli.Stderr`, makes a stream of bytes,
+	   hands its reading end to the host's `write-via-stream` and writes to
+	   it. The error code the host answers with is not passed on: a write
+	   only sees that the host let go. */
 
 	/* Writes `IN` to the host's standard output on a rising edge of `REQ`.
 
@@ -149,22 +53,10 @@ NAMESPACE Std.Console
 			ERROR: BOOL;
 		END_VAR
 		VAR
-			open: BOOL;
-			writing: UDINT;
-			output: Streams.WRITER;
-		END_VAR
-		VAR_TEMP
-			reading: UDINT;
+			output: Wasi.Cli.Stdout.WRITE_VIA_STREAM_WRITER;
 		END_VAR
 
-		// The stream, made at the first request.
-		IF REQ AND NOT open THEN
-			Wasi.Cli.Stdout.BYTES_STREAM_NEW(readable => reading, writable => writing);
-			Wasi.Cli.Stdout.RESULT_FUTURE_DROP_READABLE(
-				future := Wasi.Cli.Stdout.WRITE_VIA_STREAM(data := reading));
-			open := TRUE;
-		END_IF;
-		output(REQ := REQ, IN := IN, stream := writing);
+		output(REQ := REQ, IN := IN, CLOSE := FALSE);
 		BUSY := output.BUSY;
 		DONE := output.DONE;
 		ERROR := output.ERROR;
@@ -193,22 +85,10 @@ NAMESPACE Std.Console
 			ERROR: BOOL;
 		END_VAR
 		VAR
-			open: BOOL;
-			writing: UDINT;
-			output: Streams.WRITER;
-		END_VAR
-		VAR_TEMP
-			reading: UDINT;
+			output: Wasi.Cli.Stderr.WRITE_VIA_STREAM_WRITER;
 		END_VAR
 
-		// The stream, made at the first request.
-		IF REQ AND NOT open THEN
-			Wasi.Cli.Stderr.BYTES_STREAM_NEW(readable => reading, writable => writing);
-			Wasi.Cli.Stderr.RESULT_FUTURE_DROP_READABLE(
-				future := Wasi.Cli.Stderr.WRITE_VIA_STREAM(data := reading));
-			open := TRUE;
-		END_IF;
-		output(REQ := REQ, IN := IN, stream := writing);
+		output(REQ := REQ, IN := IN, CLOSE := FALSE);
 		BUSY := output.BUSY;
 		DONE := output.DONE;
 		ERROR := output.ERROR;

@@ -307,6 +307,134 @@ fn standard_input_copied_to_standard_output(mut with_db: RootDatabase) {
     assert_eq!(String::from_utf8(copied).unwrap(), text);
 }
 
+/// Standard input copied to standard output through the generated reader
+/// and writer alone: a chunk read at each request, written, and the next
+/// read; an empty read is the end, after which the writer ends its stream
+/// and both futures say all went well. 1 when the copy ended well, a
+/// negative number saying what went wrong otherwise.
+#[rstest]
+fn standard_input_copied_by_the_reader_and_the_writer(mut with_db: RootDatabase) {
+    let bindings = generated(&world_of(&[
+        "wasi:cli/stdin@0.3.0",
+        "wasi:cli/stdout@0.3.0",
+    ]));
+    let program = r#"
+        PROGRAM P
+        VAR_EXTERNAL output : DINT; END_VAR
+        VAR
+            step : INT;
+            reader : Wasi.Cli.Stdin.READ_VIA_STREAM_READER;
+            writer : Wasi.Cli.Stdout.WRITE_VIA_STREAM_WRITER;
+        END_VAR
+            CASE step OF
+            0:
+                reader(REQ := TRUE);
+                IF reader.DONE THEN
+                    IF reader.OUT = '' THEN
+                        step := 3;
+                    ELSE
+                        step := 1;
+                    END_IF;
+                END_IF;
+            1:
+                reader(REQ := FALSE);
+                writer(REQ := TRUE, IN := reader.OUT);
+                IF writer.ERROR THEN output := -1; RETURN; END_IF;
+                IF writer.DONE THEN step := 2; END_IF;
+            2:
+                writer(REQ := FALSE);
+                step := 0;
+            3:
+                reader(REQ := FALSE);
+                writer(REQ := FALSE, CLOSE := TRUE);
+                IF reader.ENDED AND writer.ENDED THEN
+                    IF reader.ERROR OR writer.ERROR THEN
+                        output := -2;
+                    ELSE
+                        output := 1;
+                    END_IF;
+                END_IF;
+            END_CASE;
+        END_PROGRAM
+    "#;
+    let text = "hello, rk: through the generated reader and writer\n".repeat(200);
+    let stdin = Pipe(Arc::new(Mutex::new(text.bytes().collect())));
+    let stdout = Pipe::default();
+    let mut plc = plc(&mut with_db, &bindings, program, stdin, stdout.clone());
+    assert_eq!(scan_until(&mut plc, 1, 300), 1);
+    let copied: Vec<u8> = stdout.0.lock().unwrap().iter().copied().collect();
+    assert_eq!(String::from_utf8(copied).unwrap(), text);
+}
+
+/// Bytes that are no text, zeros and invalid UTF-8 among them, copied from
+/// standard input to standard output through the array forms of the
+/// generated reader and writer alone: each read's bytes put in a buffer
+/// whose bounds start below 0, then written from it, `COUNT` of them. 1
+/// when the copy ended well, a negative number saying what went wrong
+/// otherwise.
+#[rstest]
+fn bytes_copied_by_the_array_reader_and_writer(mut with_db: RootDatabase) {
+    let bindings = generated(&world_of(&[
+        "wasi:cli/stdin@0.3.0",
+        "wasi:cli/stdout@0.3.0",
+    ]));
+    let program = r#"
+        PROGRAM P
+        VAR_EXTERNAL output : DINT; END_VAR
+        VAR
+            step : INT;
+            reader : Wasi.Cli.Stdin.READ_VIA_STREAM_ARRAY_READER;
+            writer : Wasi.Cli.Stdout.WRITE_VIA_STREAM_ARRAY_WRITER;
+            chunk : ARRAY[-100..8091] OF BYTE;
+            count : UDINT;
+            i : DINT;
+        END_VAR
+            CASE step OF
+            0:
+                reader(REQ := TRUE);
+                IF reader.DONE THEN
+                    IF reader.COUNT = 0 THEN
+                        step := 3;
+                    ELSE
+                        // What came, from the buffer's first byte on.
+                        FOR i := 0 TO 8191 DO
+                            chunk[i - 100] := reader.OUT[i];
+                        END_FOR;
+                        count := reader.COUNT;
+                        step := 1;
+                    END_IF;
+                END_IF;
+            1:
+                reader(REQ := FALSE);
+                writer(REQ := TRUE, COUNT := count, IN := chunk);
+                IF writer.ERROR THEN output := -1; RETURN; END_IF;
+                IF writer.DONE THEN step := 2; END_IF;
+            2:
+                writer(REQ := FALSE, COUNT := count, IN := chunk);
+                step := 0;
+            3:
+                reader(REQ := FALSE);
+                writer(REQ := FALSE, CLOSE := TRUE, COUNT := 0, IN := chunk);
+                IF reader.ENDED AND writer.ENDED THEN
+                    IF reader.ERROR OR writer.ERROR THEN
+                        output := -2;
+                    ELSE
+                        output := 1;
+                    END_IF;
+                END_IF;
+            END_CASE;
+        END_PROGRAM
+    "#;
+    // Every byte, three chunks' worth.
+    let bytes: Vec<u8> = (0..20_000u32).map(|at| (at * 7 % 256) as u8).collect();
+    let stdin = Pipe(Arc::new(Mutex::new(bytes.iter().copied().collect())));
+    let stdout = Pipe::default();
+    let mut plc = plc(&mut with_db, &bindings, program, stdin, stdout.clone());
+    assert_eq!(scan_until(&mut plc, 1, 300), 1);
+    let copied: Vec<u8> = stdout.0.lock().unwrap().iter().copied().collect();
+    assert_eq!(copied, bytes);
+}
+
 /// Bytes that are no text, zeros and invalid UTF-8 among them, copied from
 /// standard input to standard output through an array: each chunk read into
 /// it, then written from it by reference, the count saying how many.
@@ -447,6 +575,55 @@ fn the_errors_of_wasi_s_sockets_are_read_out_of_words(mut with_db: RootDatabase)
         END_PROGRAM
     "#;
     // TCP is what a host allows: wasmtime's does not until told to.
+    let ctx = WasiCtxBuilder::new().allow_tcp(true).build();
+    let mut plc = plc_with(&mut with_db, &bindings, program, ctx);
+    let mut output = 0;
+    for _ in 0..50 {
+        output = plc.scan(0);
+        if output != 0 {
+            break;
+        }
+    }
+    assert_eq!(output, 1, "the number of the check that failed, negative");
+}
+
+/// The writer of WASI's `send`, on a socket that is not connected: the
+/// future `send` answers with fails, and its `error-code` is the writer's
+/// `ERROR` and `ERRORID`. 1 when it is, and otherwise the number of the
+/// check that failed, negative.
+#[rstest]
+fn a_writer_reports_the_error_of_the_future_it_reads(mut with_db: RootDatabase) {
+    let bindings = generated(&world_of(&["wasi:sockets/types@0.3.0"]));
+    let program = r#"
+        PROGRAM P
+        VAR_EXTERNAL output : DINT; END_VAR
+        VAR
+            step : INT;
+            failed : BOOL;
+            socket : UDINT;
+            error : Wasi.Sockets.Types.ERROR_CODE;
+            send : Wasi.Sockets.Types.TCP_SOCKET_SEND_WRITER;
+        END_VAR
+            CASE step OF
+            0:
+                Wasi.Sockets.Types.TCP_SOCKET_CREATE(
+                    address_family := Wasi.Sockets.Types.IP_ADDRESS_FAMILY#IPV4,
+                    failed => failed, value => socket, error => error);
+                IF failed THEN output := -1; RETURN; END_IF;
+                step := 1;
+            1:
+                send(REQ := TRUE, IN := 'x', self := socket);
+                IF send.ENDED THEN
+                    IF NOT send.ERROR
+                        OR send.ERRORID.kind <> Wasi.Sockets.Types.ERROR_CODE_KIND#INVALID_STATE
+                    THEN
+                        output := -2; RETURN;
+                    END_IF;
+                    output := 1;
+                END_IF;
+            END_CASE;
+        END_PROGRAM
+    "#;
     let ctx = WasiCtxBuilder::new().allow_tcp(true).build();
     let mut plc = plc_with(&mut with_db, &bindings, program, ctx);
     let mut output = 0;

@@ -522,13 +522,33 @@ impl Out {
         self.line(section);
         self.depth += 1;
         for var in vars {
-            match var.start {
-                Some(start) => self.line(&format!("{} : {} := {start};", var.name, var.ty)),
-                None => self.line(&format!("{} : {};", var.name, var.ty)),
-            }
+            self.declaration(var);
         }
         self.depth -= 1;
         self.line("END_VAR");
+    }
+
+    /// A section whose variables each have their documentation on the lines
+    /// above them, which the editor shows on hover.
+    fn documented_vars(&mut self, section: &str, vars: &[(Var, String)]) {
+        if vars.is_empty() {
+            return;
+        }
+        self.line(section);
+        self.depth += 1;
+        for (var, text) in vars {
+            self.prose(text);
+            self.declaration(var);
+        }
+        self.depth -= 1;
+        self.line("END_VAR");
+    }
+
+    fn declaration(&mut self, var: &Var) {
+        match var.start {
+            Some(start) => self.line(&format!("{} : {} := {start};", var.name, var.ty)),
+            None => self.line(&format!("{} : {};", var.name, var.ty)),
+        }
     }
 }
 
@@ -557,6 +577,8 @@ struct Here<'a> {
     skipped: &'a mut Vec<Skipped>,
     taken: &'a mut HashMap<String, String>,
     sets: &'a mut Vec<(Carrier, String)>,
+    /// The blocks each set of the interface manages its ends with.
+    managers: &'a mut HashMap<(Carrier, String), Managers>,
     /// Set when a built-in's value is read out of words.
     converts: &'a mut bool,
     owner: Option<TypeOwner>,
@@ -980,8 +1002,13 @@ impl Generator<'_> {
                 }),
             }
         }
-        // The sets of built-ins of this interface's own types, by type.
+        // The sets of built-ins of this interface's own types, by type, and
+        // the blocks each manages its ends with.
         let mut own_sets: Vec<(Carrier, String)> = Vec::new();
+        let mut managers: HashMap<(Carrier, String), Managers> = HashMap::new();
+        // The FUNCTIONs that are their import as it is, which a writer may
+        // call.
+        let mut plain: Vec<(&Function, Declared)> = Vec::new();
         // Whether a result is read out of words, with `Std.Convert`.
         let mut converts = false;
         for function in interface.functions.values() {
@@ -997,7 +1024,10 @@ impl Generator<'_> {
                 ),
             };
             match written {
-                Ok(converted) => converts |= converted,
+                Ok((converted, declared)) => {
+                    converts |= converted;
+                    plain.extend(declared.map(|declared| (function, declared)));
+                }
                 Err(reason) => skipped.push(Skipped {
                     item: format!("`{}`", function.name),
                     reason,
@@ -1008,10 +1038,24 @@ impl Generator<'_> {
                 skipped: &mut skipped,
                 taken: &mut taken,
                 sets: &mut own_sets,
+                managers: &mut managers,
                 converts: &mut converts,
                 owner: here,
             };
             self.built_ins(&module, function, &mut here_out);
+        }
+        // Each function that takes a stream of bytes from the program, made,
+        // written and ended by a block of its own.
+        for (function, declared) in &plain {
+            let blocks = Blocks {
+                resolve,
+                managers: &managers,
+                namespace: &namespace,
+            };
+            for form in [Form::Text, Form::Array] {
+                function_writer(&blocks, &mut out, &mut taken, function, declared, form);
+                function_reader(&blocks, &mut out, &mut taken, function, declared, form);
+            }
         }
 
         let mut text = header(&[package.to_string()]);
@@ -1068,7 +1112,7 @@ impl Generator<'_> {
         pou: Option<&String>,
         here: Option<TypeOwner>,
         taken: &mut HashMap<String, String>,
-    ) -> Result<bool, String> {
+    ) -> Result<(bool, Option<Declared>), String> {
         let resolve = self.resolve;
         let Some(pou) = pou.cloned() else {
             return Err("it is a property, which rk does not import".to_string());
@@ -1379,8 +1423,30 @@ impl Generator<'_> {
             }
         }
         out.line("");
+        // What a writer calls: a FUNCTION that is its import as it is and
+        // gives back no output, or the block of an `async func`, each
+        // parameter an input of it, in order, and none in and out.
+        let one_to_one = in_outs.is_empty()
+            && lowered.in_outs.is_empty()
+            && texts.is_empty()
+            && lowered.inputs.len() == function.params.len();
+        let declared = match (asynchronous, apart) {
+            (false, false) if one_to_one => Some(Declared {
+                pou: pou.clone(),
+                inputs: lowered.inputs.clone(),
+                block: None,
+                given: given.clone(),
+            }),
+            (true, _) if one_to_one => Some(Declared {
+                pou: pou.clone(),
+                inputs: lowered.inputs.clone(),
+                block: Some(outputs.to_vec()),
+                given: Vec::new(),
+            }),
+            _ => None,
+        };
         if !apart {
-            return Ok(false);
+            return Ok((false, declared));
         }
 
         // What a call names: the values themselves, packed into the
@@ -1471,7 +1537,10 @@ impl Generator<'_> {
             }
         }
         out.line("");
-        Ok(lowered.converts() || matches!(&returned, Returned::Words(lifted) if lifted.converts()))
+        Ok((
+            lowered.converts() || matches!(&returned, Returned::Words(lifted) if lifted.converts()),
+            declared,
+        ))
     }
 
     /// The built-ins of each stream and future `function` takes or gives
@@ -1496,8 +1565,8 @@ impl Generator<'_> {
             if here.sets.contains(&key) {
                 continue;
             }
-            let fed = taken_from_the_program(resolve, here.owner, carrier, &key.1);
-            here.sets.push(key);
+            let (fed, given) = directions(resolve, here.owner, carrier, &key.1);
+            here.sets.push(key.clone());
             // A set says what it is: `BYTES_STREAM`, `RESULT_FUTURE`.
             let name = format!(
                 "{}_{}",
@@ -1509,7 +1578,7 @@ impl Generator<'_> {
                 carrier.prefix(),
                 function.name
             );
-            let written = built_in_set(
+            let (written, managers) = built_in_set(
                 resolve,
                 &self.sizes,
                 here.out,
@@ -1522,11 +1591,13 @@ impl Generator<'_> {
                 &anchor,
                 here.owner,
                 fed,
+                given,
             );
             let what = format!("a built-in of `{}`", wit_text(resolve, payload));
             for pou in written {
                 here.taken.insert(pou.to_ascii_uppercase(), what.clone());
             }
+            here.managers.insert(key, managers);
         }
     }
 }
@@ -1566,6 +1637,1488 @@ fn reader(out: &mut Out, raw: &str, passed: &str, lifted: &lift::Lifted, copied:
     out.depth -= 1;
     out.line("END_IF;");
     out.depth -= 1;
+}
+
+/// `get`, the block that reads a future and lets go of its reading end:
+/// `read`, the future's read, then `drop` in the call that sees `DONE`,
+/// which sets `end` to 0, so that a later call reads nothing twice. Its
+/// outputs are the read's, `outputs` past its `DONE`.
+fn future_get(out: &mut Out, get: &str, read: &str, drop: &str, end: &str, outputs: &[Var]) {
+    // The read keeps clear of the outputs' names and of the end's.
+    let mut call = "call".to_string();
+    while call.eq_ignore_ascii_case(end)
+        || outputs
+            .iter()
+            .any(|var| var.name.eq_ignore_ascii_case(&call))
+    {
+        call.push('_');
+    }
+    let var = |name: &str, ty: &str| Var {
+        name: name.to_string(),
+        ty: ty.to_string(),
+        flat: 1,
+        start: None,
+    };
+    out.prose(&format!(
+        "Reads the value the future holds, which comes back after `DONE`, then lets go of the future's reading end: `{end}` is 0 from then on, and a call with `{end}` 0 does nothing."
+    ));
+    out.line(&format!("FUNCTION_BLOCK {get}"));
+    out.vars("VAR_IN_OUT", &[var(end, "UDINT")]);
+    out.vars("VAR_OUTPUT", &[vec![done()], outputs.to_vec()].concat());
+    out.vars("VAR", &[var(&call, read)]);
+    out.depth += 1;
+    out.line("DONE := FALSE;");
+    out.line(&format!("IF {end} <> 0 THEN"));
+    out.depth += 1;
+    out.line(&format!("{call}({end} := {end});"));
+    out.line(&format!("IF {call}.DONE THEN"));
+    out.depth += 1;
+    for output in outputs {
+        out.line(&format!("{0} := {call}.{0};", output.name));
+    }
+    out.line(&format!("{drop}({end} := {end});"));
+    out.line(&format!("{end} := 0;"));
+    out.line("DONE := TRUE;");
+    out.depth -= 1;
+    out.line("END_IF;");
+    out.depth -= 1;
+    out.line("END_IF;");
+    out.depth -= 1;
+    out.line("END_FUNCTION_BLOCK");
+    out.line("");
+}
+
+/// What a writer or a reader calls: its name, and its inputs, one per
+/// parameter of its function, in order; for the block of an `async func`,
+/// the outputs it gives past its `DONE`, and for a FUNCTION, `None`; a
+/// FUNCTION's outputs, where it gives its values as outputs.
+struct Declared {
+    pou: String,
+    inputs: Vec<Var>,
+    block: Option<Vec<Var>>,
+    given: Vec<Var>,
+}
+
+/// What `ty` is when it is a stream or a future, under aliases too: which,
+/// and what it carries.
+fn carried(resolve: &Resolve, ty: Type) -> Option<(Carrier, Option<Type>)> {
+    let Type::Id(id) = ty else { return None };
+    match &resolve.types[id].kind {
+        TypeDefKind::Type(inner) => carried(resolve, *inner),
+        TypeDefKind::Stream(payload) => Some((Carrier::Stream, *payload)),
+        TypeDefKind::Future(payload) => Some((Carrier::Future, *payload)),
+        _ => None,
+    }
+}
+
+/// What the function a writer calls answers with.
+enum Answer {
+    /// Nothing.
+    Nothing,
+    /// A future no read gives back, let go of unread with this drop.
+    Unread(String),
+    /// A future, read by this `_GET`, whose outputs past `DONE` are these.
+    Future(String, Vec<Var>),
+    /// The result of an `async func`, the outputs of its block past `DONE`.
+    Call(Vec<Var>),
+}
+
+/// The block that writes to `function`, `<NAME>_WRITER`, when the function
+/// takes one stream of bytes from the program, and no other stream or
+/// future: it makes the stream and writes it with the stream's
+/// `BYTES_STREAM_WRITER` (`managers`). A `func` that answers with a future
+/// or nothing is called with the stream's reading end, and its future read
+/// with its `_GET`, keeping its value, or let go of unread when no read
+/// gives it back; the call of an `async func` is started with it and
+/// followed to its end once, keeping its result.
+fn function_writer(
+    blocks: &Blocks<'_>,
+    out: &mut Out,
+    taken: &mut HashMap<String, String>,
+    function: &Function,
+    declared: &Declared,
+    form: Form,
+) {
+    let Blocks {
+        resolve, managers, ..
+    } = *blocks;
+    let mut streams = function
+        .params
+        .iter()
+        .enumerate()
+        .filter(|(_, param)| carried(resolve, param.ty).is_some());
+    let (Some((at, param)), None) = (streams.next(), streams.next()) else {
+        return;
+    };
+    if carried(resolve, param.ty) != Some((Carrier::Stream, Some(Type::U8))) {
+        return;
+    }
+    let Some(writer) = managers
+        .get(&(Carrier::Stream, type_key(resolve, Some(Type::U8))))
+        .and_then(|managers| match form {
+            Form::Text => managers.writer.clone(),
+            Form::Array => managers.array_writer.clone(),
+        })
+    else {
+        return;
+    };
+    let answer = match (&declared.block, function.result) {
+        // An `async func` whose result carries no stream or future.
+        (Some(outputs), _) if function.find_futures_and_streams(resolve).len() == 1 => {
+            Answer::Call(outputs.clone())
+        }
+        (Some(_), _) => return,
+        (None, None) => Answer::Nothing,
+        (None, Some(ty)) => match carried(resolve, ty) {
+            Some((Carrier::Future, payload)) => {
+                match managers.get(&(Carrier::Future, type_key(resolve, payload))) {
+                    Some(Managers {
+                        get: Some((get, outputs)),
+                        ..
+                    }) => Answer::Future(get.clone(), outputs.clone()),
+                    Some(managers) => Answer::Unread(managers.drop_readable.clone()),
+                    None => return,
+                }
+            }
+            _ => return,
+        },
+    };
+    let (suffix, what) = match form {
+        Form::Text => ("WRITER", "writer"),
+        Form::Array => ("ARRAY_WRITER", "array writer"),
+    };
+    let block = spare(taken, format!("{}_{suffix}", declared.pou));
+    taken.insert(
+        block.to_ascii_uppercase(),
+        format!("the {what} of `{}`", function.name),
+    );
+
+    // The function by its namespace's path, which no name of the block's
+    // own can hide: `OPEN`, beside the block's `open`.
+    let pou = &blocks.called(&declared.pou);
+    let shown = shown_name(resolve, function);
+    let mut held = Held::new(
+        match form {
+            Form::Text => &[
+                "REQ", "IN", "CLOSE", "BUSY", "DONE", "ERROR", "ERRORID", "ENDED", "open",
+                "future", "stream", "answer", "call",
+            ],
+            Form::Array => &[
+                "REQ", "IN", "COUNT", "CLOSE", "BUSY", "DONE", "ERROR", "ERRORID", "ENDED", "open",
+                "future", "stream", "answer", "call",
+            ],
+        },
+        "writer",
+    );
+    let var = |name: &str, ty: &str| Var {
+        name: name.to_string(),
+        ty: ty.to_string(),
+        flat: 1,
+        start: None,
+    };
+    let inputs = passed_inputs(resolve, declared, function, Some(at), &shown, &mut held);
+    // What the block keeps of the answer, where it reads each value, and
+    // the value's type in WIT.
+    let (kept, from, answered): (&[Var], &str, Option<Type>) = match &answer {
+        Answer::Future(_, outputs) => (
+            outputs,
+            "answer",
+            function
+                .result
+                .and_then(|ty| carried(resolve, ty))
+                .and_then(|(_, payload)| payload),
+        ),
+        Answer::Call(outputs) => (outputs, "call", function.result),
+        Answer::Nothing | Answer::Unread(_) => (&[], "", None),
+    };
+    let Kept {
+        values,
+        flag,
+        result,
+    } = kept_values(resolve, kept, answered, &shown, &mut held);
+    let documented = |var: Var, text: String| held.documented(var, text, &shown);
+    let starts = match answer {
+        Answer::Call(_) => "starts",
+        _ => "calls",
+    };
+    let (moved, written) = match form {
+        Form::Text => ("text", "`IN`"),
+        Form::Array => ("bytes from an array", "the first `COUNT` bytes of `IN`"),
+    };
+    out.prose(&format!(
+        "Writes {moved} to `{shown}` through a stream of bytes it opens at the first request."
+    ));
+    out.line(&format!("FUNCTION_BLOCK {block}"));
+    let text = format!("STRING[{STRING_LIMIT}]");
+    let req = documented(
+        var("REQ", "BOOL"),
+        format!(
+            "A rising edge writes {written}; the first opens the stream and {starts} `{shown}` with it. An edge while `BUSY` is ignored."
+        ),
+    );
+    let close = documented(var("CLOSE", "BOOL"), WRITER_CLOSE.to_string());
+    let mut inputs_documented = match form {
+        Form::Text => vec![
+            req,
+            documented(var("IN", &text), WRITER_IN.to_string()),
+            close,
+        ],
+        Form::Array => vec![
+            req,
+            documented(var("COUNT", "UDINT"), WRITER_COUNT.to_string()),
+            close,
+        ],
+    };
+    inputs_documented.extend(
+        inputs
+            .iter()
+            .map(|(var, _, doc)| documented(var.clone(), doc.clone())),
+    );
+    out.documented_vars("VAR_INPUT", &inputs_documented);
+    if form == Form::Array {
+        out.documented_vars(
+            "VAR_IN_OUT",
+            &[documented(
+                var("IN", "ARRAY[*] OF BYTE"),
+                WRITER_ARRAY_IN.to_string(),
+            )],
+        );
+    }
+    let mut outputs = vec![
+        documented(
+            var("BUSY", "BOOL"),
+            match form {
+                Form::Text => WRITER_BUSY,
+                Form::Array => WRITER_ARRAY_BUSY,
+            }
+            .to_string(),
+        ),
+        documented(
+            var("DONE", "BOOL"),
+            match form {
+                Form::Text => WRITER_DONE,
+                Form::Array => WRITER_ARRAY_DONE,
+            }
+            .to_string(),
+        ),
+        documented(
+            var("ERROR", "BOOL"),
+            error_doc(
+                resolve,
+                Some("TRUE once a write finds the reader gone, a request comes after `CLOSE`"),
+                result,
+                &shown,
+            )
+            .unwrap_or_else(|| WRITER_ERROR.to_string()),
+        ),
+    ];
+    // `ERRORID` beside `ERROR`, the answer's other values after `ENDED`.
+    let (errorid, values_after): (Vec<_>, Vec<_>) =
+        values.iter().partition(|(var, ..)| var.name == "ERRORID");
+    outputs.extend(
+        errorid
+            .into_iter()
+            .map(|(var, _, doc)| documented(var.clone(), doc.clone())),
+    );
+    let whole = wit_text(resolve, answered);
+    match answer {
+        Answer::Future(..) => outputs.push(documented(
+            var("ENDED", "BOOL"),
+            match answered {
+                Some(_) => format!("TRUE once the `future<{whole}>` from `{shown}` has its value."),
+                None => format!("TRUE once the `future` from `{shown}` has come."),
+            },
+        )),
+        Answer::Call(_) => outputs.push(documented(
+            var("ENDED", "BOOL"),
+            format!("TRUE once `{shown}` has returned."),
+        )),
+        Answer::Nothing | Answer::Unread(_) => {}
+    }
+    outputs.extend(
+        values_after
+            .into_iter()
+            .map(|(var, _, doc)| documented(var.clone(), doc.clone())),
+    );
+    out.documented_vars("VAR_OUTPUT", &outputs);
+    let mut locals = vec![var("open", "BOOL"), var("stream", &writer)];
+    match &answer {
+        Answer::Future(get, _) => {
+            locals.push(var("future", "UDINT"));
+            locals.push(var("answer", get));
+        }
+        Answer::Call(_) => locals.push(var("call", pou)),
+        Answer::Nothing | Answer::Unread(_) => {}
+    }
+    out.vars("VAR", &locals);
+    out.depth += 1;
+    let arguments = std::iter::once(format!("{} := stream.readable", declared.inputs[at].name))
+        .chain(
+            inputs
+                .iter()
+                .map(|(var, field, _)| format!("{field} := {}", var.name)),
+        )
+        .collect::<Vec<_>>()
+        .join(", ");
+    let keep = |out: &mut Out| {
+        for (var, field, _) in &values {
+            out.line(&format!("{} := {from}.{field};", var.name));
+        }
+        out.line("ENDED := TRUE;");
+    };
+    match answer {
+        Answer::Call(_) => out.line("// The stream, made at the first request."),
+        _ => out.line("// The stream, made at the first request and handed to the function."),
+    }
+    out.line("IF REQ AND NOT open THEN");
+    out.depth += 1;
+    // Every input passed, none requested yet: the call only makes the
+    // stream.
+    out.line(match form {
+        Form::Text => "stream(REQ := FALSE, IN := IN, CLOSE := FALSE);",
+        Form::Array => "stream(REQ := FALSE, COUNT := COUNT, CLOSE := FALSE, IN := IN);",
+    });
+    match &answer {
+        Answer::Nothing => out.line(&format!("{pou}({arguments});")),
+        Answer::Unread(drop) => out.line(&format!("{drop}(future := {pou}({arguments}));")),
+        Answer::Future(..) => out.line(&format!("future := {pou}({arguments});")),
+        Answer::Call(_) => {}
+    }
+    out.line("open := TRUE;");
+    out.depth -= 1;
+    out.line("END_IF;");
+    out.line("IF open THEN");
+    out.depth += 1;
+    if let Answer::Call(_) = answer {
+        // A call of the block once it has returned would start another.
+        out.line("// The call, started with the stream's reading end at the first");
+        out.line("// request and followed to its end, once.");
+        out.line("IF NOT ENDED THEN");
+        out.depth += 1;
+        out.line(&format!("call({arguments});"));
+        out.line("IF call.DONE THEN");
+        out.depth += 1;
+        keep(out);
+        out.depth -= 1;
+        out.line("END_IF;");
+        out.depth -= 1;
+        out.line("END_IF;");
+    }
+    out.line(match form {
+        Form::Text => "stream(REQ := REQ, IN := IN, CLOSE := CLOSE);",
+        Form::Array => "stream(REQ := REQ, COUNT := COUNT, CLOSE := CLOSE, IN := IN);",
+    });
+    out.line("BUSY := stream.BUSY;");
+    out.line("DONE := stream.DONE;");
+    if let Answer::Future(..) = answer {
+        out.line("// The answer, read once it comes, and kept.");
+        out.line("answer(future := future);");
+        out.line("IF answer.DONE THEN");
+        out.depth += 1;
+        keep(out);
+        out.depth -= 1;
+        out.line("END_IF;");
+    }
+    match flag {
+        Some(flag) => out.line(&format!("ERROR := stream.ERROR OR {from}.{};", flag.name)),
+        None => out.line("ERROR := stream.ERROR;"),
+    }
+    out.depth -= 1;
+    out.line("END_IF;");
+    out.depth -= 1;
+    out.line("END_FUNCTION_BLOCK");
+    out.line("");
+}
+
+/// What the blocks written for an interface's functions read: its WIT,
+/// the blocks of each set of built-ins, and the path of its namespace.
+struct Blocks<'a> {
+    resolve: &'a Resolve,
+    managers: &'a HashMap<(Carrier, String), Managers>,
+    namespace: &'a str,
+}
+
+impl Blocks<'_> {
+    /// `pou`, a POU of the interface, named by its namespace's path.
+    fn called(&self, pou: &str) -> String {
+        format!("{}.{pou}", self.namespace)
+    }
+}
+
+/// The function as WIT names it: a resource's `send` is `channel.send`.
+fn shown_name(resolve: &Resolve, function: &Function) -> String {
+    match function.kind {
+        FunctionKind::Method(id)
+        | FunctionKind::AsyncMethod(id)
+        | FunctionKind::Static(id)
+        | FunctionKind::AsyncStatic(id) => format!(
+            "{}.{}",
+            wit_text(resolve, Some(Type::Id(id))),
+            function.item_name()
+        ),
+        _ => function.item_name().to_string(),
+    }
+}
+
+/// The names a block written for a function declares, its own first: a
+/// WIT name that would be one of them, or one taken before it, takes a
+/// `_`, and the documentation of each of the two names the other. A name
+/// the function's own declaration took apart counts too: `done_` of an
+/// `async func`'s block, beside its `DONE`.
+struct Held {
+    own: &'static [&'static str],
+    /// What the block is, `writer` or `reader`.
+    whose: &'static str,
+    held: Vec<String>,
+    /// Each name taken apart: the name it met, its own, and where it comes
+    /// from.
+    met: Vec<(String, String, String)>,
+}
+
+impl Held {
+    fn new(own: &'static [&'static str], whose: &'static str) -> Self {
+        Held {
+            own,
+            whose,
+            held: own.iter().map(|name| name.to_string()).collect(),
+            met: Vec::new(),
+        }
+    }
+
+    /// `name` as the block declares it, apart from the names held; `from`
+    /// says where it comes from.
+    fn apart(&mut self, name: &str, from: String) -> String {
+        let first = self
+            .held
+            .iter()
+            .find(|other| other.eq_ignore_ascii_case(name.trim_end_matches('_')))
+            .cloned();
+        let mut new = name.to_string();
+        while self
+            .held
+            .iter()
+            .any(|other| other.eq_ignore_ascii_case(&new))
+        {
+            new.push('_');
+        }
+        self.held.push(new.clone());
+        if let Some(first) = first {
+            self.met.push((first, new.clone(), from));
+        }
+        new
+    }
+
+    /// `var` with its documentation, `text`, shown on hover, and for a name
+    /// taken apart, the other of the two.
+    fn documented(&self, var: Var, text: String, shown: &str) -> (Var, String) {
+        let mut text = text;
+        for (first, new, from) in &self.met {
+            if *first == var.name {
+                text.push_str(&format!(" `{new}` is {from}."));
+            }
+            if *new == var.name {
+                let other = match self.own.contains(&first.as_str()) {
+                    true => format!("the {}'s own", self.whose),
+                    false => self
+                        .met
+                        .iter()
+                        .find(|(_, new, _)| new == first)
+                        .map(|(.., from)| from.clone())
+                        .unwrap_or_else(|| format!("a parameter of `{shown}`")),
+                };
+                text.push_str(&format!(" Not `{first}`, {other}."));
+            }
+        }
+        (var, text)
+    }
+}
+
+/// The function's inputs, but the one at `skip`, which a block passes it
+/// when it opens its stream: the block's input, the function's name of
+/// it, and what it is in WIT.
+fn passed_inputs(
+    resolve: &Resolve,
+    declared: &Declared,
+    function: &Function,
+    skip: Option<usize>,
+    shown: &str,
+    held: &mut Held,
+) -> Vec<(Var, String, String)> {
+    declared
+        .inputs
+        .iter()
+        .zip(&function.params)
+        .enumerate()
+        .filter(|(index, _)| Some(*index) != skip)
+        .map(|(_, (input, param))| {
+            let name = held.apart(&input.name, format!("a parameter of `{shown}`"));
+            let doc = format!(
+                "`{}: {}` of `{shown}`, passed when the stream opens.",
+                param.name,
+                wit_text(resolve, Some(param.ty))
+            );
+            (
+                Var {
+                    name,
+                    ..input.clone()
+                },
+                input.name.clone(),
+                doc,
+            )
+        })
+        .collect()
+}
+
+/// What a block keeps of a function's answer: each value, with the name
+/// the block gives it, its name where the answer is, and what it is in
+/// WIT; a result's flag, which turns the block's `ERROR` TRUE; and the
+/// result, with its error, the block's `ERRORID`.
+struct Kept {
+    values: Vec<(Var, String, String)>,
+    flag: Option<Var>,
+    result: Option<(Type, Option<Type>)>,
+}
+
+/// What a block keeps of `kept`, the outputs a function's answer comes
+/// back in, a value of `answered`.
+fn kept_values(
+    resolve: &Resolve,
+    kept: &[Var],
+    answered: Option<Type>,
+    shown: &str,
+    held: &mut Held,
+) -> Kept {
+    let result = answered.and_then(|ty| match defined(resolve, ty) {
+        Some(TypeDefKind::Result(result)) => Some((ty, result.err)),
+        _ => None,
+    });
+    let is = |output: &Var, name: &str| {
+        result.is_some() && output.name.trim_end_matches('_').eq_ignore_ascii_case(name)
+    };
+    let flag = kept.iter().find(|output| is(output, "failed")).cloned();
+    let values = kept
+        .iter()
+        .filter(|output| !is(output, "failed"))
+        .map(|output| {
+            let doc = match answered {
+                Some(ty) => part_of(resolve, ty, &output.name, shown),
+                None => String::new(),
+            };
+            let name = match is(output, "error") {
+                true => "ERRORID".to_string(),
+                false => held.apart(&output.name, format!("from `{shown}`")),
+            };
+            (
+                Var {
+                    name,
+                    ..output.clone()
+                },
+                output.name.clone(),
+                doc,
+            )
+        })
+        .collect();
+    Kept {
+        values,
+        flag,
+        result,
+    }
+}
+
+/// What a block's `ERROR` says when the answer is a result: its own
+/// `causes`, if any, then the result's error.
+fn error_doc(
+    resolve: &Resolve,
+    causes: Option<&str>,
+    result: Option<(Type, Option<Type>)>,
+    shown: &str,
+) -> Option<String> {
+    let (ty, err) = result?;
+    let causes = match causes {
+        Some(causes) => format!("{causes}, or"),
+        None => "TRUE once".to_string(),
+    };
+    Some(format!(
+        "{causes} the `{}` from `{shown}` is an error{}.",
+        wit_text(resolve, Some(ty)),
+        match err {
+            Some(err) => format!(", whose `{}` is in `ERRORID`", wit_text(resolve, Some(err))),
+            None => String::new(),
+        }
+    ))
+}
+
+/// The block that reads what `function` gives, `<NAME>_READER`, when the
+/// function is a `func` that takes no stream or future and gives one
+/// stream of bytes, alone or in a tuple beside one future, which `managers`
+/// read: at the first request it calls the function, then reads at each
+/// rising edge of `REQ` with the stream's `_READ`, into a STRING, and lets
+/// go of the reading end once the writer left or on `CLOSE`. The future is
+/// read with its `_GET`, keeping its value, a result's error in `ERROR`
+/// and `ERRORID`, or let go of unread when no read gives it back.
+fn function_reader(
+    blocks: &Blocks<'_>,
+    out: &mut Out,
+    taken: &mut HashMap<String, String>,
+    function: &Function,
+    declared: &Declared,
+    form: Form,
+) {
+    let Blocks {
+        resolve, managers, ..
+    } = *blocks;
+    if declared.block.is_some() {
+        return;
+    }
+    let mut params = function.clone();
+    params.result = None;
+    if !params.find_futures_and_streams(resolve).is_empty() {
+        return;
+    }
+    let Some(result) = function.result else {
+        return;
+    };
+    let bytes = Some((Carrier::Stream, Some(Type::U8)));
+    // Where the stream and the future come back: the FUNCTION's own value,
+    // or two of its outputs, as the tuple orders them.
+    let (call_gives, future): (Option<(String, String)>, Option<Option<Type>>) =
+        if carried(resolve, result) == bytes {
+            (None, None)
+        } else {
+            let Some(TypeDefKind::Tuple(tuple)) = defined(resolve, result) else {
+                return;
+            };
+            let [first, second] = tuple.types[..] else {
+                return;
+            };
+            let (at, payload) = match (carried(resolve, first), carried(resolve, second)) {
+                (stream, Some((Carrier::Future, payload))) if stream == bytes => ((0, 1), payload),
+                (Some((Carrier::Future, payload)), stream) if stream == bytes => ((1, 0), payload),
+                _ => return,
+            };
+            let (Some(stream), Some(future)) = (declared.given.get(at.0), declared.given.get(at.1))
+            else {
+                return;
+            };
+            (
+                Some((stream.name.clone(), future.name.clone())),
+                Some(payload),
+            )
+        };
+    let Some((read, drop)) = managers
+        .get(&(Carrier::Stream, type_key(resolve, Some(Type::U8))))
+        .and_then(|managers| {
+            let read = match form {
+                Form::Text => managers.read.clone(),
+                Form::Array => managers.read_array.clone(),
+            };
+            Some((read?, managers.drop_readable.clone()))
+        })
+    else {
+        return;
+    };
+    let answer = match future {
+        None => Answer::Nothing,
+        Some(payload) => match managers.get(&(Carrier::Future, type_key(resolve, payload))) {
+            Some(Managers {
+                get: Some((get, outputs)),
+                ..
+            }) => Answer::Future(get.clone(), outputs.clone()),
+            Some(managers) => Answer::Unread(managers.drop_readable.clone()),
+            None => return,
+        },
+    };
+    let (suffix, what) = match form {
+        Form::Text => ("READER", "reader"),
+        Form::Array => ("ARRAY_READER", "array reader"),
+    };
+    let block = spare(taken, format!("{}_{suffix}", declared.pou));
+    taken.insert(
+        block.to_ascii_uppercase(),
+        format!("the {what} of `{}`", function.name),
+    );
+
+    // The function by its namespace's path, which no name of the block's
+    // own can hide: `OPEN`, beside the block's `open`.
+    let pou = &blocks.called(&declared.pou);
+    let shown = shown_name(resolve, function);
+    let mut held = Held::new(
+        &[
+            "REQ",
+            "CLOSE",
+            "BUSY",
+            "DONE",
+            "OUT",
+            "COUNT",
+            "ERROR",
+            "ERRORID",
+            "ENDED",
+            "open",
+            "requested",
+            "closing",
+            "shut",
+            "came",
+            "stream",
+            "future",
+            "read",
+            "answer",
+        ],
+        "reader",
+    );
+    let var = |name: &str, ty: &str| Var {
+        name: name.to_string(),
+        ty: ty.to_string(),
+        flat: 1,
+        start: None,
+    };
+    let inputs = passed_inputs(resolve, declared, function, None, &shown, &mut held);
+    let (kept, answered): (&[Var], Option<Type>) = match &answer {
+        Answer::Future(_, outputs) => (outputs, future.flatten()),
+        _ => (&[], None),
+    };
+    let Kept {
+        values,
+        flag,
+        result,
+    } = kept_values(resolve, kept, answered, &shown, &mut held);
+    let documented = |var: Var, text: String| held.documented(var, text, &shown);
+
+    let (into, at_most, nothing) = match form {
+        Form::Text => ("", STRING_LIMIT, "`OUT` empty"),
+        Form::Array => (" into an array", BYTES_AT_ONCE, "`COUNT` 0"),
+    };
+    out.prose(&format!(
+        "Reads what `{shown}` gives through a stream of bytes{into}, a request at a time."
+    ));
+    out.line(&format!("FUNCTION_BLOCK {block}"));
+    let mut inputs_documented = vec![
+        documented(
+            var("REQ", "BOOL"),
+            format!(
+                "A rising edge reads what comes next, {at_most} bytes at most; the first calls `{shown}`. An edge while `BUSY` is ignored, and one after the stream ended is `DONE` at once, {nothing}."
+            ),
+        ),
+        documented(
+            var("CLOSE", "BOOL"),
+            "A rising edge lets go of the stream, once no read is under way.".to_string(),
+        ),
+    ];
+    inputs_documented.extend(
+        inputs
+            .iter()
+            .map(|(var, _, doc)| documented(var.clone(), doc.clone())),
+    );
+    out.documented_vars("VAR_INPUT", &inputs_documented);
+    let mut outputs: Vec<(Var, String)> = vec![
+        documented(
+            var("BUSY", "BOOL"),
+            "TRUE while a read waits for bytes.".to_string(),
+        ),
+        documented(
+            var("DONE", "BOOL"),
+            "TRUE in the call where a read has given what came, in `OUT`.".to_string(),
+        ),
+    ];
+    match form {
+        Form::Text => outputs.push(documented(
+            var("OUT", &format!("STRING[{STRING_LIMIT}]")),
+            "What the last read gave: empty once the stream has ended, nothing more coming."
+                .to_string(),
+        )),
+        Form::Array => {
+            outputs.push(documented(
+                var("OUT", &format!("ARRAY[0..{}] OF BYTE", BYTES_AT_ONCE - 1)),
+                "The bytes the last read gave, its first `COUNT`.".to_string(),
+            ));
+            outputs.push(documented(
+                var("COUNT", "UDINT"),
+                "How many bytes the last read gave: 0 once the stream has ended, nothing more coming."
+                    .to_string(),
+            ));
+        }
+    }
+    // A result's error, the one the reader reports.
+    if let Some(doc) = error_doc(resolve, None, result, &shown) {
+        outputs.push(documented(var("ERROR", "BOOL"), doc));
+    }
+    // `ERRORID` beside `ERROR`, the answer's other values after `ENDED`.
+    let (errorid, values_after): (Vec<_>, Vec<_>) =
+        values.iter().partition(|(var, ..)| var.name == "ERRORID");
+    outputs.extend(
+        errorid
+            .into_iter()
+            .map(|(var, _, doc)| documented(var.clone(), doc.clone())),
+    );
+    outputs.push(documented(
+        var("ENDED", "BOOL"),
+        match (&answer, answered) {
+            (Answer::Future(..), Some(ty)) => format!(
+                "TRUE once the stream has ended and the `future<{}>` from `{shown}` has its value.",
+                wit_text(resolve, Some(ty))
+            ),
+            (Answer::Future(..), None) => {
+                format!("TRUE once the stream has ended and the `future` from `{shown}` has come.")
+            }
+            _ => "TRUE once the stream has ended: the writer let go, or `CLOSE`.".to_string(),
+        },
+    ));
+    outputs.extend(
+        values_after
+            .into_iter()
+            .map(|(var, _, doc)| documented(var.clone(), doc.clone())),
+    );
+    out.documented_vars("VAR_OUTPUT", &outputs);
+    let mut locals = vec![
+        var("open", "BOOL"),
+        var("requested", "BOOL"),
+        var("closing", "BOOL"),
+        var("shut", "BOOL"),
+        var("stream", "UDINT"),
+    ];
+    if call_gives.is_some() {
+        locals.push(var("future", "UDINT"));
+    }
+    locals.push(var("read", &read));
+    if let Answer::Future(get, _) = &answer {
+        locals.push(var("answer", get));
+        locals.push(var("came", "BOOL"));
+    }
+    out.vars("VAR", &locals);
+    out.depth += 1;
+    let mut arguments: Vec<String> = inputs
+        .iter()
+        .map(|(var, field, _)| format!("{field} := {}", var.name))
+        .collect();
+    out.line("DONE := FALSE;");
+    out.line("// The stream, given by the function at the first request.");
+    out.line("IF REQ AND NOT open THEN");
+    out.depth += 1;
+    match &call_gives {
+        None => out.line(&format!("stream := {pou}({});", arguments.join(", "))),
+        Some((stream, future)) => {
+            arguments.push(format!("{stream} => stream"));
+            arguments.push(format!("{future} => future"));
+            out.line(&format!("{pou}({});", arguments.join(", ")));
+        }
+    }
+    if let Answer::Unread(drop) = &answer {
+        out.line("// No read gives the future's value back: it goes unread.");
+        out.line(&format!("{drop}(future := future);"));
+    }
+    out.line("open := TRUE;");
+    out.depth -= 1;
+    out.line("END_IF;");
+    out.line("IF open THEN");
+    out.depth += 1;
+    let lines = [
+        (0, "// An edge while BUSY is ignored."),
+        (0, "IF REQ AND NOT requested AND NOT BUSY THEN"),
+        (1, "IF stream <> 0 THEN"),
+        (2, "BUSY := TRUE;"),
+        (1, "ELSE"),
+        (2, "// The stream has ended: nothing more comes."),
+        (
+            2,
+            match form {
+                Form::Text => "OUT := '';",
+                Form::Array => "COUNT := 0;",
+            },
+        ),
+        (2, "DONE := TRUE;"),
+        (1, "END_IF;"),
+        (0, "END_IF;"),
+        (0, "requested := REQ;"),
+        (0, "IF BUSY THEN"),
+        (1, "// Starts the read, or checks the one running."),
+        (1, "read(stream := stream);"),
+        (1, "IF read.DONE THEN"),
+        (2, "OUT := read.data;"),
+        (
+            2,
+            match form {
+                Form::Text => "",
+                Form::Array => "COUNT := read.read;",
+            },
+        ),
+        (2, "BUSY := FALSE;"),
+        (2, "DONE := TRUE;"),
+        (2, "IF read.closed THEN"),
+        (3, "// The writer left: the reading end goes too."),
+    ];
+    // The text form has no count to set.
+    for (depth, line) in lines.into_iter().filter(|(_, line)| !line.is_empty()) {
+        out.depth += depth;
+        out.line(line);
+        out.depth -= depth;
+    }
+    out.depth += 3;
+    out.line(&format!("{drop}(stream := stream);"));
+    out.line("stream := 0;");
+    out.depth -= 3;
+    let lines = [
+        (2, "END_IF;"),
+        (1, "END_IF;"),
+        (0, "END_IF;"),
+        (
+            0,
+            "// The reading end goes on CLOSE, once no read is under way.",
+        ),
+        (0, "IF CLOSE AND NOT closing THEN"),
+        (1, "shut := TRUE;"),
+        (0, "END_IF;"),
+        (0, "closing := CLOSE;"),
+        (0, "IF shut AND NOT BUSY THEN"),
+        (1, "IF stream <> 0 THEN"),
+    ];
+    for (depth, line) in lines {
+        out.depth += depth;
+        out.line(line);
+        out.depth -= depth;
+    }
+    out.depth += 2;
+    out.line(&format!("{drop}(stream := stream);"));
+    out.line("stream := 0;");
+    out.depth -= 2;
+    for (depth, line) in [(1, "END_IF;"), (1, "shut := FALSE;"), (0, "END_IF;")] {
+        out.depth += depth;
+        out.line(line);
+        out.depth -= depth;
+    }
+    if let Answer::Future(..) = answer {
+        out.line("// The answer, read once it comes, and kept.");
+        out.line("answer(future := future);");
+        out.line("IF answer.DONE THEN");
+        out.depth += 1;
+        for (var, field, _) in &values {
+            out.line(&format!("{} := answer.{field};", var.name));
+        }
+        out.line("came := TRUE;");
+        out.depth -= 1;
+        out.line("END_IF;");
+        out.line("ENDED := stream = 0 AND came;");
+    } else {
+        out.line("ENDED := stream = 0;");
+    }
+    if let Some(flag) = flag {
+        out.line(&format!("ERROR := answer.{};", flag.name));
+    }
+    out.depth -= 1;
+    out.line("END_IF;");
+    out.depth -= 1;
+    out.line("END_FUNCTION_BLOCK");
+    out.line("");
+}
+
+/// What the inputs and outputs every writer of a stream of bytes declares
+/// are, shown on hover.
+const WRITER_IN: &str = "The text to write.";
+const WRITER_CLOSE: &str = "A rising edge ends the stream, once no write is under way.";
+const WRITER_BUSY: &str = "TRUE while the reader has not taken all of `IN`.";
+const WRITER_DONE: &str =
+    "TRUE in the call where the reader has taken all of `IN`, at once for an empty text.";
+const WRITER_ERROR: &str = "TRUE once a write finds the reader gone, or a request comes after `CLOSE`: the stream does not open again.";
+
+/// What `ty` is defined as, past its aliases; `None` for a primitive type.
+fn defined(resolve: &Resolve, ty: Type) -> Option<&TypeDefKind> {
+    let mut at = ty;
+    while let Type::Id(id) = at {
+        match &resolve.types[id].kind {
+            TypeDefKind::Type(inner) => at = *inner,
+            other => return Some(other),
+        }
+    }
+    None
+}
+
+/// What `output`, one of the outputs a value of `ty` comes back in, holds
+/// of it, in WIT's terms: a result's flag and its sides, an option's flag
+/// and value, a tuple's items, or the value itself (`shapes::result`); the
+/// value comes from the function `shown`.
+fn part_of(resolve: &Resolve, ty: Type, output: &str, shown: &str) -> String {
+    let whole = wit_text(resolve, Some(ty));
+    let is = |name: &str| output.trim_end_matches('_').eq_ignore_ascii_case(name);
+    let kind = defined(resolve, ty);
+    let from = format!("the `{whole}` from `{shown}`");
+    match kind {
+        Some(TypeDefKind::Result(_)) if is("failed") => format!("TRUE when {from} is an error."),
+        Some(TypeDefKind::Result(result)) if is("error") => format!(
+            "The `{}` of {from}, when it is an error, which turns `ERROR` TRUE.",
+            wit_text(resolve, result.err)
+        ),
+        Some(TypeDefKind::Result(result)) if is("value") => format!(
+            "The `{}` of {from}, when it is no error.",
+            wit_text(resolve, result.ok)
+        ),
+        Some(TypeDefKind::Option(_)) if is("is_some") => {
+            format!("TRUE when {from} holds a value.")
+        }
+        Some(TypeDefKind::Option(inner)) if is("value") => format!(
+            "The `{}` that {from} holds.",
+            wit_text(resolve, Some(*inner))
+        ),
+        Some(TypeDefKind::Tuple(tuple)) => {
+            let item = output
+                .trim_end_matches('_')
+                .strip_prefix("item")
+                .and_then(|at| at.parse::<usize>().ok())
+                .and_then(|at| tuple.types.get(at).map(|ty| (at, ty)));
+            match item {
+                Some((at, ty)) => {
+                    format!("Item {at} of {from}, a `{}`.", wit_text(resolve, Some(*ty)))
+                }
+                None => format!("Part of {from}."),
+            }
+        }
+        Some(TypeDefKind::Result(_) | TypeDefKind::Option(_)) => format!("Part of {from}."),
+        _ if is("value") => format!("The `{whole}` from `{shown}`."),
+        _ => format!("Part of {from}."),
+    }
+}
+
+/// The names a stream's writer uses: its own, those of its two helpers, a
+/// text's length in bytes and what is left of it, and those of the
+/// built-ins it calls.
+struct Writer {
+    writer: String,
+    len: String,
+    after: String,
+    new: String,
+    write: String,
+    drop: String,
+}
+
+/// The block that writes a stream of bytes it makes itself, `names.writer`,
+/// and its two helpers, private to the interface's namespace: the work
+/// `Std.Console`'s blocks did by hand, a write handing the reader what it
+/// has not taken until it has all of it.
+fn stream_writer(out: &mut Out, names: &Writer) {
+    let Writer {
+        writer,
+        len,
+        after,
+        new,
+        write,
+        drop,
+    } = names;
+    let var = |name: &str, ty: &str| Var {
+        name: name.to_string(),
+        ty: ty.to_string(),
+        flat: 1,
+        start: None,
+    };
+    let text = format!("STRING[{STRING_LIMIT}]");
+
+    out.prose(&format!("The bytes `IN` holds, which `{writer}` counts."));
+    out.line(&format!("FUNCTION PRIVATE {len} : UDINT"));
+    out.vars("VAR_INPUT", &[var("IN", &text)]);
+    out.depth += 1;
+    out.line(&format!(
+        "{{wasm 'str.byte_len' (params IN) (result {len})}}"
+    ));
+    out.depth -= 1;
+    out.line("END_FUNCTION");
+    out.line("");
+
+    out.prose(&format!(
+        "`IN` without its first `L` bytes: what `{writer}` has left to write."
+    ));
+    out.line(&format!("FUNCTION PRIVATE {after} : {text}"));
+    out.vars("VAR_INPUT", &[var("IN", &text), var("L", "UDINT")]);
+    out.vars(
+        "VAR",
+        &[Var {
+            start: Some("1"),
+            ..var("P", "UDINT")
+        }],
+    );
+    out.depth += 1;
+    out.line(&format!(
+        "{{wasm 'str.byte_delete' (params IN L P) (result {after})}}"
+    ));
+    out.depth -= 1;
+    out.line("END_FUNCTION");
+    out.line("");
+
+    out.prose(
+        "Writes text to a stream of bytes it makes at its first call, for the function `readable` is handed to.",
+    );
+    out.line(&format!("FUNCTION_BLOCK {writer}"));
+    let documented = |name: &str, ty: &str, doc: &str| (var(name, ty), doc.to_string());
+    out.documented_vars(
+        "VAR_INPUT",
+        &[
+            documented(
+                "REQ",
+                "BOOL",
+                "A rising edge writes `IN`. An edge while `BUSY` is ignored.",
+            ),
+            documented("IN", &text, WRITER_IN),
+            documented("CLOSE", "BOOL", WRITER_CLOSE),
+        ],
+    );
+    out.documented_vars(
+        "VAR_OUTPUT",
+        &[
+            documented(
+                "readable",
+                "UDINT",
+                "The stream's reading end, to hand to the function that reads it.",
+            ),
+            documented("BUSY", "BOOL", WRITER_BUSY),
+            documented("DONE", "BOOL", WRITER_DONE),
+            documented("ERROR", "BOOL", WRITER_ERROR),
+        ],
+    );
+    out.vars(
+        "VAR",
+        &[
+            var("writable", "UDINT"),
+            var("requested", "BOOL"),
+            var("closing", "BOOL"),
+            var("shut", "BOOL"),
+            var("closed", "BOOL"),
+            var("rest", &text),
+            var("write", write),
+        ],
+    );
+    out.vars("VAR_TEMP", &[var("again", "BOOL")]);
+    let body = [
+        (0, "IF writable = 0 AND NOT closed THEN".to_string()),
+        (
+            1,
+            format!("{new}(readable => readable, writable => writable);"),
+        ),
+        (0, "END_IF;".to_string()),
+        (0, "DONE := FALSE;".to_string()),
+        (0, "// An edge while BUSY is ignored.".to_string()),
+        (0, "IF REQ AND NOT requested AND NOT BUSY THEN".to_string()),
+        (1, "ERROR := closed;".to_string()),
+        (1, "IF NOT closed THEN".to_string()),
+        (
+            2,
+            "// A write of no bytes asks the reader whether it is ready,".to_string(),
+        ),
+        (
+            2,
+            "// which it may answer late: an empty text is done here.".to_string(),
+        ),
+        (2, format!("IF {len}(IN) = 0 THEN")),
+        (3, "DONE := TRUE;".to_string()),
+        (2, "ELSE".to_string()),
+        (3, "rest := IN;".to_string()),
+        (3, "BUSY := TRUE;".to_string()),
+        (2, "END_IF;".to_string()),
+        (1, "END_IF;".to_string()),
+        (0, "END_IF;".to_string()),
+        (0, "requested := REQ;".to_string()),
+        (0, "IF BUSY THEN".to_string()),
+        (
+            1,
+            "// Each pass after the first hands over a byte at least, so the".to_string(),
+        ),
+        (1, "// loop ends.".to_string()),
+        (1, "REPEAT".to_string()),
+        (2, "again := FALSE;".to_string()),
+        (
+            2,
+            "// Starts the write of the rest, or checks the one running.".to_string(),
+        ),
+        (2, "write(stream := writable, data := rest);".to_string()),
+        (2, "IF write.DONE THEN".to_string()),
+        (3, "IF write.closed THEN".to_string()),
+        (
+            4,
+            "// The reader left: the writing end goes too.".to_string(),
+        ),
+        (4, format!("{drop}(stream := writable);")),
+        (4, "writable := 0;".to_string()),
+        (4, "closed := TRUE;".to_string()),
+        (4, "BUSY := FALSE;".to_string()),
+        (4, "ERROR := TRUE;".to_string()),
+        (3, format!("ELSIF write.written < {len}(rest) THEN")),
+        (
+            4,
+            "// The reader took a part: the rest goes next, at once while".to_string(),
+        ),
+        (4, "// it takes some.".to_string()),
+        (4, format!("rest := {after}(rest, write.written);")),
+        (4, "again := write.written > 0;".to_string()),
+        (3, "ELSE".to_string()),
+        (4, "BUSY := FALSE;".to_string()),
+        (4, "DONE := TRUE;".to_string()),
+        (3, "END_IF;".to_string()),
+        (2, "END_IF;".to_string()),
+        (1, "UNTIL NOT again".to_string()),
+        (1, "END_REPEAT;".to_string()),
+        (0, "END_IF;".to_string()),
+        (
+            0,
+            "// The writing end goes once no write is under way.".to_string(),
+        ),
+        (0, "IF CLOSE AND NOT closing THEN".to_string()),
+        (1, "shut := TRUE;".to_string()),
+        (0, "END_IF;".to_string()),
+        (0, "closing := CLOSE;".to_string()),
+        (0, "IF shut AND NOT BUSY THEN".to_string()),
+        (1, "IF writable <> 0 THEN".to_string()),
+        (2, format!("{drop}(stream := writable);")),
+        (2, "writable := 0;".to_string()),
+        (1, "END_IF;".to_string()),
+        (1, "closed := TRUE;".to_string()),
+        (1, "shut := FALSE;".to_string()),
+        (0, "END_IF;".to_string()),
+    ];
+    let depth = out.depth + 1;
+    for (indent, line) in body {
+        out.depth = depth + indent;
+        out.line(&line);
+    }
+    out.depth = depth - 1;
+    out.line("END_FUNCTION_BLOCK");
+    out.line("");
+}
+
+/// What the inputs and outputs of a writer of bytes from an array say
+/// beside the text writer's.
+const WRITER_COUNT: &str = "How many bytes of `IN` a request writes, from its first on.";
+const WRITER_ARRAY_IN: &str = "The bytes to write. The host reads them where they are while `BUSY`: they stay as they are until `DONE`.";
+const WRITER_ARRAY_BUSY: &str = "TRUE while the reader has not taken all `COUNT` bytes.";
+const WRITER_ARRAY_DONE: &str =
+    "TRUE in the call where the reader has taken all `COUNT` bytes, at once for none.";
+
+/// What a writer or a reader moves: text, through a STRING, or bytes,
+/// through an array of them and a count.
+#[derive(Clone, Copy, PartialEq)]
+enum Form {
+    Text,
+    Array,
+}
+
+/// The names a stream's array writer uses: its own, those of its two
+/// helpers, an array's first subscript and its length, and those of the
+/// built-ins it calls.
+struct ArrayWriter {
+    writer: String,
+    first: String,
+    len: String,
+    new: String,
+    write: String,
+    drop: String,
+}
+
+/// The block that writes bytes from an array to a stream of bytes it makes
+/// itself, `names.writer`, as the text writer does (`stream_writer`), and
+/// its two helpers, private to the interface's namespace: the first
+/// subscript of the array and how many bytes it holds. They read the
+/// bounds with `{wasm}` intrinsics, as `Std.Arrays` does, so that the
+/// declarations need no library but their own, as the text writer's
+/// helpers. The host reads the bytes in place, from a reference to the
+/// first not taken yet; a count past the array raises, as a subscript past
+/// its bounds does.
+fn stream_array_writer(out: &mut Out, names: &ArrayWriter) {
+    let ArrayWriter {
+        writer,
+        first,
+        len,
+        new,
+        write,
+        drop,
+    } = names;
+    let var = |name: &str, ty: &str| Var {
+        name: name.to_string(),
+        ty: ty.to_string(),
+        flat: 1,
+        start: None,
+    };
+    let array = "ARRAY[*] OF BYTE";
+    // The bounds as LINTs, which hold any bound and the length: a bound
+    // that does not fit its variable raises. A COUNT compares with the
+    // length with no conversion.
+    let dimension = Var {
+        start: Some("1"),
+        ..var("DIM", "DINT")
+    };
+    out.prose(&format!(
+        "The subscript of the first byte of `IN`, which `{writer}` writes from."
+    ));
+    out.line(&format!("FUNCTION PRIVATE {first} : LINT"));
+    out.vars("VAR_INPUT", &[var("IN", array)]);
+    out.vars("VAR", std::slice::from_ref(&dimension));
+    out.depth += 1;
+    out.line(&format!(
+        "{{wasm 'array.lower_bound' (params IN DIM) (result {first})}}"
+    ));
+    out.depth -= 1;
+    out.line("END_FUNCTION");
+    out.line("");
+
+    out.prose(&format!(
+        "How many bytes `IN` holds, which `{writer}` writes at most."
+    ));
+    out.line(&format!("FUNCTION PRIVATE {len} : LINT"));
+    out.vars("VAR_INPUT", &[var("IN", array)]);
+    out.vars(
+        "VAR",
+        &[dimension, var("lower", "LINT"), var("upper", "LINT")],
+    );
+    out.depth += 1;
+    out.line("{wasm 'array.lower_bound' (params IN DIM) (result lower)}");
+    out.line("{wasm 'array.upper_bound' (params IN DIM) (result upper)}");
+    out.line(&format!("{len} := upper - lower + 1;"));
+    out.depth -= 1;
+    out.line("END_FUNCTION");
+    out.line("");
+
+    out.prose(
+        "Writes bytes from an array to a stream of bytes it makes at its first call, for the function `readable` is handed to.",
+    );
+    out.line(&format!("FUNCTION_BLOCK {writer}"));
+    let documented = |name: &str, ty: &str, doc: &str| (var(name, ty), doc.to_string());
+    out.documented_vars(
+        "VAR_INPUT",
+        &[
+            documented(
+                "REQ",
+                "BOOL",
+                "A rising edge writes the first `COUNT` bytes of `IN`. An edge while `BUSY` is ignored.",
+            ),
+            documented("COUNT", "UDINT", WRITER_COUNT),
+            documented("CLOSE", "BOOL", WRITER_CLOSE),
+        ],
+    );
+    out.documented_vars("VAR_IN_OUT", &[documented("IN", array, WRITER_ARRAY_IN)]);
+    out.documented_vars(
+        "VAR_OUTPUT",
+        &[
+            documented(
+                "readable",
+                "UDINT",
+                "The stream's reading end, to hand to the function that reads it.",
+            ),
+            documented("BUSY", "BOOL", WRITER_ARRAY_BUSY),
+            documented("DONE", "BOOL", WRITER_ARRAY_DONE),
+            documented("ERROR", "BOOL", WRITER_ERROR),
+        ],
+    );
+    out.vars(
+        "VAR",
+        &[
+            var("writable", "UDINT"),
+            var("requested", "BOOL"),
+            var("closing", "BOOL"),
+            var("shut", "BOOL"),
+            var("closed", "BOOL"),
+            var("total", "UDINT"),
+            var("sent", "UDINT"),
+            var("base", "LINT"),
+            var("write", write),
+        ],
+    );
+    out.vars("VAR_TEMP", &[var("again", "BOOL"), var("offset", "LINT")]);
+    let body = [
+        (0, "IF writable = 0 AND NOT closed THEN".to_string()),
+        (
+            1,
+            format!("{new}(readable => readable, writable => writable);"),
+        ),
+        (0, "END_IF;".to_string()),
+        (0, "DONE := FALSE;".to_string()),
+        (0, "// An edge while BUSY is ignored.".to_string()),
+        (0, "IF REQ AND NOT requested AND NOT BUSY THEN".to_string()),
+        (1, "ERROR := closed;".to_string()),
+        (1, "IF NOT closed THEN".to_string()),
+        (
+            2,
+            "// A write of no bytes asks the reader whether it is ready,".to_string(),
+        ),
+        (
+            2,
+            "// which it may answer late: none is done here.".to_string(),
+        ),
+        (2, "IF COUNT = 0 THEN".to_string()),
+        (3, "DONE := TRUE;".to_string()),
+        (2, format!("ELSIF COUNT > {len}(IN) THEN")),
+        (3, "__RAISE('COUNT is past the end of IN');".to_string()),
+        (2, "ELSE".to_string()),
+        (3, "total := COUNT;".to_string()),
+        (3, "sent := 0;".to_string()),
+        (3, format!("base := {first}(IN);")),
+        (3, "BUSY := TRUE;".to_string()),
+        (2, "END_IF;".to_string()),
+        (1, "END_IF;".to_string()),
+        (0, "END_IF;".to_string()),
+        (0, "requested := REQ;".to_string()),
+        (0, "IF BUSY THEN".to_string()),
+        (
+            1,
+            "// Each pass after the first hands over a byte at least, so the".to_string(),
+        ),
+        (1, "// loop ends.".to_string()),
+        (1, "REPEAT".to_string()),
+        (2, "again := FALSE;".to_string()),
+        (2, "offset := sent;".to_string()),
+        (
+            2,
+            "// Starts the write of the bytes not taken yet, from where they".to_string(),
+        ),
+        (2, "// are, or checks the one running.".to_string()),
+        (
+            2,
+            "write(stream := writable, data := REF(IN[base + offset]), count := total - sent);"
+                .to_string(),
+        ),
+        (2, "IF write.DONE THEN".to_string()),
+        (3, "IF write.closed THEN".to_string()),
+        (
+            4,
+            "// The reader left: the writing end goes too.".to_string(),
+        ),
+        (4, format!("{drop}(stream := writable);")),
+        (4, "writable := 0;".to_string()),
+        (4, "closed := TRUE;".to_string()),
+        (4, "BUSY := FALSE;".to_string()),
+        (4, "ERROR := TRUE;".to_string()),
+        (3, "ELSIF write.written < total - sent THEN".to_string()),
+        (
+            4,
+            "// The reader took a part: the rest goes next, at once while".to_string(),
+        ),
+        (4, "// it takes some.".to_string()),
+        (4, "sent := sent + write.written;".to_string()),
+        (4, "again := write.written > 0;".to_string()),
+        (3, "ELSE".to_string()),
+        (4, "BUSY := FALSE;".to_string()),
+        (4, "DONE := TRUE;".to_string()),
+        (3, "END_IF;".to_string()),
+        (2, "END_IF;".to_string()),
+        (1, "UNTIL NOT again".to_string()),
+        (1, "END_REPEAT;".to_string()),
+        (0, "END_IF;".to_string()),
+        (
+            0,
+            "// The writing end goes once no write is under way.".to_string(),
+        ),
+        (0, "IF CLOSE AND NOT closing THEN".to_string()),
+        (1, "shut := TRUE;".to_string()),
+        (0, "END_IF;".to_string()),
+        (0, "closing := CLOSE;".to_string()),
+        (0, "IF shut AND NOT BUSY THEN".to_string()),
+        (1, "IF writable <> 0 THEN".to_string()),
+        (2, format!("{drop}(stream := writable);")),
+        (2, "writable := 0;".to_string()),
+        (1, "END_IF;".to_string()),
+        (1, "closed := TRUE;".to_string()),
+        (1, "shut := FALSE;".to_string()),
+        (0, "END_IF;".to_string()),
+    ];
+    let depth = out.depth + 1;
+    for (indent, line) in body {
+        out.depth = depth + indent;
+        out.line(&line);
+    }
+    out.depth = depth - 1;
+    out.line("END_FUNCTION_BLOCK");
+    out.line("");
 }
 
 /// The POU `function` is declared as: a function by its name, a resource's
@@ -1821,37 +3374,44 @@ fn wit_name(ty: Type) -> &'static str {
     }
 }
 
-/// Whether a function of the interface `owner` takes a stream or a future,
-/// as `carrier` says, of the payload `key` names from the program: one of
-/// its parameters holds one, which a write of the program's would feed.
-fn taken_from_the_program(
+/// The directions a stream or a future of `key` crosses in the functions
+/// of `owner`'s interface: from the program, which one of them takes as a
+/// parameter, and to it, which one gives in its result.
+fn directions(
     resolve: &Resolve,
     owner: Option<TypeOwner>,
     carrier: Carrier,
     key: &str,
-) -> bool {
+) -> (bool, bool) {
     let Some(TypeOwner::Interface(interface)) = owner else {
-        return false;
+        return (false, false);
     };
-    resolve.interfaces[interface]
-        .functions
-        .values()
-        .any(|function| {
-            let mut params = function.clone();
-            params.result = None;
-            params
-                .find_futures_and_streams(resolve)
-                .into_iter()
-                .any(|ty| match &resolve.types[ty].kind {
-                    TypeDefKind::Stream(payload) => {
-                        carrier == Carrier::Stream && type_key(resolve, *payload) == key
-                    }
-                    TypeDefKind::Future(payload) => {
-                        carrier == Carrier::Future && type_key(resolve, *payload) == key
-                    }
-                    _ => false,
-                })
-        })
+    let holds = |function: &Function| {
+        function
+            .find_futures_and_streams(resolve)
+            .into_iter()
+            .any(|ty| match &resolve.types[ty].kind {
+                TypeDefKind::Stream(payload) => {
+                    carrier == Carrier::Stream && type_key(resolve, *payload) == key
+                }
+                TypeDefKind::Future(payload) => {
+                    carrier == Carrier::Future && type_key(resolve, *payload) == key
+                }
+                _ => false,
+            })
+    };
+    let functions = &resolve.interfaces[interface].functions;
+    let fed = functions.values().any(|function| {
+        let mut params = function.clone();
+        params.result = None;
+        holds(&params)
+    });
+    let given = functions.values().any(|function| {
+        let mut result = function.clone();
+        result.params.clear();
+        holds(&result)
+    });
+    (fed, given)
 }
 
 /// The name of the built-ins of a stream or a future of `payload`: a
@@ -1917,7 +3477,8 @@ fn capitals(name: &str) -> String {
 /// `out`, what is left out of them to `skipped`; the types they name, from
 /// `owner`. `converts` is set when a future's value is read out of words.
 /// `fed` says whether a function of the interface takes one from the
-/// program, without which a write would have no reader.
+/// program, which the built-ins that make and write one are for, and
+/// `given` whether one gives one to it, which those that read one are for.
 /// The names of the POUs written: `name` and the built-in's own, with a
 /// `_` after it where `taken` holds that already.
 #[allow(clippy::too_many_arguments)]
@@ -1934,7 +3495,8 @@ fn built_in_set(
     import: &str,
     owner: Option<TypeOwner>,
     fed: bool,
-) -> Vec<String> {
+    given: bool,
+) -> (Vec<String>, Managers) {
     let mut written = Vec::new();
     let pou = |built_in: &str| spare(taken, format!("{name}_{built_in}"));
     let pragma = |built_in: &str| format!("'{}'", import.replace("{}", built_in));
@@ -1954,16 +3516,18 @@ fn built_in_set(
         None => "nothing".to_string(),
     };
 
-    out.prose(&format!(
-        "Makes a {kind} of {of}, and gives its reading end, then its writing end."
-    ));
-    out.line(&format!("{{extern {}}}", pragma("new")));
-    let new = pou("NEW");
-    out.line(&format!("FUNCTION {new}"));
-    written.push(new);
-    out.vars("VAR_OUTPUT", &[handle("readable"), handle("writable")]);
-    out.line("END_FUNCTION");
-    out.line("");
+    if fed {
+        out.prose(&format!(
+            "Makes a {kind} of {of}, and gives its reading end, then its writing end."
+        ));
+        out.line(&format!("{{extern {}}}", pragma("new")));
+        let new = pou("NEW");
+        out.line(&format!("FUNCTION {new}"));
+        written.push(new);
+        out.vars("VAR_OUTPUT", &[handle("readable"), handle("writable")]);
+        out.line("END_FUNCTION");
+        out.line("");
+    }
 
     let bytes = carrier == Carrier::Stream && payload == Some(Type::U8);
     let handles = match payload {
@@ -1976,15 +3540,18 @@ fn built_in_set(
         flat: 1,
         start: None,
     };
+    // A future's read: its outputs past its `DONE`, which `_GET` gives too.
+    let mut read_outputs: Option<Vec<Var>> = None;
     match carrier {
         Carrier::Stream if bytes => {
-            for (block, data) in [
+            let reads = [
                 ("READ", format!("STRING[{STRING_LIMIT}]")),
                 (
                     "READ_ARRAY",
                     format!("ARRAY[0..{}] OF BYTE", BYTES_AT_ONCE - 1),
                 ),
-            ] {
+            ];
+            for (block, data) in reads.into_iter().filter(|_| given) {
                 out.prose(
                     "Reads the bytes that come next into `data`, as many as it holds at most: `read` of them, after `DONE`. `closed` is TRUE once the writer has let go.",
                 );
@@ -2010,53 +3577,55 @@ fn built_in_set(
                 out.line("END_FUNCTION_BLOCK");
                 out.line("");
             }
-            out.prose(
-                "Writes the bytes of `data`, as many as the reader takes: `written` of them, after `DONE`. `closed` is TRUE once the reader has let go.",
-            );
-            out.line(&format!("{{extern async {}}}", pragma("write")));
-            let write = pou("WRITE");
-            out.line(&format!("FUNCTION_BLOCK {write}"));
-            written.push(write);
-            out.vars(
-                "VAR_INPUT",
-                &[
-                    handle(end),
-                    Var {
-                        name: "data".to_string(),
-                        ty: format!("STRING[{STRING_LIMIT}]"),
-                        flat: 2,
-                        start: None,
-                    },
-                ],
-            );
-            out.vars("VAR_OUTPUT", &[done(), handle("written"), closed()]);
-            out.line("END_FUNCTION_BLOCK");
-            out.line("");
-            // Bytes that are no text, from where they are: the address of
-            // the first, as the canonical ABI passes a buffer, and how many.
-            out.prose(
-                "Writes the `count` bytes from the one `data` points at, as many as the reader takes: `written` of them, after `DONE`. The host reads them where they are while the write runs, so they stay there, unchanged, until `DONE`. `closed` is TRUE once the reader has let go.",
-            );
-            out.line(&format!("{{extern async {}}}", pragma("write")));
-            let write = pou("WRITE_ARRAY");
-            out.line(&format!("FUNCTION_BLOCK {write}"));
-            written.push(write);
-            out.vars(
-                "VAR_INPUT",
-                &[
-                    handle(end),
-                    Var {
-                        name: "data".to_string(),
-                        ty: "REF_TO BYTE".to_string(),
-                        flat: 1,
-                        start: None,
-                    },
-                    handle("count"),
-                ],
-            );
-            out.vars("VAR_OUTPUT", &[done(), handle("written"), closed()]);
-            out.line("END_FUNCTION_BLOCK");
-            out.line("");
+            if fed {
+                out.prose(
+                    "Writes the bytes of `data`, as many as the reader takes: `written` of them, after `DONE`. `closed` is TRUE once the reader has let go.",
+                );
+                out.line(&format!("{{extern async {}}}", pragma("write")));
+                let write = pou("WRITE");
+                out.line(&format!("FUNCTION_BLOCK {write}"));
+                written.push(write);
+                out.vars(
+                    "VAR_INPUT",
+                    &[
+                        handle(end),
+                        Var {
+                            name: "data".to_string(),
+                            ty: format!("STRING[{STRING_LIMIT}]"),
+                            flat: 2,
+                            start: None,
+                        },
+                    ],
+                );
+                out.vars("VAR_OUTPUT", &[done(), handle("written"), closed()]);
+                out.line("END_FUNCTION_BLOCK");
+                out.line("");
+                // Bytes that are no text, from where they are: the address of
+                // the first, as the canonical ABI passes a buffer, and how many.
+                out.prose(
+                    "Writes the `count` bytes from the one `data` points at, as many as the reader takes: `written` of them, after `DONE`. The host reads them where they are while the write runs, so they stay there, unchanged, until `DONE`. `closed` is TRUE once the reader has let go.",
+                );
+                out.line(&format!("{{extern async {}}}", pragma("write")));
+                let write = pou("WRITE_ARRAY");
+                out.line(&format!("FUNCTION_BLOCK {write}"));
+                written.push(write);
+                out.vars(
+                    "VAR_INPUT",
+                    &[
+                        handle(end),
+                        Var {
+                            name: "data".to_string(),
+                            ty: "REF_TO BYTE".to_string(),
+                            flat: 1,
+                            start: None,
+                        },
+                        handle("count"),
+                    ],
+                );
+                out.vars("VAR_OUTPUT", &[done(), handle("written"), closed()]);
+                out.line("END_FUNCTION_BLOCK");
+                out.line("");
+            }
         }
         // A resource's handles, read into an array of its type, a UDINT:
         // what a stream of them is for, a listener's connections. Nothing a
@@ -2067,46 +3636,54 @@ fn built_in_set(
             let element = payload
                 .and_then(|ty| shapes::scalar(resolve, ty, owner))
                 .unwrap_or_else(|| "UDINT".to_string());
-            out.prose(
+            if given {
+                out.prose(
                 "Reads the handles that come next into `data`, as many as it holds at most: `read` of them, after `DONE`, each the program's own to drop. `closed` is TRUE once the writer has let go.",
             );
-            out.line(&format!("{{extern async {}}}", pragma("read")));
-            let read = pou("READ");
-            out.line(&format!("FUNCTION_BLOCK {read}"));
-            written.push(read);
-            out.vars("VAR_INPUT", &[handle(end)]);
-            out.vars(
-                "VAR_OUTPUT",
-                &[
-                    done(),
-                    Var {
-                        name: "data".to_string(),
-                        ty: format!("ARRAY[0..{}] OF {element}", HANDLES_AT_ONCE - 1),
-                        flat: 1,
-                        start: None,
-                    },
-                    handle("read"),
-                    closed(),
-                ],
-            );
-            out.line("END_FUNCTION_BLOCK");
-            out.line("");
-            skipped.push(Skipped {
-                item: format!("`{name}_WRITE`"),
-                reason: match fed {
-                    true => "a stream's write moves bytes only".to_string(),
-                    false => format!(
-                        "no function of the interface takes a stream of {of} from the program"
-                    ),
-                },
-            });
+                out.line(&format!("{{extern async {}}}", pragma("read")));
+                let read = pou("READ");
+                out.line(&format!("FUNCTION_BLOCK {read}"));
+                written.push(read);
+                out.vars("VAR_INPUT", &[handle(end)]);
+                out.vars(
+                    "VAR_OUTPUT",
+                    &[
+                        done(),
+                        Var {
+                            name: "data".to_string(),
+                            ty: format!("ARRAY[0..{}] OF {element}", HANDLES_AT_ONCE - 1),
+                            flat: 1,
+                            start: None,
+                        },
+                        handle("read"),
+                        closed(),
+                    ],
+                );
+                out.line("END_FUNCTION_BLOCK");
+                out.line("");
+            }
+            if fed {
+                skipped.push(Skipped {
+                    item: format!("`{name}_WRITE`"),
+                    reason: "a stream's write moves bytes only".to_string(),
+                });
+            }
         }
-        Carrier::Stream => skipped.push(Skipped {
-            item: format!("`{name}_READ` and `{name}_WRITE`"),
-            reason: "a stream's read moves bytes or handles only, and its write bytes only"
-                .to_string(),
-        }),
-        Carrier::Future => {
+        Carrier::Stream => {
+            if given {
+                skipped.push(Skipped {
+                    item: format!("`{name}_READ`"),
+                    reason: "a stream's read moves bytes or handles only".to_string(),
+                });
+            }
+            if fed {
+                skipped.push(Skipped {
+                    item: format!("`{name}_WRITE`"),
+                    reason: "a stream's write moves bytes only".to_string(),
+                });
+            }
+        }
+        Carrier::Future if given => {
             let reads = "Reads the value the future holds, which comes back after `DONE`.";
             // A value no record of outputs is laid out as comes back in
             // words, which the block reads it out of.
@@ -2132,6 +3709,7 @@ fn built_in_set(
                     if let Shape::Outputs(fields) = shape {
                         outputs.extend(fields);
                     }
+                    read_outputs = Some(outputs[1..].to_vec());
                     out.prose(reads);
                     out.line(&format!("{{extern async {}}}", pragma("read")));
                     let read = pou("READ");
@@ -2185,6 +3763,7 @@ fn built_in_set(
                     reader(out, &raw, &format!("{end} := {end}"), &lifted, &copied);
                     out.line("END_FUNCTION_BLOCK");
                     out.line("");
+                    read_outputs = Some(lifted.outputs.clone());
                     written.push(raw);
                     written.push(read);
                     *converts |= copied.is_empty() && lifted.converts();
@@ -2194,21 +3773,20 @@ fn built_in_set(
                     reason: format!("its value holds {what}, which a read cannot give back yet"),
                 }),
             }
-            skipped.push(Skipped {
-                item: format!("`{name}_WRITE`"),
-                reason: match (fed, payload) {
-                    (true, _) => "a future's write is not imported yet".to_string(),
-                    (false, Some(_)) => format!(
-                        "no function of the interface takes a future of {of} from the program"
-                    ),
-                    (false, None) => {
-                        "no function of the interface takes a future from the program".to_string()
-                    }
-                },
-            });
         }
+        Carrier::Future => {}
     }
-    for (built_in, which) in [("drop-readable", "READABLE"), ("drop-writable", "WRITABLE")] {
+    if carrier == Carrier::Future && fed {
+        skipped.push(Skipped {
+            item: format!("`{name}_WRITE`"),
+            reason: "a future's write is not imported yet".to_string(),
+        });
+    }
+    let drops = [
+        ("drop-readable", "READABLE", true),
+        ("drop-writable", "WRITABLE", fed),
+    ];
+    for (built_in, which, _) in drops.into_iter().filter(|(.., wanted)| *wanted) {
         let side = if which == "READABLE" {
             "reading"
         } else {
@@ -2223,9 +3801,79 @@ fn built_in_set(
         out.line("END_FUNCTION");
         out.line("");
     }
-    skipped.push(Skipped {
-        item: format!("`{name}_CANCEL_READ` and `{name}_CANCEL_WRITE`"),
-        reason: "a cancel blocks the scan".to_string(),
-    });
-    written
+    let mut managers = Managers {
+        writer: None,
+        get: None,
+        drop_readable: pou("DROP_READABLE"),
+        read: (bytes && given).then(|| pou("READ")),
+        array_writer: None,
+        read_array: (bytes && given).then(|| pou("READ_ARRAY")),
+    };
+    if let Some(outputs) = read_outputs {
+        let get = pou("GET");
+        future_get(
+            out,
+            &get,
+            &pou("READ"),
+            &pou("DROP_READABLE"),
+            end,
+            &outputs,
+        );
+        written.push(get.clone());
+        managers.get = Some((get, outputs));
+    }
+    // A writer hands its stream's reading end to a function of the
+    // interface: there is none to take it unless one is `fed`.
+    if bytes && fed {
+        let names = Writer {
+            writer: pou("WRITER"),
+            len: pou("TEXT_LEN"),
+            after: pou("TEXT_AFTER"),
+            new: pou("NEW"),
+            write: pou("WRITE"),
+            drop: pou("DROP_WRITABLE"),
+        };
+        stream_writer(out, &names);
+        managers.writer = Some(names.writer.clone());
+        written.extend([names.len, names.after, names.writer]);
+        let names = ArrayWriter {
+            writer: pou("ARRAY_WRITER"),
+            first: pou("ARRAY_FIRST"),
+            len: pou("ARRAY_LEN"),
+            new: pou("NEW"),
+            write: pou("WRITE_ARRAY"),
+            drop: pou("DROP_WRITABLE"),
+        };
+        stream_array_writer(out, &names);
+        managers.array_writer = Some(names.writer.clone());
+        written.extend([names.first, names.len, names.writer]);
+    }
+    let cancels: Vec<String> = [("READ", given), ("WRITE", fed)]
+        .into_iter()
+        .filter(|(_, used)| *used)
+        .map(|(side, _)| format!("`{name}_CANCEL_{side}`"))
+        .collect();
+    if !cancels.is_empty() {
+        skipped.push(Skipped {
+            item: cancels.join(" and "),
+            reason: "a cancel blocks the scan".to_string(),
+        });
+    }
+    (written, managers)
+}
+
+/// The blocks of a set that manage an end for the program, which a
+/// function's writer holds: the stream's `BYTES_STREAM_WRITER`, the
+/// future's `_GET` with its outputs past `DONE`, and the drop of a future's
+/// reading end, for a future no read gives back.
+#[derive(Clone)]
+struct Managers {
+    writer: Option<String>,
+    get: Option<(String, Vec<Var>)>,
+    drop_readable: String,
+    /// A stream of bytes' read into a STRING, which a reader reads with.
+    read: Option<String>,
+    /// A stream of bytes' writer from an array, and its read into one.
+    array_writer: Option<String>,
+    read_array: Option<String>,
 }

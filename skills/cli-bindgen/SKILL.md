@@ -30,6 +30,16 @@ drives/
 The component's binary carries its types, so no WIT is shipped beside it.
 Run in the library's folder, `rk bindgen` reads the component and writes what it exports into `generated/`, as the program imports it: each interface it exports, and those they take types from.
 A `func` is a FUNCTION, an `async func` a FUNCTION_BLOCK called until its `DONE`.
+A stream's or a future's built-ins are written for the ways the interface passes it: those that make and write one when a function takes one, those that read one when a function gives one.
+A future a function gives comes with a `_GET` block, `U32_FUTURE_GET` for a `future<u32>`, which reads it and lets go of its reading end in the call that sees `DONE`, setting the handle to 0.
+A function that takes a stream of bytes comes with a writer of its own, `SEND_WRITER` for `send`: at the first rising edge of `REQ` it makes the stream and calls the function with it and with the block's other inputs, then writes `IN` at each rising edge of `REQ` and ends the stream on a rising edge of `CLOSE`.
+A `func` that answers with a future or nothing is called once, and the writer keeps the future's value, `ENDED` once it has come; an `async func` is called until it returns, and the writer keeps its result, `ENDED` once it has returned.
+When that value is a `result`, an error turns the writer's `ERROR` TRUE and its value is `ERRORID`, to read when `ERROR` is TRUE.
+A function that gives a stream of bytes, alone or beside a future as WASI's `read-via-stream` does, comes with a reader, `READ_VIA_STREAM_READER`: at the first rising edge of `REQ` it calls the function, then each rising edge reads what comes next into `OUT`, 4096 bytes at most, `DONE` once it came; once the stream has ended a request is `DONE` at once with `OUT` empty, and `ENDED` is TRUE once the future has its value too, a `result`'s error in `ERROR` and `ERRORID` as for a writer.
+`CLOSE` lets go of the stream before its end.
+Each writer and reader has an array form, for bytes that are no text: `WRITE_VIA_STREAM_ARRAY_WRITER` writes the first `COUNT` bytes of the `ARRAY OF BYTE` passed as `IN`, which the host reads where it is, so it stays as it is until `DONE`; `READ_VIA_STREAM_ARRAY_READER` gives what each read brought in `OUT`, 8192 bytes at most, and their number in `COUNT`.
+Each input and output of a writer says on hover what it is, in WIT's terms.
+It is built on two blocks a program may also use on their own: the stream's `BYTES_STREAM_WRITER`, which makes a stream and gives `readable`, the end to hand to a function, and the future's `_GET`.
 What the component imports itself is its own, and is not written.
 A `component/` folder with no `.wasm`, or with two, is refused.
 
