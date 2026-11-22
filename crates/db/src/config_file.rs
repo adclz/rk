@@ -401,6 +401,42 @@ unknown_key = true
         assert!(err.message().contains("unknown field"));
     }
 
+    /// `[addresses]`: each setting its default when left out, and a value of
+    /// neither refused, as an unknown key is.
+    #[test]
+    fn addresses_read_as_written_or_as_today() {
+        let read = |section: &str| {
+            parse_config(&format!(
+                "[project]\nname = \"T\"\nversion = \"0.0\"\n{section}"
+            ))
+            .map(|c| c.addresses())
+        };
+        assert_eq!(
+            read("").unwrap(),
+            AddressesConfig {
+                numbering: Numbering::Width,
+                byte_order: ByteOrder::Little,
+            }
+        );
+        assert_eq!(
+            read("[addresses]\nnumbering = \"byte\"\nbyte-order = \"big\"\n").unwrap(),
+            AddressesConfig {
+                numbering: Numbering::Byte,
+                byte_order: ByteOrder::Big,
+            }
+        );
+        assert_eq!(
+            read("[addresses]\nnumbering = \"byte\"\n").unwrap(),
+            AddressesConfig {
+                numbering: Numbering::Byte,
+                byte_order: ByteOrder::Little,
+            }
+        );
+        let refused = read("[addresses]\nnumbering = \"word\"\n").unwrap_err();
+        assert!(refused.to_string().contains("width"), "{refused}");
+        assert!(read("[addresses]\norder = \"big\"\n").is_err());
+    }
+
     #[test]
     fn unknown_top_level_field_rejected() {
         let err = parse_config(
