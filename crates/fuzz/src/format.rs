@@ -30,7 +30,10 @@ pub fn check(source: &str) -> Result<(), Finding> {
         )
     })?;
     // Past the formatter's own gate: only now is a full check worth it.
-    let Some(before) = Analysis::of(source) else {
+    // Both texts as the input says, so that they number their addresses
+    // alike.
+    let addresses = session::addresses_of(source);
+    let Some(before) = Analysis::of(source, addresses) else {
         return Ok(());
     };
     if twice != once {
@@ -56,7 +59,7 @@ pub fn check(source: &str) -> Result<(), Finding> {
     if !before.accepted {
         return Ok(());
     }
-    let Some(after) = Analysis::of(&once) else {
+    let Some(after) = Analysis::of(&once, addresses) else {
         return Ok(());
     };
     if before.diagnostics != after.diagnostics {
@@ -79,8 +82,8 @@ struct Analysis {
 }
 
 impl Analysis {
-    fn of(source: &str) -> Option<Self> {
-        let (db, file) = session::load(source)?;
+    fn of(source: &str, addresses: db::config_file::AddressesConfig) -> Option<Self> {
+        let (db, file) = session::load_with(source, addresses)?;
         Some(Self {
             accepted: session::compiles(&db, file),
             diagnostics: session::diagnostic_identities(&db, file),

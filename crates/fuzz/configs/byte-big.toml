@@ -1,0 +1,11 @@
+# The project every fuzz input is read with, the standard library's as in
+# stdlib/config.toml, numbering its addresses as this file's name says:
+# crates/fuzz/src/session.rs picks one of the four from each input.
+[project]
+name = "Std"
+version = "0.1"
+type = "library"
+
+[addresses]
+numbering = "byte"
+byte-order = "big"

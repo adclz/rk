@@ -35,7 +35,10 @@ pub fn check(target: &str) -> Result<(), Finding> {
     if !plan.positions_can_say_it() {
         return Ok(());
     }
-    let Some((mut db, file)) = session::load(&plan.start) else {
+    // Both sources as the input says, so that the edited one and the fresh
+    // one number their addresses alike.
+    let addresses = session::addresses_of(target);
+    let Some((mut db, file)) = session::load_with(&plan.start, addresses) else {
         return Ok(());
     };
     // Prime every stage, so the edit has memos to invalidate.
@@ -80,7 +83,7 @@ pub fn check(target: &str) -> Result<(), Finding> {
         ));
     }
 
-    let Some((fresh_db, fresh_file)) = session::load(target) else {
+    let Some((fresh_db, fresh_file)) = session::load_with(target, addresses) else {
         return Ok(());
     };
     let incremental_tree = shape(file.document(&db).tree.root_node());
