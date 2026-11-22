@@ -751,12 +751,14 @@ impl<'db> InitInference<'db> {
                         } else {
                             located_width(declared.normalize(db))
                         };
-                        if !declared.is_never()
-                            && let Some((_, address_bits)) = dv
-                                .size_letter(db)
-                                .and_then(crate::hir_ty::infer::normalize::access_size)
-                            && declared_bits != Some(address_bits)
-                        {
+                        let address_bits = dv
+                            .size_letter(db)
+                            .and_then(crate::hir_ty::infer::normalize::access_size)
+                            .map(|(_, bits)| bits);
+                        let type_refused = !declared.is_never()
+                            && address_bits.is_some()
+                            && declared_bits != address_bits;
+                        if type_refused && let Some(address_bits) = address_bits {
                             self.errors.push(
                                 ConfigError::LocationWidthMismatch {
                                     var: *var,
@@ -862,20 +864,33 @@ impl<'db> InitInference<'db> {
                                 self.errors.push(
                                     ConfigError::SharedBytesRetain {
                                         site: dv.as_call_site(db),
-                                        var: *var,
+                                        name: compact_str::CompactString::from(
+                                            var.name_with_case(db).text(db).as_str(),
+                                        ),
                                         retained,
+                                        configured: false,
                                     }
                                     .to_diagnostic(db, self.scope.file(db)),
                                 );
                             }
                             // Its own initial value, or the one its type starts
-                            // every value at. On an input E1419 below says it.
+                            // every value at, and the type it renames. A type
+                            // E1422 refused says nothing more here. On an input
+                            // E1419 below says it.
                             let ty = var.spec(db).infer(db);
                             let from_type = (var.init(db).is_none()
                                 && !crate::hir_ty::head::instances::type_default_inits(db, ty)
                                     .is_empty())
-                            .then(|| compact_str::CompactString::from(ty.type_name(db)));
-                            if (var.init(db).is_some() || from_type.is_some())
+                            .then(|| {
+                                (
+                                    compact_str::CompactString::from(ty.type_name(db)),
+                                    compact_str::CompactString::from(
+                                        ty.normalize(db).type_name(db),
+                                    ),
+                                )
+                            });
+                            if !type_refused
+                                && (var.init(db).is_some() || from_type.is_some())
                                 && located.area
                                     != crate::hir_def::pous::variable::LocationArea::Input
                                 && let Some(other) = located_neighbor(db, &located)
