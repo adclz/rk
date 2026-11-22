@@ -4,8 +4,9 @@
 //! The diagnostics reference's sources: one Markdown file per code in
 //! `crates/doc/examples/`, named `<CODE>.md`. Its frontmatter carries the
 //! title (and the lint rule, for an L-code); the body is the description
-//! followed by the `iecst` fences that must produce the code. A code with
-//! no fence is described without a runnable example.
+//! followed by the `iecst` fences that must produce the code, and a `toml`
+//! fence when they need a setting: the `config.toml` they are compiled
+//! with. A code with no fence is described without a runnable example.
 
 use std::path::Path;
 
@@ -52,6 +53,9 @@ pub struct ErrorExample {
     /// The sources that must trigger the code. Empty for a code described
     /// without a runnable example.
     pub sources: Vec<String>,
+    /// The `config.toml` the sources are compiled with, when they need a
+    /// setting (`[addresses]`, `stack_size`): the example's `toml` fence.
+    pub config: Option<String>,
     /// When set, only this lint rule is enabled for the example.
     pub lint_rule: Option<String>,
 }
@@ -87,9 +91,15 @@ pub fn load(dir: &Path) -> Vec<ErrorExample> {
                 .unwrap_or_else(|| panic!("{}: no `title` in the frontmatter", path.display()))
                 .to_string();
             let lint_rule = fm.get("lint_rule").map(str::to_string);
-            let (description, sources) = split_body(body);
+            let (description, sources, config) = split_body(body);
             if description.is_empty() {
                 panic!("{}: no description before the first fence", path.display());
+            }
+            if config.is_some() && sources.is_empty() {
+                panic!(
+                    "{}: a `toml` fence with no source to compile",
+                    path.display()
+                );
             }
             ErrorExample {
                 category: section_of(&code),
@@ -97,24 +107,31 @@ pub fn load(dir: &Path) -> Vec<ErrorExample> {
                 title,
                 description,
                 sources,
+                config,
                 lint_rule,
             }
         })
         .collect()
 }
 
-/// The prose before the first fence, and every `iecst` fence. A description is
-/// collapsed within each paragraph, so a source line break is free, and its
-/// blank lines survive as the paragraphs the page and `rk explain` print.
-fn split_body(body: &str) -> (String, Vec<String>) {
+/// The prose before the first fence, every `iecst` fence, and the one `toml`
+/// fence. A description is collapsed within each paragraph, so a source line
+/// break is free, and its blank lines survive as the paragraphs the page and
+/// `rk explain` print.
+fn split_body(body: &str) -> (String, Vec<String>, Option<String>) {
     let mut description = String::new();
     let mut sources = Vec::new();
-    let mut fence: Option<String> = None;
+    let mut config: Option<String> = None;
+    // The fence open, and whether it is the `toml` one.
+    let mut fence: Option<(String, bool)> = None;
     let mut seen_fence = false;
     for line in body.lines() {
-        if let Some(code) = fence.as_mut() {
+        if let Some((code, _)) = fence.as_mut() {
             if line.starts_with("```") {
-                sources.push(fence.take().unwrap());
+                match fence.take().unwrap() {
+                    (code, true) => config = Some(code.trim_matches('\n').to_string()),
+                    (code, false) => sources.push(code),
+                }
             } else {
                 code.push_str(line);
                 code.push('\n');
@@ -122,11 +139,17 @@ fn split_body(body: &str) -> (String, Vec<String>) {
             continue;
         }
         if let Some(info) = line.strip_prefix("```") {
-            assert!(
-                info.trim() == "iecst",
-                "an example's fences are all `iecst`, found `{line}`"
-            );
-            fence = Some(String::new());
+            let toml = match info.trim() {
+                "iecst" => false,
+                "toml" => {
+                    assert!(config.is_none(), "an example has one `toml` fence");
+                    true
+                }
+                _ => panic!(
+                    "an example's fences are `iecst`, and one `toml` for its config.toml, found `{line}`"
+                ),
+            };
+            fence = Some((String::new(), toml));
             seen_fence = true;
             continue;
         }
@@ -146,5 +169,5 @@ fn split_body(body: &str) -> (String, Vec<String>) {
         .into_iter()
         .map(|s| s.trim_matches('\n').to_string())
         .collect();
-    (description, sources)
+    (description, sources, config)
 }

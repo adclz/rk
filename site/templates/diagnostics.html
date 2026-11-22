@@ -32,6 +32,10 @@
 <section class="entry" id="{{ e.code }}" data-cat="{{ c.slug }}" data-text="{{ e.text }}">
 <h2><a href="#{{ e.code }}">{{ e.code }}</a> {{ e.title }}</h2>
 {{ e.description_html | safe }}
+{%- if e.config_html %}
+<div class="codewrap"><pre><code class="language-toml">{{ e.config_html | safe }}
+</code></pre></div>
+{%- endif %}
 {%- for s in e.sources_html %}
 <div class="codewrap"><pre><code class="language-iecst">{{ s | safe }}
 </code></pre></div>
