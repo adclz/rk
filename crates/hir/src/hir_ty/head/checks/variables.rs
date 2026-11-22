@@ -868,8 +868,14 @@ impl<'db> InitInference<'db> {
                                     .to_diagnostic(db, self.scope.file(db)),
                                 );
                             }
-                            // On an input E1419 below says it.
-                            if var.init(db).is_some()
+                            // Its own initial value, or the one its type starts
+                            // every value at. On an input E1419 below says it.
+                            let ty = var.spec(db).infer(db);
+                            let from_type = (var.init(db).is_none()
+                                && !crate::hir_ty::head::instances::type_default_inits(db, ty)
+                                    .is_empty())
+                            .then(|| compact_str::CompactString::from(ty.type_name(db)));
+                            if (var.init(db).is_some() || from_type.is_some())
                                 && located.area
                                     != crate::hir_def::pous::variable::LocationArea::Input
                                 && let Some(other) = located_neighbor(db, &located)
@@ -882,6 +888,7 @@ impl<'db> InitInference<'db> {
                                         other_decl: located_declaration(db, other),
                                         other_mention: located_mention(db, other),
                                         holder: located_holder(db, &located),
+                                        from_type,
                                     }
                                     .to_diagnostic(db, self.scope.file(db)),
                                 );

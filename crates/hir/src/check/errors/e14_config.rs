@@ -242,7 +242,8 @@ pub enum ConfigError<'db> {
         retained: crate::hir_def::pous::variable::VariableDecl<'db>,
     },
     /// An initial value at an address that shares bytes with others of its
-    /// area, none of which holds them all: it would set part of theirs.
+    /// area, none of which holds them all: it would set part of theirs. The
+    /// declaration's own, or the one its type starts every value at.
     SharedBytesInitializer {
         site: CallSite<'db>,
         /// The address, upper-cased.
@@ -257,6 +258,9 @@ pub enum ConfigError<'db> {
         /// An address that holds every byte they share and the rest of
         /// theirs, when one does.
         holder: Option<compact_str::CompactString>,
+        /// The type whose initial value it is, when the declaration has none
+        /// of its own: `TYPE Tally : INT := 5`.
+        from_type: Option<compact_str::CompactString>,
     },
     /// A VAR_CONFIG entry's `AT`, which cannot locate the variable it names.
     ConfigLocationRefused {
@@ -1719,6 +1723,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 other_decl,
                 other_mention,
                 holder,
+                from_type,
             } => {
                 let mut diag = diag()
                     .message(format!(
@@ -1729,12 +1734,18 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_advice(
-                    Some(format!("its initial value would set part of '{other}' too")),
-                    holder.as_ref().map(|holder| {
-                        format!(
-                            "locate a variable at '{holder}', which holds all their bytes, and give it the initial value"
-                        )
+                    Some(match from_type {
+                        Some(ty) => format!("the initial value of '{ty}' would set part of '{other}' too"),
+                        None => format!("its initial value would set part of '{other}' too"),
                     }),
+                    match from_type {
+                        Some(_) => Some("declare it with a type that has no initial value".to_string()),
+                        None => holder.as_ref().map(|holder| {
+                            format!(
+                                "locate a variable at '{holder}', which holds all their bytes, and give it the initial value"
+                            )
+                        }),
+                    },
                 );
                 if let Some(decl) = other_decl {
                     diag.with_related(Related::new(

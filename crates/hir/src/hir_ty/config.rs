@@ -2469,11 +2469,39 @@ fn check_config_entries<'db>(
                     }
                     .to_diagnostic(db, file),
                 ),
-                (None, EntryLocation::Given(address)) => locations.push(ConfigLocation {
-                    instance: entry.instance,
-                    members: entry.members.clone(),
-                    address: address.clone(),
-                }),
+                (None, EntryLocation::Given(address)) => {
+                    // The variable's type starts it at a value, which `__init`
+                    // writes at the address: one that shares bytes cannot take
+                    // it (E1435).
+                    let ty = var.spec(db).infer(db);
+                    if address.area != crate::hir_def::pous::variable::LocationArea::Input
+                        && let Some(other) =
+                            crate::hir_ty::index_graphs::located_neighbor(db, address)
+                        && !crate::hir_ty::head::instances::type_default_inits(db, ty).is_empty()
+                    {
+                        errors.push(
+                            ConfigError::SharedBytesInitializer {
+                                site: crate::CallSite::from_scoped(db, &entry.path),
+                                address: address.text.clone(),
+                                other: other.text.clone(),
+                                other_decl: crate::hir_ty::index_graphs::located_declaration(
+                                    db, other,
+                                ),
+                                other_mention: crate::hir_ty::index_graphs::located_mention(
+                                    db, other,
+                                ),
+                                holder: crate::hir_ty::index_graphs::located_holder(db, address),
+                                from_type: Some(compact_str::CompactString::from(ty.type_name(db))),
+                            }
+                            .to_diagnostic(db, file),
+                        );
+                    }
+                    locations.push(ConfigLocation {
+                        instance: entry.instance,
+                        members: entry.members.clone(),
+                        address: address.clone(),
+                    })
+                }
                 (None, EntryLocation::Refused(_)) => {}
             }
         }
@@ -2645,6 +2673,7 @@ fn check_config_value<'db>(
                 other_decl: located_declaration(db, other),
                 other_mention: crate::hir_ty::index_graphs::located_mention(db, other),
                 holder: crate::hir_ty::index_graphs::located_holder(db, &channel),
+                from_type: None,
             }
             .to_diagnostic(db, file),
         );
