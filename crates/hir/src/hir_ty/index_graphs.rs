@@ -368,8 +368,10 @@ pub fn located_declarations_at<'db>(
 /// An address the workspace mentions a wider container of is not a cell of
 /// its own: it is that container's bits, as it would be in any PLC with a
 /// process image — `%IX0.3` is bit 3 of `%IW0` when both are used. The owner
-/// is the WIDEST container mentioned, so a whole nest shares one cell.
-/// `None` when nothing mentioned contains it, or it has no byte reading.
+/// is the WIDEST container mentioned, so a whole nest shares one cell; of two
+/// as wide, which share bytes when the workspace counts them, the lower
+/// address, whatever order the files are read in. `None` when nothing
+/// mentioned contains it, or it has no byte reading.
 pub fn located_view(db: &dyn WorkspaceDataBase, address: &LocatedAddress) -> Option<LocatedView> {
     let settings = db::config_file::get_config(db).addresses();
     let numbering = settings.numbering;
@@ -386,9 +388,11 @@ pub fn located_view(db: &dyn WorkspaceDataBase, address: &LocatedAddress) -> Opt
             };
             let contains = range.start <= bits.start && bits.end <= range.end;
             let wider = range.end - range.start > bits.end - bits.start;
-            let widest = owner
-                .as_ref()
-                .is_none_or(|(_, best)| range.end - range.start > best.end - best.start);
+            let widest = owner.as_ref().is_none_or(|(best, best_range)| {
+                let (width, best_width) =
+                    (range.end - range.start, best_range.end - best_range.start);
+                width > best_width || (width == best_width && other < *best)
+            });
             if contains && wider && widest {
                 owner = Some((other, range));
             }
@@ -407,6 +411,234 @@ pub fn located_view(db: &dyn WorkspaceDataBase, address: &LocatedAddress) -> Opt
             }
         },
     })
+}
+
+/// An address that shares bytes with others of its area, none of which
+/// holds all the bytes they name: `%MW7` and `%MW8`, which share byte 8 when
+/// the workspace counts bytes. They are stored in one cell, the leader's,
+/// and each of the others is the bytes of it at its own offset.
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub struct LocatedCell {
+    /// The address the cell starts with in memory, whose storage the cell
+    /// is: in a little-endian area the one that starts the group's bytes, in
+    /// a big-endian one the one that ends them.
+    pub leader: LocatedAddress,
+    /// Where this address starts in the cell, in bytes.
+    pub offset: u32,
+    /// How many bytes the cell holds: every byte the group names.
+    pub bytes: u32,
+    /// Whether a declaration at one of the group's outermost addresses says
+    /// RETAIN, which every other declared one has to say too (E1434).
+    pub retain: bool,
+}
+
+/// The outermost addresses of each group of addresses that share bytes
+/// with no one of them holding all, each with its place in the group's
+/// cell. An address inside another is no outermost one: [`located_view`]
+/// places it in that one, as it does when one address holds a whole group.
+#[salsa::tracked(returns(ref))]
+pub fn located_cells(
+    db: &dyn WorkspaceDataBase,
+) -> Arc<std::collections::BTreeMap<LocatedAddress, LocatedCell>> {
+    let settings = db::config_file::get_config(db).addresses();
+    // Every address the workspace mentions, with whether a declaration at it
+    // says RETAIN.
+    let mut retained: std::collections::BTreeMap<&LocatedAddress, bool> =
+        std::collections::BTreeMap::new();
+    for map in located_by_file(db) {
+        for (address, decls) in map {
+            let says = decls
+                .iter()
+                .any(|v| v.qualifier(db).contains(crate::Qualifier::RETAIN));
+            *retained.entry(address).or_default() |= says;
+        }
+    }
+    for address in config_located(db) {
+        retained.entry(address).or_default();
+    }
+    let mut by_area: std::collections::BTreeMap<
+        _,
+        Vec<(std::ops::Range<u64>, &LocatedAddress, bool)>,
+    > = std::collections::BTreeMap::new();
+    for (address, retain) in retained {
+        if let Some(bits) = address.image_bits(settings.numbering) {
+            by_area
+                .entry(address.area)
+                .or_default()
+                .push((bits, address, retain));
+        }
+    }
+    let mut cells = std::collections::BTreeMap::new();
+    for (_, mut addresses) in by_area {
+        // By where they start, the widest first: each group is a run of
+        // addresses that start before the ones before them end.
+        addresses.sort_by(|a, b| a.0.start.cmp(&b.0.start).then(b.0.end.cmp(&a.0.end)));
+        let mut group = Vec::new();
+        let mut end = 0;
+        for address in addresses {
+            if !group.is_empty() && address.0.start >= end {
+                share_cell(&group, settings.byte_order, &mut cells);
+                group.clear();
+            }
+            end = end.max(address.0.end);
+            group.push(address);
+        }
+        share_cell(&group, settings.byte_order, &mut cells);
+    }
+    Arc::new(cells)
+}
+
+/// The outermost addresses of `group`, when it has several, each at its
+/// place in the one cell they share. `group` is sorted by start, the widest
+/// first, so an address is outermost when it ends past every one before it;
+/// such an address is a byte or more, since a bit shares bits only with an
+/// address that holds it.
+fn share_cell(
+    group: &[(std::ops::Range<u64>, &LocatedAddress, bool)],
+    order: db::config_file::ByteOrder,
+    cells: &mut std::collections::BTreeMap<LocatedAddress, LocatedCell>,
+) {
+    let mut outermost = Vec::new();
+    let mut end = 0;
+    for (bits, address, retain) in group {
+        if outermost.is_empty() || bits.end > end {
+            outermost.push((bits, *address, *retain));
+        }
+        end = end.max(bits.end);
+    }
+    let Some((first, _, _)) = outermost.first() else {
+        return;
+    };
+    if outermost.len() < 2 {
+        return;
+    }
+    let (first, last) = (first.start, end);
+    // Memory holds each value in the processor's own order: the image's bytes
+    // go up through the cell, or back to front in a big-endian area.
+    let offset = |bits: &std::ops::Range<u64>| match order {
+        db::config_file::ByteOrder::Little => ((bits.start - first) / 8) as u32,
+        db::config_file::ByteOrder::Big => ((last - bits.end) / 8) as u32,
+    };
+    let Some(leader) = outermost
+        .iter()
+        .find(|(bits, _, _)| offset(bits) == 0)
+        .map(|(_, address, _)| (*address).clone())
+    else {
+        return;
+    };
+    let retain = outermost.iter().any(|(_, _, retain)| *retain);
+    for (bits, address, _) in &outermost {
+        cells.insert(
+            (*address).clone(),
+            LocatedCell {
+                leader: leader.clone(),
+                offset: offset(bits),
+                bytes: ((last - first) / 8) as u32,
+                retain,
+            },
+        );
+    }
+}
+
+/// [`located_cells`]' entry for `address`: `None` for an address that is
+/// a cell of its own, the leader of none, or part of a wider one.
+pub fn located_cell<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    address: &LocatedAddress,
+) -> Option<&'db LocatedCell> {
+    located_cells(db).get(address)
+}
+
+/// Where `address` is in memory: the address whose cell holds its bytes,
+/// and the bit of that cell's memory it starts at. A part is where its
+/// owner is, past its shift; an outermost address of a shared group is at
+/// its offset in the leader's cell; any other address is its own cell.
+pub fn located_place(
+    db: &dyn WorkspaceDataBase,
+    address: &LocatedAddress,
+) -> (LocatedAddress, u64) {
+    if let Some(view) = located_view(db, address) {
+        // The owner holds every address inside it, so no owner is a part.
+        let (cell, at) = located_place(db, &view.owner);
+        return (cell, at + u64::from(view.shift));
+    }
+    match located_cell(db, address) {
+        Some(cell) => (cell.leader.clone(), u64::from(cell.offset) * 8),
+        None => (address.clone(), 0),
+    }
+}
+
+/// The outermost addresses stored in the same cell as `address`, itself
+/// included, in address order: none for an address that shares no bytes.
+pub fn located_group<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    address: &LocatedAddress,
+) -> impl Iterator<Item = &'db LocatedAddress> + use<'db> {
+    let leader = located_cell(db, address).map(|cell| cell.leader.clone());
+    located_cells(db)
+        .iter()
+        .filter(move |(_, cell)| Some(&cell.leader) == leader.as_ref())
+        .map(|(other, _)| other)
+}
+
+/// The addresses of `address`'s group that share bytes with it, in address
+/// order. Each outermost address of a group shares bytes with the one before
+/// it or the one after it, so one at least does.
+pub fn located_neighbors<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    address: &LocatedAddress,
+) -> impl Iterator<Item = &'db LocatedAddress> + use<'db> {
+    let numbering = db::config_file::get_config(db).addresses().numbering;
+    let bits = address.image_bits(numbering);
+    let address = address.clone();
+    located_group(db, &address).filter(move |other| {
+        **other != address
+            && bits.as_ref().is_some_and(|bits| {
+                other
+                    .image_bits(numbering)
+                    .is_some_and(|range| range.start < bits.end && bits.start < range.end)
+            })
+    })
+}
+
+/// The first of [`located_neighbors`].
+pub fn located_neighbor<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    address: &LocatedAddress,
+) -> Option<&'db LocatedAddress> {
+    located_neighbors(db, address).next()
+}
+
+/// The narrowest address that holds every byte of `address`'s group, as
+/// it would be written: `%MD7` for `%MW7` and `%MW8`, which share byte 8.
+/// `None` for a group of more than eight bytes, which no address holds.
+pub fn located_holder(
+    db: &dyn WorkspaceDataBase,
+    address: &LocatedAddress,
+) -> Option<compact_str::CompactString> {
+    let settings = db::config_file::get_config(db).addresses();
+    let cell = located_cell(db, address)?;
+    // Only addresses that count bytes share some without nesting.
+    if settings.numbering != db::config_file::Numbering::Byte {
+        return None;
+    }
+    let leader = cell.leader.image_bits(settings.numbering)?;
+    // The leader is where the cell starts in memory: the group's first byte
+    // in a little-endian area, its last one in a big-endian one.
+    let first = match settings.byte_order {
+        db::config_file::ByteOrder::Little => leader.start / 8,
+        db::config_file::ByteOrder::Big => (leader.end / 8).checked_sub(u64::from(cell.bytes))?,
+    };
+    let size = match cell.bytes {
+        0..=2 => 'W',
+        3..=4 => 'D',
+        5..=8 => 'L',
+        _ => return None,
+    };
+    Some(compact_str::format_compact!(
+        "{}{size}{first}",
+        address.area.prefix()
+    ))
 }
 
 // ---------------------------------------------------------------------------
