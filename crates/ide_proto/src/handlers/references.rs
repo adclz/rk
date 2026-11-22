@@ -82,8 +82,7 @@ impl<'db> ReferencesHandler<'db> for HirNode<'db> {
             find_references_in_file(db, *file, &target, name, &mut locations);
         }
 
-        // Deduplicate — the walk can visit overlapping nodes
-        locations.dedup_by(|a, b| a.file.url(db) == b.file.url(db) && a.span == b.span);
+        once_each(&mut locations);
 
         if locations.is_empty() {
             None
@@ -437,11 +436,27 @@ pub(crate) fn find_namespace_references<'db>(
         });
     }
 
+    once_each(&mut locations);
     if locations.is_empty() {
         None
     } else {
         Some(locations)
     }
+}
+
+/// `locations` with each place once, where it was first found. A walk meets
+/// a node once for each declaration it belongs to: the type of `a, b, c :
+/// Lib.T` once for each variable, and with it the `Lib` its path names. A
+/// rename edited that name three times, edits a client refuses.
+fn once_each(locations: &mut Vec<ReferenceLocation>) {
+    let mut seen = std::collections::HashSet::new();
+    locations.retain(|location| {
+        seen.insert((
+            location.file,
+            location.span.start_byte,
+            location.span.end_byte,
+        ))
+    });
 }
 
 /// The last segment of the dotted name at `span`: `Motors` of `App.Motors`,
