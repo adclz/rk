@@ -737,7 +737,8 @@ fn lower_module_from_pous<'db>(
 
     // Allocate storage for every configuration VAR_GLOBAL. Bodies referenced
     // these as `Local(name)`; a post-pass below rewrites them to `Global`.
-    let mut global_table = build_global_table(db, config, all_programs, &mut memory_layout)?;
+    let (mut global_table, sharing) =
+        build_global_table(db, config, all_programs, &mut memory_layout)?;
 
     // Bare addresses the bodies named get their cells before the bands are
     // carved, so they are laid out with the declared ones, and so do the ones
@@ -771,10 +772,11 @@ fn lower_module_from_pous<'db>(
         .chain(single_addresses)
         .map(|address| config_cell(db, address).0)
         .collect();
-    synthesize_bare_addresses(
+    let aliases = synthesize_bare_addresses(
         db,
         &mut functions,
         &config_cells,
+        sharing,
         &mut memory_layout,
         &mut global_table,
     )?;
@@ -888,6 +890,15 @@ fn lower_module_from_pous<'db>(
             }
         }
     }
+    // An address that shares its leader's cell is where that cell went, at
+    // its own offset: no allocation of its own was moved.
+    for alias in &aliases {
+        if let Some(&(cell, _)) = global_table.get(&alias.cell)
+            && let Some((addr, _)) = global_table.get_mut(&alias.name)
+        {
+            *addr = cell + alias.offset;
+        }
+    }
     module.retain_base = bands.retain_base;
     module.retain_size = bands.retain_size;
     module.globals_base = bands.globals_base;
@@ -898,7 +909,7 @@ fn lower_module_from_pous<'db>(
     module.output_size = bands.output_size;
     module.marker_base = bands.marker_base;
     module.marker_size = bands.marker_size;
-    module.located_map = build_located_map(db, &bands, &global_table, &config_locations);
+    module.located_map = build_located_map(db, &bands, &global_table, &aliases, &config_locations);
 
     // The debug-symbol table, now that every address is final; sorted by
     // path.
@@ -1469,18 +1480,17 @@ fn collect_source_files(
 pub(crate) type GlobalTable<'db> =
     FxHashMap<hir::hir_def::interned::identifier::Ident, (u32, crate::types::MirType)>;
 
-/// The address whose cell holds `address`, and where in it: the wider
-/// address it is part of and its byte offset there, or itself at 0. Only an
-/// address of a byte or more is given to a variable located by VAR_CONFIG
-/// (E1424), so the offset is whole bytes.
+/// The address whose cell holds `address`, and where in it: the cell of
+/// the wider address it is part of or of the group it shares bytes with,
+/// and its byte offset there, or itself at 0. Only an address of a byte or
+/// more is given to a variable located by VAR_CONFIG (E1424), so the offset
+/// is whole bytes.
 fn config_cell(
     db: &dyn WorkspaceDataBase,
     address: &hir::hir_def::pous::variable::LocatedAddress,
 ) -> (hir::hir_def::pous::variable::LocatedAddress, u32) {
-    match hir::hir_ty::index_graphs::located_view(db, address) {
-        Some(view) => (view.owner, view.shift / 8),
-        None => (address.clone(), 0),
-    }
+    let (cell, bit) = hir::hir_ty::index_graphs::located_place(db, address);
+    (cell, (bit / 8) as u32)
 }
 
 /// Where a variable a VAR_CONFIG path names sits in memory: its PROGRAM
@@ -1587,19 +1597,45 @@ fn build_global_table<'db>(
     config: &[hir::hir_def::config::ConfigDecl<'db>],
     programs: &[(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)],
     memory_layout: &mut MirMemoryLayout,
-) -> Result<GlobalTable<'db>, LowerTypeError> {
+) -> Result<(GlobalTable<'db>, Vec<Sharing>), LowerTypeError> {
     let mut table = GlobalTable::default();
+    let mut sharing = Vec::new();
     // One table across every fragment; a name declared twice is E0101.
     for config in config {
         // Application scope: a RESOURCE declares no variables of its own.
         for v in config.variables(db) {
-            add_global(db, v, v.name(db), memory_layout, &mut table)?;
+            add_global(db, v, v.name(db), memory_layout, &mut table, &mut sharing)?;
         }
     }
     for v in program_located(db, programs) {
-        add_global(db, &v, global_key(db, v), memory_layout, &mut table)?;
+        add_global(
+            db,
+            &v,
+            global_key(db, v),
+            memory_layout,
+            &mut table,
+            &mut sharing,
+        )?;
     }
-    Ok(table)
+    Ok((table, sharing))
+}
+
+/// A located address that shares bytes with others of its area none of
+/// which holds them all, and does not lead them: it has no cell of its own,
+/// but is bytes of its leader's, under its own name and type.
+pub(crate) struct Sharing {
+    name: hir::hir_def::interned::identifier::Ident,
+    ty: MirType,
+    located: hir::hir_def::pous::variable::LocatedAddress,
+}
+
+/// A [`Sharing`] address given its place: `offset` bytes into the cell the
+/// global `cell` names.
+pub(crate) struct Alias {
+    name: hir::hir_def::interned::identifier::Ident,
+    located: hir::hir_def::pous::variable::LocatedAddress,
+    cell: hir::hir_def::interned::identifier::Ident,
+    offset: u32,
 }
 
 fn add_global<'db>(
@@ -1608,25 +1644,49 @@ fn add_global<'db>(
     key: hir::hir_def::interned::identifier::Ident,
     memory_layout: &mut MirMemoryLayout,
     table: &mut GlobalTable<'db>,
+    sharing: &mut Vec<Sharing>,
 ) -> Result<(), LowerTypeError> {
     // Located inside a wider address the workspace mentions, a global is no
     // cell of its own: it is that address's bits, and every access to it is
     // lowered as bits of the owner (`ExprLowerCtx::view`).
-    if let Some(dv) = v.location(db)
-        && let Some(address) = hir::hir_def::pous::variable::LocatedAddress::of(db, dv)
-        && hir::hir_ty::index_graphs::located_view(db, &address).is_some()
+    let address = v
+        .location(db)
+        .and_then(|dv| hir::hir_def::pous::variable::LocatedAddress::of(db, dv));
+    if let Some(address) = &address
+        && hir::hir_ty::index_graphs::located_view(db, address).is_some()
     {
         return Ok(());
     }
     let ty = super::lower_type::lower_spec(db, v.spec(db))?;
-    let size = ty.size_bytes();
+    // Nor is one that shares bytes with addresses none of which holds them
+    // all, unless it leads them: it is bytes of the leader's cell, which
+    // holds them all, and is placed there once that cell is
+    // (`synthesize_bare_addresses`).
+    let cell = address
+        .as_ref()
+        .and_then(|address| hir::hir_ty::index_graphs::located_cell(db, address));
+    if let (Some(address), Some(cell)) = (&address, cell)
+        && cell.leader != *address
+    {
+        sharing.push(Sharing {
+            name: key,
+            ty,
+            located: address.clone(),
+        });
+        return Ok(());
+    }
+    let size = ty.size_bytes().max(cell.map_or(0, |cell| cell.bytes));
     let align = ty.alignment();
     let addr = memory_layout.allocate(key, size, align, crate::memory::MirAllocKind::Variable);
     // A located global lives in its area's band instead of the globals band:
     // the host copies a whole direction at once, and a variable that is not
-    // in that range would not travel with it.
+    // in that range would not travel with it. A leader's cell persists as
+    // the declarations of its group say.
     match located_entry(db, v, key, addr, size, align) {
-        Some(entry) => memory_layout.record_located(entry),
+        Some(mut entry) => {
+            entry.retain |= cell.is_some_and(|cell| cell.retain);
+            memory_layout.record_located(entry)
+        }
         None => {
             // RETAIN globals are flagged so the globals band overlaps the
             // retain band on them, and so is one whose type keeps something
@@ -1684,6 +1744,7 @@ fn build_located_map<'db>(
     db: &'db dyn WorkspaceDataBase,
     bands: &crate::memory::MemoryBands,
     globals: &GlobalTable<'db>,
+    aliases: &[Alias],
     config_locations: &[&hir::hir_ty::config::ConfigLocation<'db>],
 ) -> debug_format::LocatedMap {
     use debug_format::LocatedArea;
@@ -1713,29 +1774,60 @@ fn build_located_map<'db>(
             .and_then(|var| super::lower_type::lower_spec(db, var.spec(db)).ok())
             .and_then(|ty| crate::debug_symbols::scalar_sym_ty(&ty))
     };
+    // What a cell's entry says of it, whose own bytes are `size` from `addr`.
+    let entry = |name: hir::hir_def::interned::identifier::Ident,
+                 located: &hir::hir_def::pous::variable::LocatedAddress,
+                 addr: u32,
+                 size: u32| debug_format::LocatedVar {
+        address: located.text.to_string(),
+        name: name.text(db).to_string(),
+        area: area(located.area),
+        path: located.levels.clone(),
+        width: u16::from(located.width),
+        addr,
+        size,
+        ty: hir::hir_ty::index_graphs::located_declaration(db, located)
+            .is_none()
+            .then(|| configured_type(located))
+            .flatten()
+            .or_else(|| {
+                globals
+                    .get(&name)
+                    .and_then(|(_, ty)| crate::debug_symbols::scalar_sym_ty(ty))
+            }),
+        part_of: None,
+        offset: offset(area(located.area), addr),
+    };
     let mut entries: Vec<debug_format::LocatedVar> = located
         .iter()
-        .map(|e| debug_format::LocatedVar {
-            address: e.address_text.clone(),
-            name: e.name.text(db).to_string(),
-            area: area(e.located.area),
-            path: e.located.levels.clone(),
-            width: u16::from(e.located.width),
-            addr: e.address,
-            size: e.size,
-            ty: hir::hir_ty::index_graphs::located_declaration(db, &e.located)
-                .is_none()
-                .then(|| configured_type(&e.located))
-                .flatten()
-                .or_else(|| {
-                    globals
-                        .get(&e.name)
-                        .and_then(|(_, ty)| crate::debug_symbols::scalar_sym_ty(ty))
-                }),
-            part_of: None,
-            offset: offset(area(e.located.area), e.address),
+        .map(|e| {
+            // The cell of a group that shares bytes holds them all; its
+            // leader's entry is its own value, as each other address of the
+            // group has an entry of its own.
+            let size = match hir::hir_ty::index_graphs::located_cell(db, &e.located) {
+                Some(_) => globals
+                    .get(&e.name)
+                    .map_or(e.size, |(_, ty)| ty.size_bytes()),
+                None => e.size,
+            };
+            entry(e.name, &e.located, e.address, size)
         })
         .collect();
+    // An address that shares its leader's cell is its own bytes there, under
+    // the name it was declared with or else as its address: one entry each,
+    // the declared name first.
+    for alias in aliases {
+        if entries
+            .iter()
+            .any(|e| e.address == alias.located.text.as_str())
+        {
+            continue;
+        }
+        let Some((addr, ty)) = globals.get(&alias.name) else {
+            continue;
+        };
+        entries.push(entry(alias.name, &alias.located, *addr, ty.size_bytes()));
+    }
 
     // The parts: addresses stored inside a wider one, with no cell of their
     // own. Each is listed at its owner's cell with the bits it is, so a host
@@ -1837,13 +1929,20 @@ fn resolve_global_places<'db>(
 /// table does not hold comes back as missing, and one of the addresses the
 /// workspace's files mention is the only kind of missing name that is not an
 /// error. Each is taken as HIR decoded it, never read again from its text.
+///
+/// An address that shares bytes with others of its area, and does not lead
+/// them, bare or declared (`sharing`), is no cell either: it is bytes of its
+/// leader's, which gets a cell here when nothing else gave it one. Each is
+/// returned with its place, which the relocation of the bands moves with
+/// the leader's cell.
 fn synthesize_bare_addresses<'db>(
     db: &'db dyn WorkspaceDataBase,
     functions: &mut [crate::function::MirFunction],
     config_cells: &[hir::hir_def::pous::variable::LocatedAddress],
+    mut sharing: Vec<Sharing>,
     memory_layout: &mut MirMemoryLayout,
     table: &mut GlobalTable<'db>,
-) -> Result<(), LowerTypeError> {
+) -> Result<Vec<Alias>, LowerTypeError> {
     use hir::hir_def::pous::variable::LocatedAddress;
     // Every address the workspace's files mention, by the text a bare one is
     // lowered under.
@@ -1888,6 +1987,38 @@ fn synthesize_bare_addresses<'db>(
             address.clone(),
         ));
     }
+    // A bare address that shares its leader's cell is placed with the
+    // declared ones, and every leader of one has a cell, declared or bare.
+    wanted.retain(|_, (name, ty, located)| {
+        let leads = hir::hir_ty::index_graphs::located_cell(db, located)
+            .is_none_or(|cell| cell.leader == *located);
+        if !leads {
+            sharing.push(Sharing {
+                name: *name,
+                ty: ty.clone(),
+                located: located.clone(),
+            });
+        }
+        leads
+    });
+    for shared in &sharing {
+        let Some(cell) = hir::hir_ty::index_graphs::located_cell(db, &shared.located) else {
+            continue;
+        };
+        let leader = &cell.leader;
+        if memory_layout
+            .located_allocations
+            .iter()
+            .any(|e| e.located == *leader)
+        {
+            continue;
+        }
+        wanted.entry(leader.text.to_string()).or_insert((
+            hir::hir_def::interned::identifier::Ident::new(db, leader.text.clone()),
+            MirType::Elementary(crate::located::width_elementary(leader.width)),
+            leader.clone(),
+        ));
+    }
 
     for (text, (name, ty, located)) in wanted {
         // A declaration already bound this address, so the bare mention is
@@ -1901,7 +2032,10 @@ fn synthesize_bare_addresses<'db>(
             table.insert(name, (address, declared_ty));
             continue;
         }
-        let size = ty.size_bytes();
+        // The leader of a group that shares bytes holds them all, and
+        // persists as the group's declarations say.
+        let cell = hir::hir_ty::index_graphs::located_cell(db, &located);
+        let size = ty.size_bytes().max(cell.map_or(0, |cell| cell.bytes));
         let align = ty.alignment();
         let address =
             memory_layout.allocate(name, size, align, crate::memory::MirAllocKind::Variable);
@@ -1910,15 +2044,36 @@ fn synthesize_bare_addresses<'db>(
             address_text: text,
             located,
             // A bare address has no declaration, so nothing can have asked
-            // for it to persist.
-            retain: false,
+            // for it to persist, unless it leads a group a declaration did.
+            retain: cell.is_some_and(|cell| cell.retain),
             address,
             size,
             align,
         });
         table.insert(name, (address, ty));
     }
-    Ok(())
+
+    let mut aliases = Vec::new();
+    for Sharing { name, ty, located } in sharing {
+        let Some(cell) = hir::hir_ty::index_graphs::located_cell(db, &located) else {
+            continue;
+        };
+        let Some(leader) = memory_layout
+            .located_allocations
+            .iter()
+            .find(|e| e.located == cell.leader)
+        else {
+            continue;
+        };
+        table.insert(name, (leader.address + cell.offset, ty));
+        aliases.push(Alias {
+            name,
+            located,
+            cell: leader.name,
+            offset: cell.offset,
+        });
+    }
+    Ok(aliases)
 }
 
 fn rewrite_globals_place(
