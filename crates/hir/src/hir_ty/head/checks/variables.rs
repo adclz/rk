@@ -832,6 +832,61 @@ impl<'db> InitInference<'db> {
                                 refuse(WiderAddressUse::Initializer(owner));
                             }
                         }
+                        // Sharing bytes with addresses none of which holds
+                        // them all, the variable is stored with them: they
+                        // persist together or not at all (E1434), and no
+                        // initial value of one would leave the others whole
+                        // (E1435).
+                        if let Some(located) =
+                            crate::hir_def::pous::variable::LocatedAddress::of(db, dv)
+                            && let Some(cell) =
+                                crate::hir_ty::index_graphs::located_cell(db, &located)
+                        {
+                            use crate::hir_ty::index_graphs::{
+                                located_declaration, located_declarations_at, located_group,
+                                located_holder, located_mention, located_neighbor,
+                            };
+                            // Only `%M` can be RETAIN: E1420 took `%I`/`%Q`.
+                            let retained = cell.retain
+                                && located.area
+                                    == crate::hir_def::pous::variable::LocationArea::Marker
+                                && !var.qualifier(db).contains(crate::Qualifier::RETAIN);
+                            if retained
+                                && let Some(retained) =
+                                    located_group(db, &located).find_map(|other| {
+                                        located_declarations_at(db, other).into_iter().find(|v| {
+                                            v.qualifier(db).contains(crate::Qualifier::RETAIN)
+                                        })
+                                    })
+                            {
+                                self.errors.push(
+                                    ConfigError::SharedBytesRetain {
+                                        site: dv.as_call_site(db),
+                                        var: *var,
+                                        retained,
+                                    }
+                                    .to_diagnostic(db, self.scope.file(db)),
+                                );
+                            }
+                            // On an input E1419 below says it.
+                            if var.init(db).is_some()
+                                && located.area
+                                    != crate::hir_def::pous::variable::LocationArea::Input
+                                && let Some(other) = located_neighbor(db, &located)
+                            {
+                                self.errors.push(
+                                    ConfigError::SharedBytesInitializer {
+                                        site: dv.as_call_site(db),
+                                        address: located.text.clone(),
+                                        other: other.text.clone(),
+                                        other_decl: located_declaration(db, other),
+                                        other_mention: located_mention(db, other),
+                                        holder: located_holder(db, &located),
+                                    }
+                                    .to_diagnostic(db, self.scope.file(db)),
+                                );
+                            }
+                        }
                     }
                     None => {
                         use crate::check::errors::e14_config::UnlocatableAddress;

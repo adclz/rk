@@ -2634,6 +2634,22 @@ fn check_config_value<'db>(
         );
         return None;
     }
+    // Sharing bytes with addresses none of which holds them all, the channel
+    // has no value of its own to start from (E1435).
+    if let Some(other) = crate::hir_ty::index_graphs::located_neighbor(db, &channel) {
+        errors.push(
+            ConfigError::SharedBytesInitializer {
+                site: crate::CallSite::from_scoped(db, &entry.path),
+                address: channel.text.clone(),
+                other: other.text.clone(),
+                other_decl: located_declaration(db, other),
+                other_mention: crate::hir_ty::index_graphs::located_mention(db, other),
+                holder: crate::hir_ty::index_graphs::located_holder(db, &channel),
+            }
+            .to_diagnostic(db, file),
+        );
+        return None;
+    }
     if let Some(decl) = located_declaration(db, &channel) {
         errors.push(refuse(ConfigEntryRefusal::ChannelDeclared {
             var: var_name,

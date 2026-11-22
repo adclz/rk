@@ -230,6 +230,34 @@ pub enum ConfigError<'db> {
         owner_mention: Option<CallSite<'db>>,
         usage: WiderAddressUse,
     },
+    /// A declaration that is not RETAIN, at an address that shares bytes
+    /// with others of its area, none of which holds them all, while the
+    /// declaration at one of them is: they are stored together, and persist
+    /// together or not at all.
+    SharedBytesRetain {
+        site: CallSite<'db>,
+        /// The declaration that is not RETAIN.
+        var: crate::hir_def::pous::variable::VariableDecl<'db>,
+        /// One of the group's declarations that is.
+        retained: crate::hir_def::pous::variable::VariableDecl<'db>,
+    },
+    /// An initial value at an address that shares bytes with others of its
+    /// area, none of which holds them all: it would set part of theirs.
+    SharedBytesInitializer {
+        site: CallSite<'db>,
+        /// The address, upper-cased.
+        address: compact_str::CompactString,
+        /// An address it shares bytes with.
+        other: compact_str::CompactString,
+        /// The variable declared at `other`, when one is.
+        other_decl: Option<crate::hir_def::pous::variable::VariableDecl<'db>>,
+        /// Where `other` is mentioned outside a declaration, when no variable
+        /// is declared at it.
+        other_mention: Option<CallSite<'db>>,
+        /// An address that holds every byte they share and the rest of
+        /// theirs, when one does.
+        holder: Option<compact_str::CompactString>,
+    },
     /// A VAR_CONFIG entry's `AT`, which cannot locate the variable it names.
     ConfigLocationRefused {
         expr: PathExpr<'db>,
@@ -941,6 +969,8 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::PartlyLocatedOverwritten { .. } => "E1427",
             Self::PartlyLocatedCopied { .. } => "E1427",
             Self::ProgElementRefused { .. } => "E1428",
+            Self::SharedBytesRetain { .. } => "E1434",
+            Self::SharedBytesInitializer { .. } => "E1435",
         }
     }
 }
@@ -1644,6 +1674,77 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 } else if let Some(mention) = owner_mention {
                     diag.with_related(Related::new(
                         format!("'{owner}' is mentioned here"),
+                        mention.scope.file(db),
+                        mention.get_span(db),
+                    ));
+                }
+                diag
+            }
+            Self::SharedBytesRetain {
+                site,
+                var,
+                retained,
+            } => {
+                let name = |v: &crate::hir_def::pous::variable::VariableDecl<'db>| {
+                    v.name_with_case(db).text(db).to_string()
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is not RETAIN but is stored with '{}', which is",
+                        name(var),
+                        name(retained)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_advice(
+                    Some(
+                        "addresses that share bytes are stored together, and persist together or not at all"
+                            .to_string(),
+                    ),
+                    Some(format!("declare '{}' RETAIN too", name(var))),
+                );
+                diag.with_related(Related::new(
+                    format!("'{}' is declared here", name(retained)),
+                    retained.scope_id(db).file(db),
+                    retained.get_name_span(db),
+                ));
+                diag
+            }
+            Self::SharedBytesInitializer {
+                site,
+                address,
+                other,
+                other_decl,
+                other_mention,
+                holder,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{address}' shares bytes with '{other}' and cannot have an initial value"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_advice(
+                    Some(format!("its initial value would set part of '{other}' too")),
+                    holder.as_ref().map(|holder| {
+                        format!(
+                            "locate a variable at '{holder}', which holds all their bytes, and give it the initial value"
+                        )
+                    }),
+                );
+                if let Some(decl) = other_decl {
+                    diag.with_related(Related::new(
+                        format!("'{}' is declared here", decl.name_with_case(db).text(db)),
+                        decl.scope_id(db).file(db),
+                        decl.get_name_span(db),
+                    ));
+                } else if let Some(mention) = other_mention {
+                    diag.with_related(Related::new(
+                        format!("'{other}' is mentioned here"),
                         mention.scope.file(db),
                         mention.get_span(db),
                     ));
