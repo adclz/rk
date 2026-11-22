@@ -176,6 +176,22 @@ END_FUNCTION
 FUNCTION run64 : LWORD
     run64 := swap64(LWORD#16#0102030405060708);
 END_FUNCTION
+
+FUNCTION high16 : WORD
+    high16 := swap16(WORD#16#80FF);
+END_FUNCTION
+
+FUNCTION high16_signed : WORD
+    high16_signed := swap16_signed(INT#-129);
+END_FUNCTION
+
+FUNCTION high32 : DWORD
+    high32 := swap32(DWORD#16#8091A2B3);
+END_FUNCTION
+
+FUNCTION high64 : LWORD
+    high64 := swap64(LWORD#16#8899AABBCCDDEEFF);
+END_FUNCTION
 "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let r16: i32 = execute_wasm(&wasm, "run16", ());
@@ -186,4 +202,266 @@ END_FUNCTION
     assert_eq!(r32 as u32, 0x7856_3412);
     let r64: i64 = execute_wasm(&wasm, "run64", ());
     assert_eq!(r64 as u64, 0x0807_0605_0403_0201);
+    // Each byte with its high bit set, which a shift that keeps the sign
+    // would spread.
+    let h16: i32 = execute_wasm(&wasm, "high16", ());
+    assert_eq!(h16, 0xFF80);
+    let h16_signed: i32 = execute_wasm(&wasm, "high16_signed", ());
+    assert_eq!(
+        h16_signed, 0x7FFF,
+        "INT#-129 is 16#FF7F, its bits past 16 set"
+    );
+    let h32: i32 = execute_wasm(&wasm, "high32", ());
+    assert_eq!(h32 as u32, 0xB3A2_9180);
+    let h64: i64 = execute_wasm(&wasm, "high64", ());
+    assert_eq!(h64 as u64, 0xFFEE_DDCC_BBAA_9988);
+}
+
+/// The 32-bit swap in the one form Cranelift turns into the processor's
+/// own byte swap: `bitops.isle` in cranelift-codegen matches this tree, in
+/// this order, and no other. `IN` is the swapped value's local.
+const SWAP_32: &str = "
+local.get IN
+i32.const 24
+i32.shl
+local.get IN
+i32.const 0xFF00
+i32.and
+i32.const 8
+i32.shl
+i32.or
+local.get IN
+i32.const 8
+i32.shr_u
+i32.const 0xFF00
+i32.and
+local.get IN
+i32.const 24
+i32.shr_u
+i32.or
+i32.or";
+
+/// The 64-bit swap in that form.
+const SWAP_64: &str = "
+local.get IN
+i64.const 56
+i64.shl
+local.get IN
+i64.const 0xFF00
+i64.and
+i64.const 40
+i64.shl
+i64.or
+local.get IN
+i64.const 0xFF0000
+i64.and
+i64.const 24
+i64.shl
+local.get IN
+i64.const 0xFF000000
+i64.and
+i64.const 8
+i64.shl
+i64.or
+i64.or
+local.get IN
+i64.const 8
+i64.shr_u
+i64.const 0xFF000000
+i64.and
+local.get IN
+i64.const 24
+i64.shr_u
+i64.const 0xFF0000
+i64.and
+i64.or
+local.get IN
+i64.const 40
+i64.shr_u
+i64.const 0xFF00
+i64.and
+local.get IN
+i64.const 56
+i64.shr_u
+i64.or
+i64.or
+i64.or";
+
+/// The 16-bit swap: the 32-bit one, shifted down by 16.
+fn swap_16() -> String {
+    format!("{SWAP_32}\ni32.const 16\ni32.shr_u")
+}
+
+/// The instructions of the function `export` of `wasm`, one a line, as
+/// their text: a constant of 256 or more in hexadecimal.
+fn instructions(wasm: &[u8], export: &str) -> Vec<String> {
+    let mut imported = 0;
+    let mut index = None;
+    let mut bodies = Vec::new();
+    for payload in wasmparser::Parser::new(0).parse_all(wasm) {
+        match payload.expect("a valid module") {
+            wasmparser::Payload::ImportSection(reader) => {
+                imported += reader
+                    .into_imports()
+                    .filter(|import| {
+                        matches!(
+                            import,
+                            Ok(wasmparser::Import {
+                                ty: wasmparser::TypeRef::Func(_),
+                                ..
+                            })
+                        )
+                    })
+                    .count();
+            }
+            wasmparser::Payload::ExportSection(reader) => {
+                index = reader
+                    .into_iter()
+                    .flatten()
+                    .find(|e| e.kind == wasmparser::ExternalKind::Func && e.name == export)
+                    .map(|e| e.index as usize);
+            }
+            wasmparser::Payload::CodeSectionEntry(body) => bodies.push(body),
+            _ => {}
+        }
+    }
+    let body = &bodies[index.expect("the function is exported") - imported];
+    let constant = |value: i64| match value {
+        0..=255 => value.to_string(),
+        _ => format!("{value:#X}").replace("0X", "0x"),
+    };
+    body.get_operators_reader()
+        .expect("a body")
+        .into_iter()
+        .map(|op| match op.expect("an operator") {
+            wasmparser::Operator::LocalGet { local_index } => format!("local.get {local_index}"),
+            wasmparser::Operator::LocalSet { local_index } => format!("local.set {local_index}"),
+            wasmparser::Operator::I32Const { value } => {
+                format!("i32.const {}", constant(value.into()))
+            }
+            wasmparser::Operator::I64Const { value } => format!("i64.const {}", constant(value)),
+            wasmparser::Operator::I32Shl => "i32.shl".to_string(),
+            wasmparser::Operator::I32ShrU => "i32.shr_u".to_string(),
+            wasmparser::Operator::I32And => "i32.and".to_string(),
+            wasmparser::Operator::I32Or => "i32.or".to_string(),
+            wasmparser::Operator::I64Shl => "i64.shl".to_string(),
+            wasmparser::Operator::I64ShrU => "i64.shr_u".to_string(),
+            wasmparser::Operator::I64And => "i64.and".to_string(),
+            wasmparser::Operator::I64Or => "i64.or".to_string(),
+            other => format!("{other:?}"),
+        })
+        .collect()
+}
+
+/// Whether `form` runs in `body` from one of its instructions on, `IN` one
+/// local throughout.
+fn contains(body: &[String], form: &str) -> bool {
+    let form: Vec<&str> = form.trim().lines().collect();
+    body.windows(form.len()).any(|window| {
+        let mut local = None;
+        window
+            .iter()
+            .zip(&form)
+            .all(|(written, wanted)| match wanted {
+                &"local.get IN" => {
+                    let Some(index) = written.strip_prefix("local.get ") else {
+                        return false;
+                    };
+                    *local.get_or_insert(index) == index
+                }
+                _ => written == wanted,
+            })
+    })
+}
+
+/// `TO_BIG_ENDIAN` and every other `{wasm 'bswap'}` is written in the form
+/// Cranelift turns into one byte swap, instruction for instruction: its
+/// rule matches that order alone.
+#[rstest]
+fn a_byte_swap_is_written_as_cranelift_matches_it(mut with_db: db::RootDatabase) {
+    let source = r#"
+FUNCTION swap16 : WORD
+VAR_INPUT IN : WORD; END_VAR
+    {wasm IN 'bswap' (params IN) (result swap16)}
+END_FUNCTION
+
+FUNCTION swap32 : DWORD
+VAR_INPUT IN : DWORD; END_VAR
+    {wasm IN 'bswap' (params IN) (result swap32)}
+END_FUNCTION
+
+FUNCTION swap64 : LWORD
+VAR_INPUT IN : LWORD; END_VAR
+    {wasm IN 'bswap' (params IN) (result swap64)}
+END_FUNCTION
+"#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    for (export, form) in [
+        ("swap16", swap_16()),
+        ("swap32", SWAP_32.to_string()),
+        ("swap64", SWAP_64.to_string()),
+    ] {
+        let body = instructions(&wasm, export);
+        assert!(contains(&body, &form), "{export}:\n{}", body.join("\n"));
+    }
+}
+
+/// How many byte-swap instructions of the processor the machine code
+/// Cranelift writes for `wat` holds: `bswap` on x86-64, `rev` on aarch64.
+fn processor_swaps(wat: &str) -> usize {
+    let wasm = wat::parse_str(wat).expect("valid text");
+    let code = wasmtime::Engine::default()
+        .precompile_module(&wasm)
+        .expect("it compiles");
+    if cfg!(target_arch = "x86_64") {
+        // `0F C8+r`, after a REX prefix for a 64-bit or a high register.
+        code.windows(2)
+            .filter(|w| w[0] == 0x0F && (0xC8..=0xCF).contains(&w[1]))
+            .count()
+    } else {
+        // `REV Wd, Wn` and `REV Xd, Xn`, one aligned word each.
+        code.chunks_exact(4)
+            .map(|w| u32::from_le_bytes([w[0], w[1], w[2], w[3]]) & 0xFFFF_FC00)
+            .filter(|&w| w == 0x5AC0_0800 || w == 0xDAC0_0C00)
+            .count()
+    }
+}
+
+/// A module of a swap of each width, `IN` its parameter.
+fn swaps_module(s16: &str, s32: &str, s64: &str) -> String {
+    let body = |form: &str| form.replace("local.get IN", "local.get $IN");
+    format!(
+        "(module
+           (func (export \"s16\") (param $IN i32) (result i32) {})
+           (func (export \"s32\") (param $IN i32) (result i32) {})
+           (func (export \"s64\") (param $IN i64) (result i64) {}))",
+        body(s16),
+        body(s32),
+        body(s64)
+    )
+}
+
+/// The wasmtime rk runs on compiles each swap of that form to the
+/// processor's own instruction, and each of the form rk wrote before to
+/// none: a wasmtime that drops the rule fails here, its swaps correct but
+/// several instructions each.
+#[test]
+#[cfg_attr(not(any(target_arch = "x86_64", target_arch = "aarch64")), ignore)]
+fn cranelift_compiles_the_form_to_one_byte_swap() {
+    let matched = swaps_module(&swap_16(), SWAP_32, SWAP_64);
+    assert_eq!(processor_swaps(&matched), 3);
+    let before = swaps_module(
+        "local.get IN i32.const 0xFF i32.and i32.const 8 i32.shl
+         local.get IN i32.const 8 i32.shr_u i32.const 0xFF i32.and i32.or",
+        "local.get IN i32.const 8 i32.shr_u i32.const 0x00FF00FF i32.and
+         local.get IN i32.const 0x00FF00FF i32.and i32.const 8 i32.shl i32.or
+         i32.const 16 i32.rotl",
+        "local.get IN i64.const 8 i64.shr_u i64.const 0x00FF00FF00FF00FF i64.and
+         local.get IN i64.const 0x00FF00FF00FF00FF i64.and i64.const 8 i64.shl i64.or
+         local.set $IN
+         local.get IN i64.const 16 i64.shr_u i64.const 0x0000FFFF0000FFFF i64.and
+         local.get IN i64.const 0x0000FFFF0000FFFF i64.and i64.const 16 i64.shl i64.or
+         i64.const 32 i64.rotl",
+    );
+    assert_eq!(processor_swaps(&before), 0);
 }
