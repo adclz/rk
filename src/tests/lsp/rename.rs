@@ -1230,3 +1230,62 @@ END_CONFIGURATION
         source.replace("fuel", "gas")
     );
 }
+
+/// A type named once for several variables, `a, b : Shapes.Point`, is one
+/// name to edit: renaming the type or its namespace there edits each name
+/// once, none twice, which a client would refuse.
+#[rstest]
+fn rename_a_type_named_for_several_variables(mut with_db: RootDatabase) {
+    let source = r#"NAMESPACE Shapes
+    TYPE Point : STRUCT x : INT; END_STRUCT END_TYPE
+END_NAMESPACE
+
+FUNCTION fn1
+VAR
+    a, b, c : Shapes.Point;
+END_VAR
+END_FUNCTION
+"#;
+
+    let file = add_source(&mut with_db, source);
+    let renamed = |at: &str, new_name: &str| {
+        let offset = source.find(at).unwrap();
+        let node = descendant_at(&with_db, file, offset).unwrap();
+        let edit = node.rename(&with_db, offset, new_name).unwrap();
+        let edits = &edit.changes.as_ref().unwrap()[file.url(&with_db)];
+        for (index, one) in edits.iter().enumerate() {
+            for other in &edits[index + 1..] {
+                assert!(
+                    one.range.end <= other.range.start || other.range.end <= one.range.start,
+                    "{:?} and {:?} overlap",
+                    one.range,
+                    other.range
+                );
+            }
+        }
+        apply_rename(&with_db, &edit, &[source])
+    };
+
+    assert_snapshot!(renamed("Point;", "Spot"), @r"
+    NAMESPACE Shapes
+        TYPE Spot : STRUCT x : INT; END_STRUCT END_TYPE
+    END_NAMESPACE
+
+    FUNCTION fn1
+    VAR
+        a, b, c : Shapes.Spot;
+    END_VAR
+    END_FUNCTION
+    ");
+    assert_snapshot!(renamed("Shapes.Point;", "Forms"), @r"
+    NAMESPACE Forms
+        TYPE Point : STRUCT x : INT; END_STRUCT END_TYPE
+    END_NAMESPACE
+
+    FUNCTION fn1
+    VAR
+        a, b, c : Forms.Point;
+    END_VAR
+    END_FUNCTION
+    ");
+}
