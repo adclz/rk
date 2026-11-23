@@ -46,6 +46,7 @@ mod locals;
 mod located;
 mod mir_smoke;
 mod modulo;
+mod namespace_constants;
 mod namespaces;
 mod overloads;
 mod profile_swap;

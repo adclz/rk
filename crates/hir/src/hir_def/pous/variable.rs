@@ -144,8 +144,14 @@ impl<'db> VariableDecl<'db> {
     pub fn storage_class(&self, db: &'db dyn WorkspaceDataBase) -> StorageClass {
         // VAR_EXTERNAL holds no storage of its own; it names a configuration
         // VAR_GLOBAL, which is where the value actually lives. A PROGRAM's
-        // located VAR is its channel's cell, like a located VAR_GLOBAL.
-        if self.is_external(db) || self.is_global(db) || self.is_program_located(db) {
+        // located VAR is its channel's cell, like a located VAR_GLOBAL, and a
+        // namespace's constant read through its place (`ORIGIN.y`) is held
+        // once, as a VAR_GLOBAL is.
+        if self.is_external(db)
+            || self.is_global(db)
+            || self.is_program_located(db)
+            || self.is_namespace_constant(db)
+        {
             return StorageClass::Global;
         }
         // VAR_TEMP is scratch for one call, not instance state, even when the
@@ -159,6 +165,15 @@ impl<'db> VariableDecl<'db> {
             }
             _ => StorageClass::Local,
         }
+    }
+
+    /// A constant of a `VAR_CONSTANT` section: an item of its namespace, as
+    /// its TYPEs are, and no variable of a POU.
+    pub fn is_namespace_constant(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        matches!(
+            get_scope(db, self.get_scope_id(db)).kind,
+            ScopeKind::Pou(crate::hir_def::pous::pou::Pou::Constant(constant)) if constant == *self
+        )
     }
 
     /// A PROGRAM's `VAR` located at a complete address (`x AT %IX0.0`). It is

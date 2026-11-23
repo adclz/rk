@@ -35,6 +35,7 @@ pub mod library_root;
 pub mod literals;
 pub mod loops;
 pub mod modulo;
+pub mod namespace_constants;
 pub mod namespaces;
 pub mod nullability;
 pub mod operators;

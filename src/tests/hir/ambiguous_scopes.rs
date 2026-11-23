@@ -66,16 +66,16 @@ fn duplicate_in_same_namespace_is_one_error_not_ambiguity(mut with_db: RootDatab
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:9:22 ]
        |
      3 |             FUNCTION SharedName : INT
        |                      ^^^^^|^^^^
-       |                           `------ POU 'SharedName' is already declared here
+       |                           `------ FUNCTION 'SharedName' is already declared here
        |
      9 |             FUNCTION SharedName : INT
        |                      ^^^^^|^^^^
-       |                           `------ duplicate POU 'SharedName'
+       |                           `------ FUNCTION 'SharedName' is declared twice
     ---'
     ");
 }

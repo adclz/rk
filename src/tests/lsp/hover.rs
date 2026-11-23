@@ -1070,18 +1070,26 @@ pub fn hover_in_a_program_configuration(
 #[rstest]
 #[case::literal("T#10ms", "TIME")]
 #[case::constant("period,", "period: TIME")]
+#[case::namespace_constant("LONG,", "VAR_CONSTANT LONG: TIME := T#50ms")]
+#[case::namespace("Cycle.LONG", "NAMESPACE Cycle")]
 pub fn hover_on_a_task_interval(mut with_db: RootDatabase, #[case] at: &str, #[case] shown: &str) {
     let source = r#"
 PROGRAM P
 END_PROGRAM
+
+NAMESPACE Cycle
+    VAR_CONSTANT LONG : TIME := T#50ms; END_VAR
+END_NAMESPACE
 
 CONFIGURATION Cfg
 VAR_GLOBAL CONSTANT period : TIME := T#20ms; END_VAR
     RESOURCE Res ON CPU
         TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
         TASK Slow(INTERVAL := period, PRIORITY := 2);
+        TASK Slower(INTERVAL := Cycle.LONG, PRIORITY := 3);
         PROGRAM P1 WITH Fast : P;
         PROGRAM P2 WITH Slow : P;
+        PROGRAM P3 WITH Slower : P;
     END_RESOURCE
 END_CONFIGURATION
 "#;
@@ -1576,4 +1584,77 @@ END_CONFIGURATION
     let hover = node.hover(&with_db, offset).expect("a hover");
     let markup = hover_markup(hover.contents).unwrap();
     assert!(markup.contains(shown), "{markup}");
+}
+
+/// A namespace's constant shows as the item it is, where it is declared and
+/// wherever it is named: its namespace, `VAR_CONSTANT`, its type and its
+/// value as written, and what that value comes to when it is written as an
+/// expression or in another base. A part of it shows the part.
+#[rstest]
+pub fn hover_on_a_namespace_constant(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Point : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+VAR_CONSTANT
+    ROWS : INT := 10;
+    ORIGIN : Point := (x := 1,
+                       y := 2);
+    FLAGS : WORD := 16#0008;
+END_VAR
+
+NAMESPACE Limits
+    VAR_CONSTANT
+        HIGH : INT := ROWS * 2;
+    END_VAR
+END_NAMESPACE
+
+TYPE Row : ARRAY[0..ROWS] OF INT; END_TYPE
+
+FUNCTION Uses : INT
+VAR
+    b : BOOL;
+END_VAR
+    b := FLAGS.%X3;
+    Uses := Limits.HIGH + ORIGIN.y;
+END_FUNCTION
+
+FUNCTION Imported : INT
+USING Limits;
+    Imported := HIGH;
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+
+    let hovered: Vec<String> = [
+        ("ROWS : INT", 0),
+        ("ROWS] OF", 0),
+        ("HIGH : INT", 0),
+        ("Limits.HIGH +", 7),
+        ("HIGH;\nEND_FUNCTION", 0),
+        ("FLAGS.%X3", 0),
+        ("ORIGIN.y", 0),
+        ("ORIGIN.y", 7),
+    ]
+    .iter()
+    .map(|(needle, delta)| {
+        let offset = source.find(needle).expect("the needle") + delta;
+        let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
+        let text = node
+            .hover(&with_db, offset)
+            .and_then(|h| hover_markup(h.contents))
+            .expect("hover text");
+        format!("{needle:?}+{delta} -> {}", text.replace('\n', " ").trim())
+    })
+    .collect();
+
+    assert_snapshot!(hovered.join("\n"), @r#"
+    "ROWS : INT"+0 -> ```iecst VAR_CONSTANT ROWS: INT := 10 ```  --- size = 2
+    "ROWS] OF"+0 -> ```iecst VAR_CONSTANT ROWS: INT := 10 ```  --- size = 2
+    "HIGH : INT"+0 -> ```iecst Limits VAR_CONSTANT HIGH: INT := ROWS * 2 ```  --- value = 20, size = 2
+    "Limits.HIGH +"+7 -> ```iecst Limits VAR_CONSTANT HIGH: INT := ROWS * 2 ```  --- value = 20, size = 2
+    "HIGH;\nEND_FUNCTION"+0 -> ```iecst Limits VAR_CONSTANT HIGH: INT := ROWS * 2 ```  --- value = 20, size = 2
+    "FLAGS.%X3"+0 -> ```iecst VAR_CONSTANT FLAGS: WORD := 16#0008 ```  --- value = 8, size = 2
+    "ORIGIN.y"+0 -> ```iecst VAR_CONSTANT ORIGIN: Point := (x := 1, y := 2) ```  --- size = 4
+    "ORIGIN.y"+7 -> ```iecst y: INT ```  --- size = 2, offset = 2
+    "#);
 }

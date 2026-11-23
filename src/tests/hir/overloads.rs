@@ -976,15 +976,15 @@ FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 1; END_FUNCTION
 FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 2; END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:3:10 ]
        |
      2 | FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 1; END_FUNCTION
        |          ^|^
-       |           `--- POU 'Dup' is already declared here
+       |           `--- FUNCTION 'Dup' is already declared here
      3 | FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 2; END_FUNCTION
        |          ^|^
-       |           `--- duplicate POU 'Dup'
+       |           `--- FUNCTION 'Dup' is declared twice
     ---'
     ");
 }
@@ -1161,45 +1161,45 @@ FUNCTION_BLOCK Fb
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:3:10 ]
        |
      2 | FUNCTION Cap : INT VAR_INPUT s : STRING[8]; END_VAR Cap := 1; END_FUNCTION
        |          ^|^
-       |           `--- POU 'Cap' is already declared here
+       |           `--- FUNCTION 'Cap' is already declared here
      3 | FUNCTION Cap : INT VAR_INPUT s : STRING[80]; END_VAR Cap := 2; END_FUNCTION
        |          ^|^
-       |           `--- duplicate POU 'Cap'
+       |           `--- FUNCTION 'Cap' is declared twice
     ---'
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:6:10 ]
        |
      5 | FUNCTION Sub : INT VAR_INPUT x : INT (0..10); END_VAR Sub := 1; END_FUNCTION
        |          ^|^
-       |           `--- POU 'Sub' is already declared here
+       |           `--- FUNCTION 'Sub' is already declared here
      6 | FUNCTION Sub : INT VAR_INPUT x : INT; END_VAR Sub := 2; END_FUNCTION
        |          ^|^
-       |           `--- duplicate POU 'Sub'
+       |           `--- FUNCTION 'Sub' is declared twice
     ---'
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:9:10 ]
        |
      8 | FUNCTION Kind : INT VAR_INPUT x : INT; END_VAR Kind := 1; END_FUNCTION
        |          ^^|^
-       |            `--- POU 'Kind' is already declared here
+       |            `--- FUNCTION 'Kind' is already declared here
      9 | FUNCTION Kind : INT VAR_IN_OUT x : INT; END_VAR Kind := 2; END_FUNCTION
        |          ^^|^
-       |            `--- duplicate POU 'Kind'
+       |            `--- FUNCTION 'Kind' is declared twice
     ---'
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
         ,-[ file:///test0.st:12:10 ]
         |
      11 | FUNCTION Named : INT VAR_INPUT a : INT; b : REAL; END_VAR Named := 1; END_FUNCTION
         |          ^^|^^
-        |            `---- POU 'Named' is already declared here
+        |            `---- FUNCTION 'Named' is already declared here
      12 | FUNCTION Named : INT VAR_INPUT b : INT; a : REAL; END_VAR Named := 2; END_FUNCTION
         |          ^^|^^
-        |            `---- duplicate POU 'Named'
+        |            `---- FUNCTION 'Named' is declared twice
     ----'
     [E0108] Error: duplicate method declaration
         ,-[ file:///test0.st:16:19 ]
@@ -1437,25 +1437,25 @@ FUNCTION Aliased VAR_OUTPUT q : INT; END_VAR q := 1; END_FUNCTION
 FUNCTION Aliased VAR_OUTPUT q : Count; END_VAR q := 2; END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:5:10 ]
        |
      4 | FUNCTION Renamed VAR_OUTPUT a : INT; END_VAR a := 1; END_FUNCTION
        |          ^^^|^^^
-       |             `----- POU 'Renamed' is already declared here
+       |             `----- FUNCTION 'Renamed' is already declared here
      5 | FUNCTION Renamed VAR_OUTPUT b : INT; END_VAR b := 2; END_FUNCTION
        |          ^^^|^^^
-       |             `----- duplicate POU 'Renamed'
+       |             `----- FUNCTION 'Renamed' is declared twice
     ---'
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:8:10 ]
        |
      7 | FUNCTION Aliased VAR_OUTPUT q : INT; END_VAR q := 1; END_FUNCTION
        |          ^^^|^^^
-       |             `----- POU 'Aliased' is already declared here
+       |             `----- FUNCTION 'Aliased' is already declared here
      8 | FUNCTION Aliased VAR_OUTPUT q : Count; END_VAR q := 2; END_FUNCTION
        |          ^^^|^^^
-       |             `----- duplicate POU 'Aliased'
+       |             `----- FUNCTION 'Aliased' is declared twice
     ---'
     ");
 }

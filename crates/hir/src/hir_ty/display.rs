@@ -240,6 +240,8 @@ impl<'db> Type<'db> {
             Self::Class(c) => c.get_scope_id(db),
             Self::Interface(i) => i.get_scope_id(db),
             Self::DataType(dt) => dt.get_scope_id(db),
+            // A namespace's constant, an item of it as its TYPEs are.
+            Self::Variable((var, _)) if var.is_namespace_constant(db) => var.get_scope_id(db),
             _ => return Default::default(),
         };
 

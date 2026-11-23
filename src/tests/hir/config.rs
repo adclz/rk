@@ -2322,7 +2322,7 @@ fn mutable_global_interval_is_rejected(mut with_db: db::RootDatabase) {
        |
      6 |                 TASK T(INTERVAL := period, PRIORITY := 1);
        |                      |
-       |                      `-- task 'T' cannot be scheduled: INTERVAL must be a TIME literal or a CONSTANT global holding one
+       |                      `-- task 'T' cannot be scheduled: INTERVAL must be a TIME literal or a constant holding one
        |
        | Help: declare the global `VAR_GLOBAL CONSTANT`
     ---'
@@ -2690,7 +2690,7 @@ fn more_than_one_configuration_is_rejected(mut with_db: RootDatabase) {
 /// Renders the single CONFIGURATION's resolved schedule — what lowering
 /// consumes — as text, so a test states the whole execution model in the shape
 /// a reader can check against the source above it.
-fn resolved_schedule(db: &RootDatabase) -> String {
+pub(crate) fn resolved_schedule(db: &RootDatabase) -> String {
     use std::fmt::Write;
 
     /// Nanoseconds back in the units the source wrote them in.

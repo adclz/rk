@@ -142,7 +142,7 @@ Slow   ●                                                 ●
 
 When both are due on the same tick, the one with the lower `PRIORITY` runs first.
 
-- `INTERVAL` is a `TIME` or `LTIME` literal, or a `VAR_GLOBAL CONSTANT` holding one. The standard takes a `TIME` only. Zero means no periodic runs, so a task with nothing else is `E1410`.
+- `INTERVAL` is a `TIME` or `LTIME` literal, or a `VAR_GLOBAL CONSTANT` or a `VAR_CONSTANT` holding one. The standard takes a `TIME` only. Zero means no periodic runs, so a task with nothing else is `E1410`.
 - `PRIORITY` is required (`E1405`), an unsigned integer of up to 32 bits where the standard takes a `UINT`. `0` is the most urgent.
 - A run that starts late happens once: the ticks it missed are dropped, never replayed.
 
@@ -419,7 +419,7 @@ This way a POU's declarations list everything it takes from outside.
 
 - Reading a global without `VAR_EXTERNAL` still works, and the linter warns with `L0118`.
 - A `VAR_EXTERNAL` naming a global that does not exist is `E0206`.
-- A `VAR_GLOBAL CONSTANT` can give a task its interval: `TASK Slow(INTERVAL := slow_period, PRIORITY := 5);`.
+- A `VAR_GLOBAL CONSTANT` can give a task its interval: `TASK Slow(INTERVAL := slow_period, PRIORITY := 5);`. So can a [`VAR_CONSTANT`](constants.md).
 
 ## VAR_CONFIG
 

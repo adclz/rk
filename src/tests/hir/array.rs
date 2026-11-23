@@ -904,3 +904,39 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+/// A bound that does not fold is refused once, where it is declared: a
+/// call passing an array to the input is no type mismatch on top of it.
+#[rstest]
+fn invalid_bound_is_reported_once_not_at_each_call(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Sum : INT
+VAR_INPUT a : ARRAY[0..N] OF INT; END_VAR
+    Sum := a[0];
+END_FUNCTION
+
+FUNCTION Caller : INT
+VAR b : ARRAY[0..4] OF INT; END_VAR
+    Caller := Sum(b) + Sum(a := b);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0502] Error: invalid array upper bound
+       ,-[ file:///test0.st:3:24 ]
+       |
+     3 | VAR_INPUT a : ARRAY[0..N] OF INT; END_VAR
+       |                        |
+       |                        `-- the upper bound is not an integer constant
+    ---'
+    [E0201] Error: unknown name
+       ,-[ file:///test0.st:3:24 ]
+       |
+     3 | VAR_INPUT a : ARRAY[0..N] OF INT; END_VAR
+       |                        |
+       |                        `-- no item 'N' found in scope
+       |
+       | Note: 'Sum' has a item with a similar name:
+       |       - a
+    ---'
+    ");
+}

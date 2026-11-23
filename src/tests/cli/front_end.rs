@@ -54,7 +54,7 @@ fn read<'db>(
     file: File,
     ast: &'db ParsedAst,
 ) -> SemanticIndex<'db> {
-    type Declaration = ast::generated::ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
+    type Declaration = ast::generated::ClassDecl_ConfigDecl_ConstantVarDecls_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
 
     READ.fetch_add(1, Ordering::Relaxed);
     let source = ast

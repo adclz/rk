@@ -168,6 +168,9 @@ impl<'db> DocumentSymbolsHandler<'db> for Pou<'db> {
                 Pou::Class(_) => "CLASS".to_string(),
                 Pou::DataType(dt) => infer.type_of_specs[&dt.spec(db)].type_name(db),
                 Pou::Interface(_) => "INTERFACE".to_string(),
+                Pou::Constant(constant) => {
+                    hir::hir_ty::infer::Infer::infer(&constant.spec(db), db).type_name(db)
+                }
             }),
             kind: match self {
                 Pou::FunctionBlock(_) => SymbolKind::FUNCTION,
@@ -209,6 +212,7 @@ impl<'db> DocumentSymbolsHandler<'db> for Pou<'db> {
                     _ => SymbolKind::TYPE_PARAMETER,
                 },
                 Pou::Interface(_) => SymbolKind::INTERFACE,
+                Pou::Constant(_) => SymbolKind::CONSTANT,
             },
             deprecated: None,
             range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))

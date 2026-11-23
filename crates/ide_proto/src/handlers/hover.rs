@@ -266,6 +266,7 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
             Pou::Class(_) => "CLASS",
             Pou::Interface(_) => "INTERFACE",
             Pou::DataType(dt) => "TYPE",
+            Pou::Constant(_) => "VAR_CONSTANT",
         };
 
         let name = self.get_name_with_case(db).text(db);
@@ -275,18 +276,38 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
                 .map(|spec| format!(": {}", spec.infer(db).type_name(db)))
                 .unwrap_or_default(),
             Pou::DataType(dt) => format!(": {}", dt.spec(db).infer(db).full_type_name(db)),
+            Pou::Constant(constant) => format!(
+                ": {}{}",
+                constant.spec(db).infer(db).type_name(db),
+                written_value(db, *constant)
+                    .map(|value| format!(" := {value}"))
+                    .unwrap_or_default()
+            ),
             _ => "".to_string(),
         };
 
         let path = Type::new_pou(db, *self).path_name(db);
         let size = match self {
             Pou::DataType(dt) => layout::of_spec(db, dt.spec(db)).map(|l| l.size),
+            Pou::Constant(constant) => layout::of_spec(db, constant.spec(db)).map(|l| l.size),
             Pou::FunctionBlock(_) | Pou::Class(_) => layout::instance_layout(db, *self)
                 .as_ref()
                 .map(|instance| instance.whole.size),
             Pou::Function(_) | Pou::Interface(_) => None,
         };
-        let layout = layout_section(size, None);
+        // A constant written as an expression also shows what it comes to.
+        let value = match self {
+            Pou::Constant(constant) => folded_integer(db, *constant),
+            _ => None,
+        };
+        let layout = match value {
+            Some(value) => format!(
+                "\n---\nvalue = {value}{}\n",
+                size.map(|size| format!(", size = {size}"))
+                    .unwrap_or_default()
+            ),
+            None => layout_section(size, None),
+        };
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -303,8 +324,49 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
     }
 }
 
+/// A constant's value as it is written, its spaces run together: what the
+/// hover shows after `:=`.
+fn written_value<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    constant: VariableDecl<'db>,
+) -> Option<String> {
+    let span = constant.init(db)?.get_span(db);
+    let source = constant.get_scope_id(db).file(db).document(db).as_str();
+    let text = source.get(span.start_byte..span.end_byte)?;
+    let text = text.trim_start().strip_prefix(":=").unwrap_or(text);
+    Some(text.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+/// The integer a constant's value folds to, when it is written some other
+/// way (`ROWS * 2`, `16#0008`): an integer's or a bit string's.
+fn folded_integer<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    constant: VariableDecl<'db>,
+) -> Option<i128> {
+    use hir::hir_def::expressions::spec::ElementarySpec as E;
+    let ty = constant.spec(db).infer(db).calculates_as(db);
+    let integer = ty.is_signed_integer()
+        || ty.is_unsigned_integer()
+        || matches!(
+            ty,
+            Type::Elementary(E::Byte | E::Word | E::DWord | E::LWord)
+        );
+    if !integer {
+        return None;
+    }
+    let init = hir::hir_ty::infer::const_eval::constant_init(db, constant)?;
+    let value = hir::hir_ty::infer::const_eval::spec_value(db, init)?;
+    (Some(value.to_string()) != written_value(db, constant)).then_some(value)
+}
+
 impl<'db> HoverHandler<'db> for VariableDecl<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        // A namespace's constant is an item of its namespace: shown as one,
+        // with its value, where it is declared and wherever it is named.
+        if self.is_namespace_constant(db) {
+            let at = self.get_name_span(db).start_byte;
+            return Pou::Constant(*self).hover(db, at);
+        }
         let comment = self.get_comment(db).unwrap_or_default();
         let kind = match self.kind(db) {
             VariableKind::Input => "INPUT",

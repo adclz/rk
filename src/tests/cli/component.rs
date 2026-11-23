@@ -467,6 +467,56 @@ fn what_a_host_may_not_read_or_write_is_an_error(mut with_db: db::RootDatabase) 
     );
 }
 
+/// A namespace's constant held in memory, a STRUCT, is the module's own
+/// data, as its string literals are: a host reads the value `init` gave it,
+/// and writes none of it. Its cell is past the variables, where
+/// `write-memory` stops, and no symbol names it.
+#[rstest]
+fn a_host_reads_a_constant_and_writes_none(mut with_db: db::RootDatabase) {
+    let source = "
+        TYPE Point : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+        VAR_CONSTANT
+            ORIGIN : Point := (x := 1, y := 2);
+        END_VAR
+        PROGRAM P
+        VAR y : INT; END_VAR
+            y := ORIGIN.y;
+        END_PROGRAM
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Main WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    ";
+    let (mir, wasm) = compile_to_mir_and_wasm_as_built(&mut with_db, source);
+    let cell = mir
+        .memory_layout
+        .allocations
+        .iter()
+        .find(|a| a.kind == mir::memory::MirAllocKind::Constant)
+        .expect("ORIGIN has a cell");
+    assert!(cell.address >= mir.constants_base, "past the variables");
+    let component = wrap(&wasm);
+    let info = debug_format::DebugInfo::from_wasm(&component.bytes);
+    assert!(info.symbol(".ORIGIN").is_none() && info.symbol("ORIGIN").is_none());
+    let y = range_of(&info, "Main.y");
+    assert!(y.address < mir.constants_base);
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+
+    let origin = Range {
+        address: cell.address,
+        size: 4,
+    };
+    assert_eq!(plc.read_memory(&[origin]), Ok(vec![1, 0, 2, 0]));
+    let refused = Err(MemoryError::OutsideVariables);
+    assert_eq!(plc.write_memory(cell.address, &[9, 0]), refused);
+    assert_eq!(plc.write_memory(mir.constants_base, &[0]), refused);
+    assert_eq!(plc.write_memory(y.address, &[5, 0]), Ok(()), "a variable");
+    assert_eq!(plc.read_memory(&[origin]), Ok(vec![1, 0, 2, 0]));
+}
+
 /// A read lands in the scratch area, after its ranges. Each range of 4 and
 /// 64 bytes takes 8 of the list, so a list written over its own ranges
 /// would read garbage. A read larger than the area is `too-large`, the

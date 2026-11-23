@@ -260,6 +260,8 @@ impl<'db> Type<'db> {
             Pou::FunctionBlock(f) => Type::FunctionBlock(f),
             Pou::Interface(f) => Type::Interface(f),
             Pou::DataType(dt) => Type::DataType(dt),
+            // A constant is a value: the variable it is.
+            Pou::Constant(constant) => Type::Variable((constant, None)),
         }
     }
 

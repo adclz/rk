@@ -337,11 +337,11 @@ impl WasmGen<'_> {
             &f,
         );
 
-        // The variables: past the builtins' memory, up to the string
-        // literals, which come after the static layout.
+        // The variables: past the builtins' memory, up to the constants'
+        // cells, which the string literals follow.
         let variables = (
             mir::memory::BUILTIN_RESERVED_FLOOR,
-            self.module.memory_layout.total_size(),
+            self.module.constants_base,
         );
         let f = control_write_memory(area, arena, variables);
         self.add_control_function(

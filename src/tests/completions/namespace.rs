@@ -750,3 +750,52 @@ END_FUNCTION
         .collect();
     assert_eq!(namespaces, ["Lib"]);
 }
+
+/// `Limits.` offers the namespace's constants beside its POUs, as constants.
+#[rstest]
+pub fn namespace_constant_completion(mut with_db: RootDatabase) {
+    let ns_source = r#"
+NAMESPACE Limits
+    VAR_CONSTANT
+        HIGH : INT := 6;
+        LOW : INT := 1;
+    END_VAR
+    FUNCTION Clamp : INT
+    END_FUNCTION
+END_NAMESPACE
+"#;
+    let body_source = r#"
+FUNCTION fn1 : INT
+VAR
+    x : INT;
+END_VAR
+    x := Limits.
+END_FUNCTION
+"#;
+    add_sources(&mut with_db, &[ns_source, body_source]);
+    let file = with_db
+        .get_file(&Url::parse("file:///test1.st").unwrap())
+        .unwrap();
+    let offset = body_source.find("Limits.").unwrap() + "Limits.".len();
+    let (node, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: Some(".".into()),
+        query: "".into(),
+        node_index_pos: Some(node_key),
+        is_last_before,
+    };
+    let mut items: Vec<String> = node
+        .completion(&with_db, &req)
+        .unwrap()
+        .iter()
+        .map(|item| format!("{} {:?} {:?}", item.label, item.kind, item.detail))
+        .collect();
+    items.sort();
+    insta::assert_snapshot!(items.join("\n"), @r#"
+    Clamp Some(Function) Some("(FUNCTION)")
+    HIGH Some(Constant) Some("(CONSTANT)")
+    LOW Some(Constant) Some("(CONSTANT)")
+    "#);
+}

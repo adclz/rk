@@ -31,6 +31,7 @@ static SURROUND_SPACES: &str = r##"
     "VAR_TEMP"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
+    "VAR_CONSTANT"
     "VAR_ACCESS"
     "VAR_CONFIG"
     "END_VAR"
@@ -174,6 +175,7 @@ static NEW_LINES: &str = r##"
     "VAR_IN_OUT"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
+    "VAR_CONSTANT"
     "VAR_CONFIG"
 ] @prepend_hardline
 
@@ -404,6 +406,7 @@ static INDENTATIONS: &str = r#"
     "VAR_TEMP"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
+    "VAR_CONSTANT"
     "VAR_ACCESS"
     "VAR_CONFIG"
     "STRUCT"
@@ -476,6 +479,7 @@ static ALLOW_BLANK_LINE: &str = r#"
     (temp_var_decls)
     (external_var_decls)
     (global_var_decl)
+    (constant_var_decls)
 
     (func_body)
     (fb_body)

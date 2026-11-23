@@ -82,6 +82,7 @@ impl<'db> Resolver<'db> {
         &self,
         db: &'db dyn WorkspaceDataBase,
         path_expr: PathExpr<'db>,
+        multibits: Option<MultibitsPart>,
         ctx: &mut BodyInferenceResult<'db>,
     ) -> bool {
         let Some((access, _)) = path_expr.to_namespace_access(db) else {
@@ -116,8 +117,7 @@ impl<'db> Resolver<'db> {
                         &mut ctx.errors,
                     ),
                 }
-                ctx.type_of_path_expr
-                    .insert(path_expr, Type::new_pou(db, pou));
+                type_named_pou(db, path_expr, pou, multibits, ctx);
                 true
             }
             name::NameResolution::Program(prog) => {
@@ -291,7 +291,9 @@ impl<'db> Resolver<'db> {
         ctx: &mut BodyInferenceResult<'db>,
     ) {
         match pou_named(db, path_expr) {
-            Some((pou @ Pou::DataType(_), using)) => record_pou(db, path_expr, pou, using, ctx),
+            Some((pou @ Pou::DataType(_), using)) => {
+                record_pou(db, path_expr, pou, using, None, ctx)
+            }
             _ => self.resolve_begin_path_expr(db, path_expr, None, ctx),
         }
     }
@@ -364,7 +366,7 @@ impl<'db> Resolver<'db> {
                     }
                     self.resolve_index_subscripts(db, path, ctx);
                 } else if let Some((pou, using)) = pou_named(db, path_expr) {
-                    record_pou(db, path_expr, pou, using, ctx);
+                    record_pou(db, path_expr, pou, using, multibits, ctx);
                 }
             }
         };
@@ -383,7 +385,7 @@ impl<'db> Resolver<'db> {
                 self.resolve_index_subscripts(db, path_expr, ctx);
             }
             PathResolutionRoot::Namespace { .. } => {
-                self.try_resolve_as_fq(db, path_expr, ctx);
+                self.try_resolve_as_fq(db, path_expr, multibits, ctx);
             }
         }
     }
@@ -540,8 +542,13 @@ impl<'db> Resolver<'db> {
         // multibit to after the walk — otherwise it applies to the array variable
         // before indexing, changing its type prematurely.
         let single_step = steps.len() == 1;
+        // The steps a namespace's constant took at the start of the path.
+        let mut skip_to = 0;
 
         for (index, step) in steps.iter().enumerate() {
+            if index < skip_to {
+                continue;
+            }
             let is_first_step = index == 0;
 
             // Inside a Function/Method, the callable's OWN name refers to the
@@ -617,8 +624,45 @@ impl<'db> Resolver<'db> {
 
             if !resolved {
                 if is_first_step && matches!(self.root, PathResolutionRoot::Value { .. }) {
+                    // The leading steps name a namespace's constant, with more
+                    // after them: the constant is the value they walk, its
+                    // fields and elements (`ORIGIN.y`, `PRIMES[1]`,
+                    // `Limits.ORIGIN.y`). A constant that is the whole path
+                    // is that path's name, which the FQ resolution takes.
+                    if let Some((count, constant, using)) =
+                        leading_constant(db, steps, path_expr.get_scope_id(db))
+                        && count < steps.len()
+                    {
+                        let call_site = CallSite::new(path_expr.scope_id(db), path_expr.get_id(db));
+                        match using {
+                            Some(using) => {
+                                ctx.usings_used.insert(using);
+                            }
+                            None => check_namespace_visibility(
+                                db,
+                                &call_site,
+                                constant.get_scope_id(db),
+                                &mut ctx.errors,
+                            ),
+                        }
+                        // The steps before the constant's named its namespace.
+                        for step in &steps[..count - 1] {
+                            ctx.namespace_of_path_expr.insert(step.get_expr(db));
+                        }
+                        let named = steps[count - 1].get_expr(db);
+                        let ty = Type::new_var(db, constant);
+                        ctx.type_of_path_expr.insert(named, ty);
+                        ctx.variable_of_path_expr.insert(named, constant);
+                        ctx.variables_used.insert(constant);
+                        current = ty;
+                        place.current_typ = ty;
+                        place.current_path = named;
+                        skip_to = count;
+                        continue;
+                    }
+
                     // Try full FQ resolution (for namespace-qualified paths).
-                    if self.try_resolve_as_fq(db, path_expr, ctx) {
+                    if self.try_resolve_as_fq(db, path_expr, multibits, ctx) {
                         return;
                     }
 
@@ -746,6 +790,7 @@ fn record_pou<'db>(
     path_expr: BeginPathExpr<'db>,
     pou: Pou<'db>,
     using: Option<Using<'db>>,
+    multibits: Option<MultibitsPart>,
     ctx: &mut BodyInferenceResult<'db>,
 ) {
     let Some(path) = path_expr.expr(db) else {
@@ -759,7 +804,38 @@ fn record_pou<'db>(
         }
         None => check_namespace_visibility(db, &call_site, pou.get_scope_id(db), &mut ctx.errors),
     }
-    ctx.type_of_path_expr.insert(path, Type::new_pou(db, pou));
+    type_named_pou(db, path, pou, multibits, ctx);
+}
+
+/// Types a path as the POU it names. A namespace's constant is a value: the
+/// path names its variable, as a VAR_GLOBAL's does, and a partial access of
+/// it (`FLAGS.%X3`) is a slice of that value.
+fn type_named_pou<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: PathExpr<'db>,
+    pou: Pou<'db>,
+    multibits: Option<MultibitsPart>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    let Pou::Constant(constant) = pou else {
+        ctx.type_of_path_expr.insert(path, Type::new_pou(db, pou));
+        return;
+    };
+    if let Some(mb) = multibits {
+        let base = crate::hir_ty::infer::Infer::infer(&constant.spec(db), db);
+        crate::hir_ty::resolver::walk::check_multibits_bounds(
+            db,
+            path,
+            base,
+            Some(constant),
+            mb,
+            ctx,
+        );
+    }
+    ctx.type_of_path_expr
+        .insert(path, Type::new_var_with_multibits(db, constant, multibits));
+    ctx.variable_of_path_expr.insert(path, constant);
+    ctx.variables_used.insert(constant);
 }
 
 /// What a name means as a value where no POU is walked, in a TYPE's or a
@@ -794,4 +870,40 @@ fn own_result<'db>(db: &'db dyn WorkspaceDataBase, base: Type<'db>) -> Option<Ca
         _ => return None,
     };
     callable.return_type(db).map(|_| callable)
+}
+
+/// The leading steps of a path that name a namespace's constant: how many,
+/// the constant, and the USING it came through. `ORIGIN.y` and `PRIMES[1]`
+/// start with one, `Limits.ORIGIN.y` with two, and `Limits.HIGH` is one whole.
+pub(crate) fn leading_constant<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    steps: &[PathExprWalkStep<'db>],
+    scope: ScopeId<'db>,
+) -> Option<(
+    usize,
+    crate::hir_def::pous::variable::VariableDecl<'db>,
+    Option<Using<'db>>,
+)> {
+    let mut namespace = Vec::new();
+    for (index, step) in steps.iter().enumerate() {
+        let PathExprWalkStep::Field { ident, .. } = step else {
+            return None;
+        };
+        let access = NamespaceAccess::new(
+            db,
+            (!namespace.is_empty()).then(|| {
+                crate::hir_def::interned::namespace::SpanNamespacePath::from((
+                    db, &namespace, scope,
+                ))
+            }),
+            *ident,
+        );
+        if let name::NameResolution::Pou(Pou::Constant(constant), using) =
+            name::resolve_name(db, &access, scope)
+        {
+            return Some((index + 1, constant, using));
+        }
+        namespace.push(*ident);
+    }
+    None
 }

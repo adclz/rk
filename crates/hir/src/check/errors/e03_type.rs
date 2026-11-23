@@ -133,6 +133,12 @@ pub enum TypeError<'db> {
         expr: Spec<'db>,
         ty: Type<'db>,
     },
+    /// A constant of a `VAR_CONSTANT` section named where a type goes:
+    /// `x : ROWS`.
+    ConstantAsType {
+        expr: Spec<'db>,
+        constant: crate::hir_def::pous::variable::VariableDecl<'db>,
+    },
     DirectType {
         typ: Type<'db>,
         expr: CallSite<'db>,
@@ -252,6 +258,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::EdgeNotBool { .. } => "E0321",
             Self::StorageTooLarge { .. } => "E0322",
             Self::FunctionAsType { .. } => "E0316",
+            Self::ConstantAsType { .. } => "E0323",
             Self::DirectType { .. } => "E0317",
             Self::AssignFunctionOrMethod { .. } => "E0318",
             Self::AssignVoidResult { .. } => "E0319",
@@ -581,6 +588,26 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::ConstantAsType { expr, constant } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is a constant, not a type",
+                        constant.name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_related(ide_diagnostic::Related::new(
+                    format!(
+                        "'{}' is declared here",
+                        constant.name_with_case(db).text(db)
+                    ),
+                    constant.get_scope_id(db).file(db),
+                    constant.get_name_span(db),
+                ));
+                diag
+            }
             Self::DirectType { expr, typ } => diag()
                 .message(format!("'{}' is not a value", typ.type_name(db)))
                 .severity(DiagnosticSeverity::ERROR)

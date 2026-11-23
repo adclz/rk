@@ -895,3 +895,57 @@ END_FUNCTION
     let response = node.definition(&with_db, offset).unwrap();
     assert_snapshot!(format_definition_response(&response), @"/test0.st:0:33-0:37");
 }
+
+/// A namespace's constant named in another file, bare, qualified, through
+/// USING and in a bound, goes to its declaration.
+#[rstest]
+pub fn definition_of_a_namespace_constant(mut with_db: RootDatabase) {
+    use db::WorkspaceDataBase;
+    let constants = r#"NAMESPACE Limits
+    VAR_CONSTANT
+        HIGH : INT := 6;
+    END_VAR
+END_NAMESPACE
+
+VAR_CONSTANT
+    ROWS : INT := 10;
+END_VAR
+"#;
+    let uses = r#"FUNCTION Uses : INT
+VAR
+    cells : ARRAY[0..ROWS] OF INT;
+END_VAR
+    Uses := Limits.HIGH + ROWS;
+END_FUNCTION
+
+FUNCTION Imported : INT
+USING Limits;
+    Imported := HIGH;
+END_FUNCTION
+"#;
+    crate::tests::utils::add_sources(&mut with_db, &[constants, uses]);
+    let file = with_db
+        .get_file(&auto_lsp::lsp_types::Url::parse("file:///test1.st").unwrap())
+        .unwrap();
+
+    let found: Vec<String> = [
+        ("ROWS] OF", 0),
+        ("Limits.HIGH", 7),
+        ("ROWS;", 0),
+        ("HIGH;", 0),
+    ]
+    .iter()
+    .map(|(needle, delta)| {
+        let offset = uses.find(needle).unwrap() + delta;
+        let node = descendant_at(&with_db, file, offset).unwrap();
+        let def = node.definition(&with_db, offset).unwrap();
+        format!("{needle:?}+{delta} -> {}", format_definition_response(&def))
+    })
+    .collect();
+    assert_snapshot!(found.join("\n"), @r#"
+    "ROWS] OF"+0 -> /test0.st:7:4-7:8
+    "Limits.HIGH"+7 -> /test0.st:2:8-2:12
+    "ROWS;"+0 -> /test0.st:7:4-7:8
+    "HIGH;"+0 -> /test0.st:2:8-2:12
+    "#);
+}

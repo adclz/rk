@@ -182,32 +182,27 @@ fn invalid_bool_logic_that_does_not_fold(mut with_db: RootDatabase) {
         END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value not constant
+    [E0408] Error: constant defined by its own value
        ,-[ file:///test0.st:3:34 ]
        |
      3 |         VAR CONSTANT a : BOOL := b; b : BOOL := a; END_VAR
-       |                                  |
-       |                                  `-- this initial value must be a constant: it is fixed before the program runs
+       |                                  |  |
+       |                                  `----- 'a' is defined by its own value, through 'b'
+       |                                     |
+       |                                     `-- 'b' is declared here
        |
-       | Note: 'b' is CONSTANT, but its own value does not fold (a reference cycle, or a non-constant initializer)
+       | Note: a constant's value is computed before the program runs, from the constants it names
     ---'
-    [E0401] Error: initial value not constant
+    [E0408] Error: constant defined by its own value
        ,-[ file:///test0.st:3:49 ]
        |
      3 |         VAR CONSTANT a : BOOL := b; b : BOOL := a; END_VAR
+       |                      |                          |
+       |                      `----------------------------- 'a' is declared here
        |                                                 |
-       |                                                 `-- this initial value must be a constant: it is fixed before the program runs
+       |                                                 `-- 'b' is defined by its own value, through 'a'
        |
-       | Note: 'a' is CONSTANT, but its own value does not fold (a reference cycle, or a non-constant initializer)
-    ---'
-    [E0401] Error: initial value not constant
-       ,-[ file:///test0.st:6:25 ]
-       |
-     6 |             x : BOOL := a AND TRUE;
-       |                         ^^^^^|^^^^
-       |                              `------ this initial value must be a constant: it is fixed before the program runs
-       |
-       | Note: 'a' is CONSTANT, but its own value does not fold (a reference cycle, or a non-constant initializer)
+       | Note: a constant's value is computed before the program runs, from the constants it names
     ---'
     [E0401] Error: initial value not constant
        ,-[ file:///test0.st:7:25 ]

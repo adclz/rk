@@ -119,7 +119,7 @@ It is a warning, not an error.
 
 ## Tasks
 
-`INTERVAL := <TIME or LTIME literal>` or `INTERVAL := <name of a VAR_GLOBAL CONSTANT holding one>`.
+`INTERVAL := <TIME or LTIME literal>` or `INTERVAL := <name of a VAR_GLOBAL CONSTANT or a VAR_CONSTANT holding one>`.
 The period is baked into the emitted schedule, so it must be fixed at compile time; a CONSTANT global qualifies, a plain `VAR_GLOBAL` does not because it may be written while the PLC runs.
 
 `SINGLE := <a BOOL>` runs the task once on each rising edge of that BOOL.
@@ -146,7 +146,7 @@ E1410.
 `INTERVAL := <mutable global or %MW0>` Not a compile-time period.
 E1410.
 
-`SINGLE := TRUE`: the task would run once, at the first reading, and its `INTERVAL` never. `SINGLE := FALSE` with no `INTERVAL`: it never rises. A CONSTANT global counts as the constant it holds.
+`SINGLE := TRUE`: the task would run once, at the first reading, and its `INTERVAL` never. `SINGLE := FALSE` with no `INTERVAL`: it never rises. A CONSTANT global or a `VAR_CONSTANT` counts as the constant it holds.
 E1410.
 
 `SINGLE := <INT, %IW0, a whole STRUCT, status.%B0>` Not a BOOL.

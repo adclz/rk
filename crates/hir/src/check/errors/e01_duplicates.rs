@@ -148,6 +148,45 @@ impl<'db> ErrorCode for DuplicateError<'db> {
     }
 }
 
+/// How E0102 names an item of a namespace: its keyword, or `constant`.
+fn item_kind(pou: Pou) -> &'static str {
+    match pou {
+        Pou::Function(_) => "FUNCTION",
+        Pou::FunctionBlock(_) => "FUNCTION_BLOCK",
+        Pou::Class(_) => "CLASS",
+        Pou::Interface(_) => "INTERFACE",
+        Pou::DataType(_) => "TYPE",
+        Pou::Constant(_) => "constant",
+    }
+}
+
+/// E0102's message at the item reported, `kind` `name`, and its label at
+/// the other one: `FUNCTION 'f' is declared twice` for two of one kind,
+/// `constant 'Row' has the name of a TYPE` for two of two kinds. `when` says
+/// whether the other is declared `already` or `also`.
+fn named_twice(
+    kind: &str,
+    name: &str,
+    other_kind: &str,
+    other_name: &str,
+    when: &str,
+) -> (String, String) {
+    let message = match kind == other_kind {
+        true => format!("{kind} '{name}' is declared twice"),
+        false => {
+            let article = match other_kind.starts_with(['A', 'E', 'I', 'O', 'U']) {
+                true => "an",
+                false => "a",
+            };
+            format!("{kind} '{name}' has the name of {article} {other_kind}")
+        }
+    };
+    (
+        message,
+        format!("{other_kind} '{other_name}' is {when} declared here"),
+    )
+}
+
 impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
     fn to_diagnostic(
         &self,
@@ -180,11 +219,16 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 diag
             }
             Self::Pou { pou1, pou2 } => {
+                let (kind1, kind2) = (item_kind(*pou1), item_kind(*pou2));
+                let (message, label) = named_twice(
+                    kind1,
+                    pou1.get_name_with_case(db).text(db),
+                    kind2,
+                    pou2.get_name_with_case(db).text(db),
+                    "already",
+                );
                 let mut diag = diag()
-                    .message(format!(
-                        "duplicate POU '{}'",
-                        pou1.get_name_with_case(db).text(db)
-                    ))
+                    .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(
@@ -193,10 +237,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     .call();
 
                 diag.with_related(Related::new(
-                    format!(
-                        "POU '{}' is already declared here",
-                        pou2.get_name_with_case(db).text(db)
-                    ),
+                    label,
                     pou2.get_scope_id(db).file(db),
                     pou2.get_name_span(db),
                 ));
@@ -209,29 +250,34 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 at_program,
             } => {
                 let name = program.get_name_with_case(db).text(db);
-                let (span, other_file, other_span) = match at_program {
+                let other_name = pou.get_name_with_case(db).text(db);
+                // Reported at both, but with a constant at the later of the
+                // two only: what the other one is "already".
+                let when = match pou {
+                    Pou::Constant(_) => "already",
+                    _ => "also",
+                };
+                let (span, other_file, other_span, (message, label)) = match at_program {
                     true => (
                         program.get_name_span(db),
                         pou.get_scope_id(db).file(db),
                         pou.get_name_span(db),
+                        named_twice("PROGRAM", name, item_kind(*pou), other_name, when),
                     ),
                     false => (
                         pou.get_name_span(db),
                         program.get_scope_id(db).file(db),
                         program.get_name_span(db),
+                        named_twice(item_kind(*pou), other_name, "PROGRAM", name, when),
                     ),
                 };
                 let mut diag = diag()
-                    .message(format!("duplicate POU '{name}'"))
+                    .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &span).unwrap_or_default())
                     .call();
-                diag.with_related(Related::new(
-                    format!("POU '{name}' is also declared here"),
-                    other_file,
-                    other_span,
-                ));
+                diag.with_related(Related::new(label, other_file, other_span));
                 diag
             }
             Self::Parameter {

@@ -348,6 +348,7 @@ module.exports = grammar({
           $.config_decl, // Declaration of CONFIGURATION and RESOURCE
           $.prog_decl, // Declaration of PROGRAM
           $.namespace_decl, // Declaration of NAMESPACE (including all other declarations)
+          $.constant_var_decls, // VAR_CONSTANT: constants of the root namespace
           // Global POUs declarations
           $.data_type_decl,
           $.func_decl,
@@ -1463,6 +1464,25 @@ module.exports = grammar({
 
     _external_var_kind: ($) => choice($.var_decl, $.array_conformand),
 
+    // VAR_CONSTANT, at the top of a file or in a NAMESPACE: constants of the
+    // namespace it is written in, which TYPEs and POUs name as they name its
+    // TYPEs. rk's own: IEC 61131-3 declares a constant in a POU or a
+    // CONFIGURATION only.
+    constant_var_decls: ($) =>
+      prec.right(
+        seq(
+          kw("VAR_CONSTANT"),
+          repeat(
+            seq(
+              choice($.var_decl_init_list, $.ERR_variable_with_no_spec),
+              optional(";"),
+            ),
+          ),
+          kw("END_VAR"),
+          optional(";"),
+        ),
+      ),
+
     // Global_Var_Decls : 'VAR_GLOBAL' ( 'CONSTANT' | 'RETAIN' )? ( Global_Var_Decl ';' )* 'END_VAR';
     global_var_decls: ($) =>
       prec.right(
@@ -2108,6 +2128,7 @@ module.exports = grammar({
     namespace_elements: ($) =>
       repeat1(
         choice(
+          $.constant_var_decls,
           $.data_type_decl,
           $.func_decl,
           $.fb_decl,

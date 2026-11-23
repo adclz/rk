@@ -193,7 +193,7 @@ Declaring a POU the library ALREADY defines is `E0102`, reported on the workspac
 
 ```iecst expect=E0102
 NAMESPACE Std.Convert                // the stdlib already has this one
-	FUNCTION LINT_TO_DINT : DINT     // E0102: duplicate POU
+	FUNCTION LINT_TO_DINT : DINT     // E0102: duplicate name
 		VAR_INPUT IN : LINT; END_VAR
 		LINT_TO_DINT := 999;
 	END_FUNCTION

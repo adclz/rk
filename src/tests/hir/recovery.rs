@@ -135,16 +135,16 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:7:11 ]
        |
      3 |     FUNCTION fn
        |              ^|
-       |               `-- POU 'fn' is already declared here
+       |               `-- FUNCTION 'fn' is already declared here
        |
      7 |     FUNCTION fn
        |              ^|
-       |               `-- duplicate POU 'fn'
+       |               `-- FUNCTION 'fn' is declared twice
     ---'
     [E0201] Error: unknown name
         ,-[ file:///test0.st:14:2 ]

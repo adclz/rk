@@ -96,16 +96,16 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:6:16 ]
        |
      2 | FUNCTION_BLOCK fb1
        |                ^|^
-       |                 `--- POU 'fb1' is already declared here
+       |                 `--- FUNCTION_BLOCK 'fb1' is already declared here
        |
      6 | FUNCTION_BLOCK fb1
        |                ^|^
-       |                 `--- duplicate POU 'fb1'
+       |                 `--- FUNCTION_BLOCK 'fb1' is declared twice
     ---'
     ");
 }
@@ -146,16 +146,16 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:7:10 ]
        |
      2 | FUNCTION foo : INT
        |          ^|^
-       |           `--- POU 'foo' is already declared here
+       |           `--- FUNCTION 'foo' is already declared here
        |
      7 | FUNCTION foo : INT
        |          ^|^
-       |           `--- duplicate POU 'foo'
+       |           `--- FUNCTION 'foo' is declared twice
     ---'
     ");
 }
@@ -196,16 +196,16 @@ END_NAMESPACE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:7:20 ]
        |
      3 |     FUNCTION_BLOCK fb1
        |                    ^|^
-       |                     `--- POU 'fb1' is already declared here
+       |                     `--- FUNCTION_BLOCK 'fb1' is already declared here
        |
      7 |     FUNCTION_BLOCK fb1
        |                    ^|^
-       |                     `--- duplicate POU 'fb1'
+       |                     `--- FUNCTION_BLOCK 'fb1' is declared twice
     ---'
     ");
 }
@@ -761,27 +761,27 @@ END_PROGRAM
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:2:16 ]
        |
      2 | FUNCTION_BLOCK Main
        |                ^^|^
-       |                  `--- duplicate POU 'Main'
+       |                  `--- FUNCTION_BLOCK 'Main' has the name of a PROGRAM
        |
      6 | PROGRAM Main
        |         ^^|^
-       |           `--- POU 'Main' is also declared here
+       |           `--- PROGRAM 'Main' is also declared here
     ---'
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:6:9 ]
        |
      2 | FUNCTION_BLOCK Main
        |                ^^|^
-       |                  `--- POU 'Main' is also declared here
+       |                  `--- FUNCTION_BLOCK 'Main' is also declared here
        |
      6 | PROGRAM Main
        |         ^^|^
-       |           `--- duplicate POU 'Main'
+       |           `--- PROGRAM 'Main' has the name of a FUNCTION_BLOCK
     ---'
     ");
 }
@@ -809,27 +809,27 @@ END_CONFIGURATION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:2:9 ]
        |
      2 | PROGRAM Main
        |         ^^|^
-       |           `--- duplicate POU 'Main'
+       |           `--- PROGRAM 'Main' has the name of a FUNCTION
        |
      7 | FUNCTION Main : INT
        |          ^^|^
-       |            `--- POU 'Main' is also declared here
+       |            `--- FUNCTION 'Main' is also declared here
     ---'
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:7:10 ]
        |
      2 | PROGRAM Main
        |         ^^|^
-       |           `--- POU 'Main' is also declared here
+       |           `--- PROGRAM 'Main' is also declared here
        |
      7 | FUNCTION Main : INT
        |          ^^|^
-       |            `--- duplicate POU 'Main'
+       |            `--- FUNCTION 'Main' has the name of a PROGRAM
     ---'
     ");
 }

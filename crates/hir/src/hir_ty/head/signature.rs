@@ -577,6 +577,16 @@ impl<'db> Signature<'db> {
                     .to_diagnostic(db, self.scope.file(db)),
                 );
             }
+            // A name that finds a constant is a value, not a type.
+            Type::Variable((constant, _)) => {
+                self.errors.push(
+                    TypeError::ConstantAsType {
+                        expr: spec,
+                        constant,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
             _ => (),
         };
         self.type_of_specs.insert(spec, typ);

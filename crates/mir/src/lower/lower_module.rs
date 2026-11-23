@@ -833,6 +833,7 @@ fn lower_module_from_pous<'db>(
         output_size: 0,
         marker_base: 0,
         marker_size: 0,
+        constants_base: 0,
         schedule,
         schedule_manifest: None,
         debug_symbols: crate::debug_symbols::DebugSymbols::new(),
@@ -1129,6 +1130,37 @@ fn lower_module_from_pous<'db>(
     // retain relocation.
     module.schedule_manifest = module.schedule.as_ref().map(|s| s.to_manifest(db));
 
+    // Phase 4.7: the namespaces' constants whose value is no one expression,
+    // a STRUCT's or an ARRAY's, or none given: each is held once, past the
+    // variables and their bands, where `write-memory` does not reach. They
+    // are the module's own data, as its string literals are, so neither
+    // the debug symbols nor the retain map, both built above, list them;
+    // `__init` fills them. Any other constant is its value wherever it is
+    // read, and holds no cell.
+    let constants: Vec<hir::hir_def::pous::variable::VariableDecl<'db>> = all_pous
+        .iter()
+        .filter_map(|(pou, _)| match pou {
+            Pou::Constant(constant)
+                if hir::hir_ty::infer::const_eval::constant_init(db, *constant).is_none() =>
+            {
+                Some(*constant)
+            }
+            _ => None,
+        })
+        .collect();
+    module.constants_base = module.memory_layout.total_size();
+    for v in &constants {
+        let key = global_key(db, *v);
+        let ty = super::lower_type::lower_spec(db, v.spec(db))?;
+        let addr = module.memory_layout.allocate(
+            key,
+            ty.size_bytes(),
+            ty.alignment(),
+            crate::memory::MirAllocKind::Constant,
+        );
+        global_table.insert(key, (addr, ty));
+    }
+
     // Rewrite `Local(name)` -> `Global` for every global a body referenced,
     // now that addresses are final.
     for func in &mut module.functions {
@@ -1137,11 +1169,19 @@ fn lower_module_from_pous<'db>(
 
     // `__init`: every scalar constant initializer at its final address. The
     // runtime calls it before restoring retain, so a RETAIN var's
-    // initializer is its cold-start value.
+    // initializer is its cold-start value. Its static cells: every
+    // fragment's VAR_GLOBALs, then every PROGRAM's located VARs, then the
+    // namespaces' constants that are held.
+    let statics: Vec<_> = config
+        .iter()
+        .flat_map(|c| c.variables(db).iter().map(|v| (*v, v.name(db))))
+        .chain(program_located(db, all_programs).map(|v| (v, global_key(db, v))))
+        .chain(constants.iter().map(|v| (*v, global_key(db, *v))))
+        .collect();
     let init_stmts = collect_const_inits(
         db,
         config,
-        all_programs,
+        &statics,
         &global_table,
         &module.schedule,
         &program_infos,
@@ -1541,9 +1581,10 @@ fn config_member<'db>(
 }
 
 /// The name a static cell is known by in the global table, the located map
-/// and the debug symbols: a VAR_GLOBAL's own name, and `P.x` for a PROGRAM
+/// and the debug symbols: a VAR_GLOBAL's own name, `P.x` for a PROGRAM
 /// `P`'s located VAR `x`, which two programs or a VAR_GLOBAL may otherwise
-/// share. A VAR_EXTERNAL is the VAR_GLOBAL it names, however it spells it.
+/// share, and `.Ns.C` for a namespace's constant `C`. A VAR_EXTERNAL is the
+/// VAR_GLOBAL it names, however it spells it.
 pub(crate) fn global_key<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: hir::hir_def::pous::variable::VariableDecl<'db>,
@@ -1554,6 +1595,25 @@ pub(crate) fn global_key<'db>(
         && let Some(global) = hir::hir_ty::index_graphs::external_var_lookup(db, var.name(db))
     {
         return global_key(db, global);
+    }
+    // A namespace's constant: its absolute path after a dot, which no
+    // configuration global's name and no PROGRAM's located VAR (`P.x`) is.
+    if var.is_namespace_constant(db) {
+        let scope = var.get_scope_id(db);
+        let path = match hir::hir_ty::resolver::name::enclosing_namespace(db, scope) {
+            Some(namespace) => namespace.absolute_path_with_case(db).to_string(db),
+            None => hir::hir_ty::library::library_root(db, scope.file(db))
+                .map(|root| root.spelling.text(db).to_string())
+                .unwrap_or_default(),
+        };
+        let name = var.name_with_case(db).text(db);
+        return hir::hir_def::interned::identifier::Ident::new(
+            db,
+            compact_str::CompactString::from(match path.is_empty() {
+                true => format!(".{name}"),
+                false => format!(".{path}.{name}"),
+            }),
+        );
     }
     if var.is_program_located(db)
         && let ScopeKind::Program(program) =
@@ -2286,11 +2346,15 @@ fn rewrite_globals_body(
 }
 
 /// The `Assign { Global{addr}, <const> }` statements that run once at
-/// startup: configuration VAR_GLOBALs and program-instance fields.
+/// startup: the static cells `statics` names, each by the name the global
+/// table holds it under, then program-instance fields.
 fn collect_const_inits<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &[hir::hir_def::config::ConfigDecl<'db>],
-    programs: &[(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)],
+    statics: &[(
+        hir::hir_def::pous::variable::VariableDecl<'db>,
+        hir::hir_def::interned::identifier::Ident,
+    )],
     global_table: &GlobalTable<'db>,
     schedule: &Option<crate::schedule::MirSchedule>,
     program_infos: &FxHashMap<
@@ -2301,14 +2365,8 @@ fn collect_const_inits<'db>(
 ) -> Result<Vec<crate::stmt::MirStmt>, LowerTypeError> {
     let mut stmts = Vec::new();
 
-    // Every fragment's VAR_GLOBALs, then every PROGRAM's located VARs: both
-    // are static cells, initialized once whatever instances exist.
-    let statics: Vec<_> = config
-        .iter()
-        .flat_map(|c| c.variables(db).iter().map(|v| (*v, v.name(db))))
-        .chain(program_located(db, programs).map(|v| (v, global_key(db, v))))
-        .collect();
-    for (v, key) in statics {
+    // Static cells, initialized once whatever instances exist.
+    for &(v, key) in statics {
         let Some((addr, ty)) = global_table.get(&key) else {
             continue;
         };

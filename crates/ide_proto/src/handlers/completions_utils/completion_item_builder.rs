@@ -130,12 +130,14 @@ impl<'db> CompletionBuilder {
             Pou::Function(_) => ("(FUNCTION)", CompletionItemKind::FUNCTION),
             Pou::DataType(_) => ("(TYPE)", CompletionItemKind::TYPE_PARAMETER),
             Pou::Interface(_) => ("(INTERFACE)", CompletionItemKind::INTERFACE),
+            Pou::Constant(_) => ("(CONSTANT)", CompletionItemKind::CONSTANT),
         };
 
         let call = match self.mode {
             QueryMode::Head => None,
-            // DataTypes are used as constants (TYPE_NAME.field), not called
-            QueryMode::Body if matches!(pou, Pou::DataType(_)) => None,
+            // DataTypes are used as constants (TYPE_NAME.field), not called,
+            // and a constant is read
+            QueryMode::Body if matches!(pou, Pou::DataType(_) | Pou::Constant(_)) => None,
             QueryMode::Body => Some(build_call_signature(db, &name, pou.get_scope_id(db))),
         };
         let command = trigger_parameter_hints(call.as_deref());

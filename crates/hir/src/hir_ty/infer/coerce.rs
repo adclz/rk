@@ -267,9 +267,18 @@ impl<'db> Type<'db> {
                 // never mutually assignable.
                 let d1 = crate::hir_ty::infer::const_eval::array_dimensions(db, a1);
                 let d2 = crate::hir_ty::infer::const_eval::array_dimensions(db, *a2);
+                // A bound that does not fold is refused where it is declared
+                // (E0501, E0502): comparing it would report that again at
+                // every use, an assignment or a call.
+                if d1
+                    .iter()
+                    .chain(d2.iter())
+                    .any(|(lower, upper)| lower.is_none() || upper.is_none())
+                {
+                    return Ok(());
+                }
                 for (r1, r2) in d1.iter().zip(d2.iter()) {
-                    let bounds_match = r1.0 == r2.0 && r1.1 == r2.1 && r1.0.is_some();
-                    if !bounds_match {
+                    if r1 != r2 {
                         return Err(CoerceError {
                             expected: *self,
                             actual: written,

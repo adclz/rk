@@ -98,13 +98,20 @@ impl<'db> InitInference<'db> {
             ScopeKind::Pou(Pou::DataType(_))
                 | ScopeKind::Pou(Pou::FunctionBlock(_))
                 | ScopeKind::Pou(Pou::Class(_))
+                | ScopeKind::Pou(Pou::Constant(_))
                 | ScopeKind::Program(_)
                 | ScopeKind::Config(_)
         );
         if enforce {
             for leaves in self.init_expr_result.resolved.values() {
                 for leaf in leaves {
-                    if !crate::hir_ty::infer::const_eval::init_leaf_is_constant(db, leaf.value) {
+                    // A value naming a constant in a loop is reported at the
+                    // constant (E0408).
+                    if !crate::hir_ty::infer::const_eval::init_leaf_is_constant(db, leaf.value)
+                        && !crate::hir_ty::infer::const_eval::names_a_looping_constant(
+                            db, leaf.value,
+                        )
+                    {
                         self.errors.push(
                             crate::check::errors::e04_init::InitError::InitNotConstant {
                                 value: leaf.value,
@@ -119,6 +126,7 @@ impl<'db> InitInference<'db> {
 
         self.check_input_defaults(db);
         self.check_constant_references(db);
+        self.check_own_values(db);
         // No initializer runs in a call: a member's runs at `__init`, a
         // method local's in a call of its own.
         crate::hir_ty::body::refuse_conformand_outside_body(db, false, &mut self.body_infer_result);
@@ -182,6 +190,30 @@ impl<'db> InitInference<'db> {
     /// A CONSTANT is one value for every instance and every call, so a
     /// `REF()` in it is a global's address: one of a member or of a call's
     /// own variable is a different address in each.
+    /// E0408 at each constant of the scope whose initial value reads itself.
+    fn check_own_values(&mut self, db: &'db dyn WorkspaceDataBase) {
+        let Some(vars) = self.scope.variables(db) else {
+            return;
+        };
+        for var in vars {
+            if !var.qualifier(db).contains(crate::Qualifier::CONSTANT) || var.init(db).is_none() {
+                continue;
+            }
+            if let Some((reference, through)) =
+                crate::hir_ty::infer::const_eval::own_value_loop(db, *var)
+            {
+                self.errors.push(
+                    crate::check::errors::e04_init::InitError::OwnValue {
+                        constant: *var,
+                        reference,
+                        through,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+        }
+    }
+
     fn check_constant_references(&mut self, db: &'db dyn WorkspaceDataBase) {
         use crate::check::errors::e04_init::InitError;
         let Some(vars) = self.scope.variables(db) else {
