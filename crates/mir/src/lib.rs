@@ -82,6 +82,14 @@ pub struct MirModule {
     /// string literals come after them.
     pub constants_base: u32,
 
+    /// The bytes of the other CONSTANTs, which lie among the variables: a
+    /// configuration's `VAR_GLOBAL CONSTANT` and each member an instance's POU
+    /// declares `CONSTANT`. `write-memory` refuses a write that touches one.
+    /// Sorted and joined, `[start, end)` each, held as a table of `u32` pairs
+    /// at [`Self::constant_ranges_at`], past the variables.
+    pub constant_ranges: Vec<(u32, u32)>,
+    pub constant_ranges_at: u32,
+
     /// Resolved task schedule of the module's CONFIGURATION; `None` without one.
     pub schedule: Option<schedule::MirSchedule>,
 

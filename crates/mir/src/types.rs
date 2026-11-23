@@ -133,6 +133,9 @@ pub struct MirStructField {
     /// `VAR_IN_OUT` field holding the caller's l-value. An explicit `REF_TO`
     /// field is not.
     pub by_ref: bool,
+    /// A member the instance's POU declares `CONSTANT`: no host writes its
+    /// bytes ([`crate::MirModule::constant_ranges`]).
+    pub constant: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

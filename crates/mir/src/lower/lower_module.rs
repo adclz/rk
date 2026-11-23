@@ -834,6 +834,8 @@ fn lower_module_from_pous<'db>(
         marker_base: 0,
         marker_size: 0,
         constants_base: 0,
+        constant_ranges: Vec::new(),
+        constant_ranges_at: 0,
         schedule,
         schedule_manifest: None,
         debug_symbols: crate::debug_symbols::DebugSymbols::new(),
@@ -1159,6 +1161,21 @@ fn lower_module_from_pous<'db>(
             crate::memory::MirAllocKind::Constant,
         );
         global_table.insert(key, (addr, ty));
+    }
+    // The bytes of the other CONSTANTs, which lie among the variables: a
+    // host may not write them either. Their table is the module's own data,
+    // past the variables too.
+    module.constant_ranges = constant_ranges(db, config, &global_table, &module, &program_infos);
+    if !module.constant_ranges.is_empty() {
+        module.constant_ranges_at = module.memory_layout.allocate(
+            hir::hir_def::interned::identifier::Ident::new(
+                db,
+                compact_str::CompactString::from("$constant_ranges"),
+            ),
+            8 * module.constant_ranges.len() as u32,
+            4,
+            crate::memory::MirAllocKind::Constant,
+        );
     }
 
     // Rewrite `Local(name)` -> `Global` for every global a body referenced,
@@ -1578,6 +1595,79 @@ fn config_member<'db>(
         address += field.offset;
     }
     Some(address)
+}
+
+/// The bytes of every CONSTANT among the variables, sorted and joined: each
+/// configuration `VAR_GLOBAL CONSTANT`, and each CONSTANT member of the
+/// instances in the globals and in the program instances, in every element
+/// of an array of them.
+fn constant_ranges<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: &[hir::hir_def::config::ConfigDecl<'db>],
+    global_table: &GlobalTable<'db>,
+    module: &MirModule,
+    program_infos: &FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        crate::schedule::ProgramInfo<'db>,
+    >,
+) -> Vec<(u32, u32)> {
+    let mut ranges = Vec::new();
+    for v in config.iter().flat_map(|c| c.variables(db)) {
+        let Some((addr, ty)) = global_table.get(&v.name(db)) else {
+            continue;
+        };
+        match v.qualifier(db).contains(hir::Qualifier::CONSTANT) {
+            true => ranges.push((*addr, addr + ty.size_bytes())),
+            false => constant_members(ty, *addr, &mut ranges),
+        }
+    }
+    for inst in module
+        .schedule
+        .iter()
+        .flat_map(|s| s.tasks.iter())
+        .flat_map(|t| t.programs.iter())
+    {
+        if let Some(info) = program_infos.get(&inst.prog_name(db)) {
+            let ty = MirType::Struct(info.struct_type.clone());
+            constant_members(&ty, inst.instance_addr, &mut ranges);
+        }
+    }
+    ranges.sort_unstable();
+    let mut joined: Vec<(u32, u32)> = Vec::with_capacity(ranges.len());
+    for (start, end) in ranges {
+        match joined.last_mut() {
+            Some(last) if start <= last.1 => last.1 = last.1.max(end),
+            _ if start < end => joined.push((start, end)),
+            _ => {}
+        }
+    }
+    joined
+}
+
+/// The bytes of each CONSTANT member under `ty` at `base`, an instance's or
+/// an instance's inside it, in each element of an array of them.
+fn constant_members(ty: &MirType, base: u32, out: &mut Vec<(u32, u32)>) {
+    match ty {
+        MirType::Struct(s) => {
+            for f in &s.fields {
+                let at = base + f.offset;
+                if f.constant {
+                    out.push((at, at + f.ty.size_bytes()));
+                } else if !f.by_ref {
+                    constant_members(&f.ty, at, out);
+                }
+            }
+        }
+        MirType::Array(a) => {
+            let mut first = Vec::new();
+            constant_members(&a.element_type, base, &mut first);
+            for k in 0..a.total_elements {
+                let shift = k * a.element_size;
+                out.extend(first.iter().map(|(s, e)| (s + shift, e + shift)));
+            }
+        }
+        _ => {}
+    }
 }
 
 /// The name a static cell is known by in the global table, the located map

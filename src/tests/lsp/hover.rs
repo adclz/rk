@@ -1037,9 +1037,9 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(hovered.join("\n"), @r"
     20] -> ```iecst {integer} 20 ```
-    SIZE] -> ```iecst (VAR) SIZE: INT ```  --- size = 2, offset = 0
+    SIZE] -> ```iecst (VAR CONSTANT) SIZE: INT := 30 ```  --- size = 2, offset = 0
     9] -> ```iecst {integer} 9 ```
-    SIZE] OF -> ```iecst (VAR) SIZE: INT ```  --- size = 2, offset = 0
+    SIZE] OF -> ```iecst (VAR CONSTANT) SIZE: INT := 30 ```  --- size = 2, offset = 0
     ");
 }
 
@@ -1269,7 +1269,7 @@ END_CONFIGURATION
 #[case::instance("inst.done", 0, "PROGRAM inst WITH A : Prog")]
 #[case::output("inst.done", 5, "(OUTPUT) done: BOOL")]
 #[case::array_output("inst.bits", 5, "(OUTPUT) bits: ARRAY [1..3] OF BOOL")]
-#[case::subscript("which]", 0, "(GLOBAL) which: INT")]
+#[case::subscript("which]", 0, "(GLOBAL CONSTANT) which: INT := 2")]
 #[case::output_of_an_instance("timer.q", 6, "(OUTPUT) q: BOOL")]
 #[case::variable_with_a_bit("status.%X3", 0, "(GLOBAL) status: WORD")]
 #[case::address("%IX0.0", 1, "%IX0.0 : BOOL")]
@@ -1656,5 +1656,74 @@ END_FUNCTION
     "FLAGS.%X3"+0 -> ```iecst VAR_CONSTANT FLAGS: WORD := 16#0008 ```  --- value = 8, size = 2
     "ORIGIN.y"+0 -> ```iecst VAR_CONSTANT ORIGIN: Point := (x := 1, y := 2) ```  --- size = 4
     "ORIGIN.y"+7 -> ```iecst y: INT ```  --- size = 2, offset = 2
+    "#);
+}
+
+/// A POU's `VAR CONSTANT`, a configuration's `VAR_GLOBAL CONSTANT` and a
+/// `VAR_EXTERNAL CONSTANT` show their value as a namespace's constant does:
+/// as written, then what it comes to when that is not the same. A
+/// `VAR_EXTERNAL`'s value is its global's.
+#[rstest]
+pub fn hover_on_a_constant_of_each_kind(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Buffer
+VAR CONSTANT
+    SIZE : INT := 2 * 8;
+    NAME : STRING := 'buffer';
+END_VAR
+VAR
+    cells : ARRAY[1..SIZE] OF INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR_EXTERNAL CONSTANT
+    LIMIT : DINT;
+END_VAR
+VAR
+    n : DINT;
+END_VAR
+    n := LIMIT;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL CONSTANT
+    LIMIT : DINT := 16#10;
+END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    let file = add_source(&mut with_db, source);
+
+    let hovered: Vec<String> = [
+        "SIZE : INT",
+        "SIZE] OF",
+        "NAME : STRING",
+        "LIMIT : DINT;\nEND_VAR\nVAR",
+        "LIMIT;\nEND_PROGRAM",
+        "LIMIT : DINT := 16#10",
+    ]
+    .iter()
+    .map(|needle| {
+        let offset = source.find(needle).expect("the needle");
+        let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
+        let text = node
+            .hover(&with_db, offset)
+            .and_then(|h| hover_markup(h.contents))
+            .expect("hover text");
+        format!("{needle:?} -> {}", text.replace('\n', " ").trim())
+    })
+    .collect();
+
+    assert_snapshot!(hovered.join("\n"), @r#"
+    "SIZE : INT" -> ```iecst (VAR CONSTANT) SIZE: INT := 2 * 8 ```  --- value = 16, size = 2, offset = 0
+    "SIZE] OF" -> ```iecst (VAR CONSTANT) SIZE: INT := 2 * 8 ```  --- value = 16, size = 2, offset = 0
+    "NAME : STRING" -> ```iecst (VAR CONSTANT) NAME: STRING := 'buffer' ```  --- size = 84, offset = 4
+    "LIMIT : DINT;\nEND_VAR\nVAR" -> ```iecst (EXTERNAL CONSTANT) LIMIT: DINT := 16#10 ```  --- value = 16, size = 4
+    "LIMIT;\nEND_PROGRAM" -> ```iecst (EXTERNAL CONSTANT) LIMIT: DINT := 16#10 ```  --- value = 16, size = 4
+    "LIMIT : DINT := 16#10" -> ```iecst (GLOBAL CONSTANT) LIMIT: DINT := 16#10 ```  --- value = 16, size = 4
     "#);
 }

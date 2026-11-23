@@ -338,12 +338,17 @@ impl WasmGen<'_> {
         );
 
         // The variables: past the builtins' memory, up to the constants'
-        // cells, which the string literals follow.
+        // cells, which the string literals follow. The constants among them
+        // are in a table of their own.
         let variables = (
             mir::memory::BUILTIN_RESERVED_FLOOR,
             self.module.constants_base,
         );
-        let f = control_write_memory(area, arena, variables);
+        let constants = (
+            self.module.constant_ranges_at,
+            self.module.constant_ranges.len() as u32,
+        );
+        let f = control_write_memory(area, arena, variables, constants);
         self.add_control_function(
             "write-memory",
             &[ValType::I32, ValType::I32, ValType::I32],
@@ -755,11 +760,18 @@ fn control_read_memory(area: &ControlArea, arena: u32) -> Function {
 }
 
 /// `write-memory`: the list `(ptr, len)` copied to `address`, when it lands
-/// in `variables`, `[start, end)`; an error otherwise.
-fn control_write_memory(area: &ControlArea, arena: u32, variables: (u32, u32)) -> Function {
-    // Params: the address 0, then the list 1, 2.
-    let mut f = Function::new([]);
-    let (address, ptr, len) = (0, 1, 2);
+/// in `variables`, `[start, end)`, and touches none of the `count` constants
+/// whose `[start, end)` pairs of `u32`s are at `table`; an error otherwise.
+fn control_write_memory(
+    area: &ControlArea,
+    arena: u32,
+    variables: (u32, u32),
+    (table, count): (u32, u32),
+) -> Function {
+    // Params: the address 0, then the list 1, 2; local: the next pair of
+    // the table 3.
+    let mut f = Function::new([(1, ValType::I32)]);
+    let (address, ptr, len, pair) = (0, 1, 2, 3);
     let (start, end) = variables;
     // What the host passed stays where it is until the copy: nothing else
     // lands in the scratch meanwhile.
@@ -777,6 +789,40 @@ fn control_write_memory(area: &ControlArea, arena: u32, variables: (u32, u32)) -
     f.instruction(&Instruction::I64Const(i64::from(end)));
     f.instruction(&Instruction::I64GtU);
     f.instruction(&Instruction::BrIf(0));
+    if count > 0 {
+        // Each constant: refused when `address < end` and `address + len >
+        // start`, the write and the constant sharing a byte.
+        f.instruction(&Instruction::I32Const(table as i32));
+        f.instruction(&Instruction::LocalSet(pair));
+        f.instruction(&Instruction::Block(BlockType::Empty));
+        f.instruction(&Instruction::Loop(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(pair));
+        f.instruction(&Instruction::I32Const((table + 8 * count) as i32));
+        f.instruction(&Instruction::I32Eq);
+        f.instruction(&Instruction::BrIf(1));
+        f.instruction(&Instruction::LocalGet(address));
+        f.instruction(&Instruction::LocalGet(pair));
+        f.instruction(&Instruction::I32Load(mem_arg(4, 2)));
+        f.instruction(&Instruction::I32LtU);
+        f.instruction(&Instruction::LocalGet(address));
+        f.instruction(&Instruction::I64ExtendI32U);
+        f.instruction(&Instruction::LocalGet(len));
+        f.instruction(&Instruction::I64ExtendI32U);
+        f.instruction(&Instruction::I64Add);
+        f.instruction(&Instruction::LocalGet(pair));
+        f.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+        f.instruction(&Instruction::I64ExtendI32U);
+        f.instruction(&Instruction::I64GtU);
+        f.instruction(&Instruction::I32And);
+        f.instruction(&Instruction::BrIf(2));
+        f.instruction(&Instruction::LocalGet(pair));
+        f.instruction(&Instruction::I32Const(8));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(pair));
+        f.instruction(&Instruction::Br(0));
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::End);
+    }
     f.instruction(&Instruction::LocalGet(address));
     f.instruction(&Instruction::LocalGet(ptr));
     f.instruction(&Instruction::LocalGet(len));

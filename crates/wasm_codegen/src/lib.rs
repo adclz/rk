@@ -2278,6 +2278,21 @@ impl<'a> WasmGen<'a> {
                 bytes.iter().copied(),
             );
         }
+        // The constants among the variables, which `write-memory` refuses.
+        if !self.module.constant_ranges.is_empty() {
+            let table: Vec<u8> = self
+                .module
+                .constant_ranges
+                .iter()
+                .flat_map(|(start, end)| [start.to_le_bytes(), end.to_le_bytes()])
+                .flatten()
+                .collect();
+            data_section.active(
+                0,
+                &wasm_encoder::ConstExpr::i32_const(self.module.constant_ranges_at as i32),
+                table,
+            );
+        }
         if !data_section.is_empty() {
             module.section(&data_section);
         }

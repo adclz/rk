@@ -27,6 +27,7 @@ END_FUNCTION_BLOCK
 
 A constant is read like a variable, but it cannot be written (`E0404`).
 You cannot pass it to a `VAR_IN_OUT` or take a `REF()` of it either.
+A host cannot write it: the control interface's `write-memory` refuses its bytes.
 
 Its value must be a constant: a literal, another constant, or arithmetic over those (`E0401`).
 A value that reads the constant itself, directly or through other constants, is `E0408`.

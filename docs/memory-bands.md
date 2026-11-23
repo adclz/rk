@@ -44,7 +44,7 @@ A module whose memory does not fit in 4 GiB, with its stack, stops the build, wh
 | globals | `globals_base`, `globals_size` | the configuration's `VAR_GLOBAL` | reads and writes it by name |
 
 A STRUCT or array `VAR_CONSTANT` is stored after the bands, see [Constants](constants.md).
-A host can read it, but `write-memory` refuses to write it.
+A host can read it, but `write-memory` refuses to write it, as it refuses any constant.
 Any other `VAR_CONSTANT` takes no memory: its value is written where it is used.
 
 ## Inputs and outputs

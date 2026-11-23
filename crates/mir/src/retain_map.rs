@@ -58,6 +58,7 @@ pub fn build_retain_map<'db>(
                     ty: ty.clone(),
                     offset: 0,
                     by_ref: false,
+                    constant: false,
                 };
                 let root = g.name.text(db).to_string();
                 walk_value(
@@ -312,6 +313,7 @@ fn walk_value<'db>(
                 ty: (*a.element_type).clone(),
                 offset: 0,
                 by_ref: false,
+                constant: false,
             };
             for i in 0..a.total_elements {
                 let p = format!("{path}[{i}]");
