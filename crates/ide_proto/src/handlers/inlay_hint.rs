@@ -65,7 +65,7 @@ impl<'db> InlayHintHandler<'db> for Pou<'db> {
                     Pou::FunctionBlock(_) => "FUNCTION_BLOCK",
                     Pou::Class(_) => "CLASS",
                     Pou::Interface(_) => "INTERFACE",
-                    Pou::DataType(_) => None?,
+                    Pou::DataType(_) | Pou::Constant(_) => None?,
                 },
                 self.get_name_with_case(db).text(db).to_string(),
                 located(db, self.get_scope_id(db), &self.get_name_span(db)),

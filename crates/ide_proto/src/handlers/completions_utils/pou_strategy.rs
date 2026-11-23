@@ -87,6 +87,7 @@ impl<'db> CompletionCtx {
             Pou::FunctionBlock(fb) => complete_fb(fb, &ctx, self.offset, db, &mut self.items),
             Pou::Interface(_) => {} // todo: add *magic* method completions?
             Pou::DataType(_) => {}  // will be handled by Spec
+            Pou::Constant(_) => {}  // a value, with no members
         }
         ctx
     }

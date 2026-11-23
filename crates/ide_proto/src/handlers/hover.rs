@@ -266,6 +266,7 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
             Pou::Class(_) => "CLASS",
             Pou::Interface(_) => "INTERFACE",
             Pou::DataType(dt) => "TYPE",
+            Pou::Constant(_) => "VAR_CONSTANT",
         };
 
         let name = self.get_name_with_case(db).text(db);
@@ -275,12 +276,16 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
                 .map(|spec| format!(": {}", spec.infer(db).type_name(db)))
                 .unwrap_or_default(),
             Pou::DataType(dt) => format!(": {}", dt.spec(db).infer(db).full_type_name(db)),
+            Pou::Constant(constant) => {
+                format!(": {}", constant.spec(db).infer(db).full_type_name(db))
+            }
             _ => "".to_string(),
         };
 
         let path = Type::new_pou(db, *self).path_name(db);
         let size = match self {
             Pou::DataType(dt) => layout::of_spec(db, dt.spec(db)).map(|l| l.size),
+            Pou::Constant(constant) => layout::of_spec(db, constant.spec(db)).map(|l| l.size),
             Pou::FunctionBlock(_) | Pou::Class(_) => layout::instance_layout(db, *self)
                 .as_ref()
                 .map(|instance| instance.whole.size),

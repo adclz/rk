@@ -73,6 +73,7 @@ pub fn workspace_symbols(db: &dyn WorkspaceDataBase, query_str: &str) -> Vec<Wor
                 Pou::Class(_) => SymbolKind::CLASS,
                 Pou::Interface(_) => SymbolKind::INTERFACE,
                 Pou::DataType(_) => SymbolKind::STRUCT,
+                Pou::Constant(_) => SymbolKind::CONSTANT,
             },
             query::SymbolKind::StructField(_) => SymbolKind::FIELD,
             query::SymbolKind::Variable(_) => SymbolKind::VARIABLE,
