@@ -517,6 +517,87 @@ fn a_host_reads_a_constant_and_writes_none(mut with_db: db::RootDatabase) {
     assert_eq!(plc.read_memory(&[origin]), Ok(vec![1, 0, 2, 0]));
 }
 
+/// The constants among the variables are refused too: a configuration's
+/// `VAR_GLOBAL CONSTANT`, a PROGRAM's `VAR CONSTANT`, and a block's CONSTANT
+/// member, in an instance and in each element of an array of them. The
+/// variables beside them are written, and a constant is still read.
+#[rstest]
+fn a_host_writes_no_constant_among_the_variables(mut with_db: db::RootDatabase) {
+    let source = "
+        FUNCTION_BLOCK Motor
+        VAR CONSTANT TOP : INT := 100; END_VAR
+        VAR speed : INT; END_VAR
+            speed := TOP;
+        END_FUNCTION_BLOCK
+        PROGRAM P
+        VAR CONSTANT LIMIT : DINT := 7; END_VAR
+        VAR count : DINT; m : Motor; ms : ARRAY[0..1] OF Motor; END_VAR
+            count := LIMIT;
+            m();
+        END_PROGRAM
+        CONFIGURATION Cfg
+            VAR_GLOBAL CONSTANT SCALE : DINT := 3; END_VAR
+            VAR_GLOBAL g : DINT; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Main WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    ";
+    let (_mir, wasm) = compile_to_mir_and_wasm_as_built(&mut with_db, source);
+    let component = wrap(&wasm);
+    let info = debug_format::DebugInfo::from_wasm(&component.bytes);
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+
+    // A path's bytes, an element's through its array's descriptor.
+    let place = |path: &str| {
+        let at = info
+            .resolve(path)
+            .unwrap_or_else(|| panic!("the symbols have {path}"));
+        Range {
+            address: at.address,
+            size: at.size,
+        }
+    };
+    let refused = Err(MemoryError::OutsideVariables);
+    for constant in [
+        "SCALE",
+        "Main.LIMIT",
+        "Main.m.TOP",
+        "Main.ms[0].TOP",
+        "Main.ms[1].TOP",
+    ] {
+        let range = place(constant);
+        let bytes = vec![0; range.size as usize];
+        assert_eq!(
+            plc.write_memory(range.address, &bytes),
+            refused,
+            "{constant}"
+        );
+        // Its last byte alone too.
+        let last = range.address + range.size - 1;
+        assert_eq!(
+            plc.write_memory(last, &[0]),
+            refused,
+            "{constant}'s last byte"
+        );
+    }
+    for variable in ["g", "Main.count", "Main.m.speed", "Main.ms[1].speed"] {
+        let range = place(variable);
+        let bytes = vec![0; range.size as usize];
+        assert_eq!(
+            plc.write_memory(range.address, &bytes),
+            Ok(()),
+            "{variable}"
+        );
+    }
+    assert_eq!(
+        plc.read_memory(&[place("Main.LIMIT")]),
+        Ok(7i32.to_le_bytes().to_vec())
+    );
+}
+
 /// A read lands in the scratch area, after its ranges. Each range of 4 and
 /// 64 bytes takes 8 of the list, so a list written over its own ranges
 /// would read garbage. A read larger than the area is `too-large`, the
