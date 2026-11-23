@@ -1289,3 +1289,57 @@ END_FUNCTION
     END_FUNCTION
     ");
 }
+
+/// A namespace's constant renamed from a use in another file: its
+/// declaration and every use, bare, qualified and through USING.
+#[rstest]
+fn rename_a_constant(mut with_db: RootDatabase) {
+    let constants = r#"NAMESPACE Limits
+    VAR_CONSTANT
+        HIGH : INT := 6;
+        TWICE : INT := HIGH * 2;
+    END_VAR
+END_NAMESPACE
+"#;
+    let uses = r#"FUNCTION Uses : INT
+VAR
+    cells : ARRAY[0..Limits.HIGH] OF INT;
+END_VAR
+    Uses := Limits.HIGH;
+END_FUNCTION
+
+FUNCTION Imported : INT
+USING Limits;
+    Imported := HIGH;
+END_FUNCTION
+"#;
+    add_sources(&mut with_db, &[constants, uses]);
+    let file = with_db
+        .get_file(&Url::parse("file:///test1.st").unwrap())
+        .unwrap();
+
+    let offset = uses.find("HIGH;").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "TOP").unwrap();
+
+    assert_snapshot!(apply_rename(&with_db, &edit, &[constants, uses]), @r"
+    NAMESPACE Limits
+        VAR_CONSTANT
+            TOP : INT := 6;
+            TWICE : INT := TOP * 2;
+        END_VAR
+    END_NAMESPACE
+    ---
+    FUNCTION Uses : INT
+    VAR
+        cells : ARRAY[0..Limits.TOP] OF INT;
+    END_VAR
+        Uses := Limits.TOP;
+    END_FUNCTION
+
+    FUNCTION Imported : INT
+    USING Limits;
+        Imported := TOP;
+    END_FUNCTION
+    ");
+}

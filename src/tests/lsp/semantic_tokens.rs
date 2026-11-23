@@ -849,3 +849,56 @@ END_FUNCTION
     8: test function
     ");
 }
+
+/// A namespace's constant is a variable where it is named, the namespace
+/// before it a namespace, and a field after it a property.
+#[rstest]
+pub fn namespace_constant_tokens(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Point : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+NAMESPACE Limits
+    VAR_CONSTANT
+        ORIGIN : Point := (x := 1, y := 2);
+        HIGH : INT := 6;
+    END_VAR
+END_NAMESPACE
+FUNCTION Uses : INT
+    Uses := Limits.ORIGIN.y + Limits.HIGH;
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
+    let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        node.semantic_tokens(&with_db, &mut sink);
+        std::ops::ControlFlow::Continue(())
+    });
+    let mut builder = SemanticTokensBuilder::new("".into());
+    sink.drain_into(&mut builder);
+
+    // Each token of the body's line, by its text.
+    let body = source.lines().nth(9).unwrap();
+    let (mut line, mut col) = (0, 0);
+    let mut tokens = vec![];
+    for token in builder.build().data {
+        if token.delta_line > 0 {
+            line += token.delta_line;
+            col = token.delta_start;
+        } else {
+            col += token.delta_start;
+        }
+        if line == 9 {
+            let text = &body[col as usize..(col + token.length) as usize];
+            let kind = SUPPORTED_TYPES[token.token_type as usize].as_str();
+            tokens.push(format!("{text}: {kind}"));
+        }
+    }
+    assert_snapshot!(tokens.join("\n"), @r"
+    Uses: function
+    Limits: namespace
+    ORIGIN: variable
+    y: property
+    Limits: namespace
+    HIGH: variable
+    ");
+}

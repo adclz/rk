@@ -520,3 +520,64 @@ END_FUNCTION_BLOCK
     ---'
     ");
 }
+
+/// A namespace's constant is found wherever it is named, in every file:
+/// bare, qualified, through USING, in a bound and in another constant's
+/// value.
+#[rstest]
+fn constant_references(mut with_db: RootDatabase) {
+    let constants = r#"NAMESPACE Limits
+    VAR_CONSTANT
+        HIGH : INT := 6;
+        TWICE : INT := HIGH * 2;
+    END_VAR
+END_NAMESPACE
+"#;
+    let uses = r#"FUNCTION Uses : INT
+VAR
+    cells : ARRAY[0..Limits.HIGH] OF INT;
+END_VAR
+    Uses := Limits.HIGH;
+END_FUNCTION
+
+FUNCTION Imported : INT
+USING Limits;
+    Imported := HIGH;
+END_FUNCTION
+"#;
+    add_sources(&mut with_db, &[constants, uses]);
+    let file = with_db
+        .get_file(&Url::parse("file:///test0.st").unwrap())
+        .unwrap();
+
+    let offset = constants.find("HIGH").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let refs = node.locations(&with_db).unwrap();
+
+    assert_snapshot!(render_references(&with_db, &refs, "HIGH"), @r"
+    Info: 5 reference(s) to 'HIGH'
+        ,-[ file:///test0.st:3:9 ]
+        |
+      3 |         HIGH : INT := 6;
+        |         ^^|^
+        |           `--- 5 reference(s) to 'HIGH'
+      4 |         TWICE : INT := HIGH * 2;
+        |                        ^^|^
+        |                          `--- reference
+        |
+        |-[ file:///test1.st:3:29 ]
+        |
+      3 |     cells : ARRAY[0..Limits.HIGH] OF INT;
+        |                             ^^|^
+        |                               `--- reference
+        |
+      5 |     Uses := Limits.HIGH;
+        |                    ^^|^
+        |                      `--- reference
+        |
+     10 |     Imported := HIGH;
+        |                 ^^|^
+        |                   `--- reference
+    ----'
+    ");
+}
