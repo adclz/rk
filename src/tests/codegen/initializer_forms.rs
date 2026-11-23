@@ -335,7 +335,8 @@ END_FUNCTION
 /// Values: enums, a subrange from an expression, implicit widenings,
 /// negation, MOD, a power, boolean and bit-string operators;
 /// nested array and struct initializers with non-constant parts and
-/// references in them; strings; NULL and address comparisons.
+/// references in them, and a struct's value in parentheses, which is that
+/// value; strings; NULL and address comparisons.
 #[rstest]
 fn value_forms(mut with_db: db::RootDatabase) {
     run_all(
@@ -379,12 +380,14 @@ VAR
     i : INT := 3;
     a : ARRAY[1..5] OF INT := [i, i * 2, i + 3, 2(i)];
     p : Pt := (x := i, y := i * 2);
+    copy : Pt := (p);
     pts : ARRAY[1..2] OF Pt := [(x := i), (y := i + 1)];
     refs : ARRAY[1..2] OF REF_TO INT := [REF(i), REF(a[1])];
     d0 : INT := refs[2]^;
 END_VAR
     check(a[1] = 3, 'a[1]'); check(a[2] = 6, 'a[2]'); check(a[3] = 6, 'a[3]'); check(a[4] = 3, 'a[4]'); check(a[5] = 3, 'a[5]');
     check(p.x = 3, 'p.x'); check(p.y = 6, 'p.y');
+    check(copy.x = 3, 'copy.x'); check(copy.y = 6, 'copy.y');
     check(pts[1].x = 3, 'pts[1].x'); check(pts[1].y = 0, 'pts[1].y'); check(pts[2].x = 7, 'pts[2].x default'); check(pts[2].y = 4, 'pts[2].y');
     check(d0 = 3, 'refs[2]^');
     refs[1]^ := 9;
