@@ -550,8 +550,11 @@ impl<'db> Parse<'db> for ast::generated::Assign {
         };
         let last = *places.last().expect("a chain has a place");
 
-        type TargetType = ast::generated::ERREmptyCompoundAssignment_ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_ERROutputAssignInAssignment_Assignment_CompoundAssignment;
+        type TargetType = ast::generated::ERRCaseValueInAssignment_ERREmptyCompoundAssignment_ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_ERROutputAssignInAssignment_Assignment_CompoundAssignment;
         let (target, compound) = match self.target.cast(sema.ast) {
+            TargetType::ERRCaseValueInAssignment(err) => {
+                return Err(case_value_in_assignment(sema, err));
+            }
             TargetType::ERREmptyRightHandAssignment(err) => {
                 return Err(SyntaxError::EmptyRightHandSide(err.get_range().to_owned())
                     .to_diagnostic(sema.db, sema.file));
@@ -623,6 +626,48 @@ impl<'db> Parse<'db> for ast::generated::Assign {
             sema.current_scope,
         ))
     }
+}
+
+/// `1: x := a`, then `-2: x := b;` on the next line, with no `;` between:
+/// the CASE value read into the assignment's value, `a - 2`. The value
+/// starts at the sign nearest the end that starts a line, which is where a
+/// value is written; with none, at the last sign.
+fn case_value_in_assignment<'db>(
+    sema: &SemanticIndexBuilder<'db>,
+    err: &ast::generated::ERRCaseValueInAssignment,
+) -> IdeDiagnostic {
+    let top = err.value.cast(sema.ast);
+    let mut node = top;
+    let chosen = loop {
+        let sign = node.operator.cast(sema.ast).get_range();
+        let left = node.left.cast(sema.ast);
+        if left.get_range().end_point.row < sign.start_point.row {
+            break node;
+        }
+        match left {
+            ast::generated::Expression::AddOperator(inner) => node = inner,
+            _ => break top,
+        }
+    };
+    let left = chosen.left.cast(sema.ast).get_range();
+    let sign = chosen.operator.cast(sema.ast).get_range();
+    let end = top.get_range();
+    SyntaxError::MissingSemicolonBeforeValue {
+        file: sema.file,
+        at: tree_sitter::Range {
+            start_byte: left.end_byte,
+            end_byte: left.end_byte,
+            start_point: left.end_point,
+            end_point: left.end_point,
+        },
+        value: tree_sitter::Range {
+            start_byte: sign.start_byte,
+            end_byte: end.end_byte,
+            start_point: sign.start_point,
+            end_point: end.end_point,
+        },
+    }
+    .to_diagnostic(sema.db, sema.file)
 }
 
 /// What `+=`, `-=`, `*=` or `/=` writes its place: `x + e` for `x += e`,

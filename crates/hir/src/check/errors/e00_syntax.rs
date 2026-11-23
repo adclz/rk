@@ -36,6 +36,17 @@ pub enum SyntaxError {
         err: String,
         grammar_name: &'static str,
     },
+    /// `1: x := a`, then `-2: x := b;` on the next line, with no `;`
+    /// between: a sign after an operand is the operator, and the CASE value
+    /// `-2` was read into `a - 2`, up to its `:`.
+    MissingSemicolonBeforeValue {
+        file: File,
+        /// Where the `;` goes: right after the operand before the sign.
+        at: Range,
+        /// The CASE value, from its sign to the end of the assignment's
+        /// value.
+        value: Range,
+    },
     MissingVarType(Range),
     /// A VAR_CONFIG entry with no type after its path or its location.
     MissingEntryType(Range),
@@ -152,7 +163,7 @@ impl ErrorCode for SyntaxError {
     fn code(&self) -> &'static str {
         match self {
             Self::SyntaxError { .. } => "E0001",
-            Self::MissingNode { .. } => "E0002",
+            Self::MissingNode { .. } | Self::MissingSemicolonBeforeValue { .. } => "E0002",
             Self::MissingVarType(_) | Self::MissingEntryType(_) => "E0003",
             Self::UnexpectedVarInit(_) => "E0004",
             Self::EmptyRightHandSide(_) => "E0005",
@@ -324,6 +335,39 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     );
                 };
                 diagnostic
+            }
+            Self::MissingSemicolonBeforeValue { file, at, value } => {
+                let value = file
+                    .document(db)
+                    .as_str()
+                    .get(value.start_byte..value.end_byte)
+                    .unwrap_or("")
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let range = crate::denormalize(db, file, at).unwrap_or_default();
+                let mut diag = diag()
+                    .message("missing ';'".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(range)
+                    .call();
+                diag.with_note(
+                    "a sign after an operand is an operator, on the next line too".into(),
+                );
+                diag.with_fix(
+                    action()
+                        .title(format!("insert ';' before the CASE value '{value}'"))
+                        .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
+                        .diagnostics(vec![diag.inner()])
+                        .is_preferred(true)
+                        .edit(WorkspaceEdit::new(HashMap::from([(
+                            file.url(db).clone(),
+                            vec![edit().new_text(";".to_string()).range(range).call()],
+                        )])))
+                        .call(),
+                );
+                diag
             }
             Self::MissingVarType(span) => diag()
                 .message("the variable has no type".into())
