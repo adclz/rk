@@ -163,23 +163,29 @@ PROGRAM Dummy
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value not constant
-       ,-[ file:///test0.st:4:18 ]
+    [E0408] Error: constant defined by its own value
+       ,-[ file:///test0.st:4:5 ]
        |
      4 |     k1 : DINT := k2;
-       |                  ^|
-       |                   `-- this initial value must be a constant: it is fixed before the program runs
-       |
-       | Note: 'k2' is CONSTANT, but its own value does not fold (a reference cycle, or a non-constant initializer)
-    ---'
-    [E0401] Error: initial value not constant
-       ,-[ file:///test0.st:5:18 ]
-       |
+       |     ^|
+       |      `-- 'k1' is defined by its own value, through 'k2'
      5 |     k2 : DINT := k1;
-       |                  ^|
-       |                   `-- this initial value must be a constant: it is fixed before the program runs
+       |     ^|
+       |      `-- 'k2' is declared here
        |
-       | Note: 'k1' is CONSTANT, but its own value does not fold (a reference cycle, or a non-constant initializer)
+       | Note: a constant's value is computed before the program runs, from the constants it names
+    ---'
+    [E0408] Error: constant defined by its own value
+       ,-[ file:///test0.st:5:5 ]
+       |
+     4 |     k1 : DINT := k2;
+       |     ^|
+       |      `-- 'k1' is declared here
+     5 |     k2 : DINT := k1;
+       |     ^|
+       |      `-- 'k2' is defined by its own value, through 'k1'
+       |
+       | Note: a constant's value is computed before the program runs, from the constants it names
     ---'
     ");
 }
@@ -1373,4 +1379,47 @@ END_VAR
 END_FUNCTION
 ";
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A constant whose value reads itself through another is refused where it
+/// is declared (E0408): in a POU's VAR CONSTANT as in a namespace's
+/// VAR_CONSTANT, and a bound naming it says nothing more.
+#[rstest]
+fn a_constant_defined_by_its_own_value_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Limits : INT
+VAR CONSTANT
+    HIGH : INT := LOW + 10;
+    LOW : INT := HIGH - 10;
+END_VAR
+VAR cells : ARRAY[0..HIGH] OF INT; END_VAR
+    Limits := 0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0408] Error: constant defined by its own value
+       ,-[ file:///test0.st:4:5 ]
+       |
+     4 |     HIGH : INT := LOW + 10;
+       |     ^^|^
+       |       `--- 'HIGH' is defined by its own value, through 'LOW'
+     5 |     LOW : INT := HIGH - 10;
+       |     ^|^
+       |      `--- 'LOW' is declared here
+       |
+       | Note: a constant's value is computed before the program runs, from the constants it names
+    ---'
+    [E0408] Error: constant defined by its own value
+       ,-[ file:///test0.st:5:5 ]
+       |
+     4 |     HIGH : INT := LOW + 10;
+       |     ^^|^
+       |       `--- 'HIGH' is declared here
+     5 |     LOW : INT := HIGH - 10;
+       |     ^|^
+       |      `--- 'LOW' is defined by its own value, through 'HIGH'
+       |
+       | Note: a constant's value is computed before the program runs, from the constants it names
+    ---'
+    ");
 }

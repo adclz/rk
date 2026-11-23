@@ -34,18 +34,18 @@ NAMESPACE Std.Timers
 END_NAMESPACE
 "#;
     assert_snapshot!(test_diagnostics_with_library(&mut with_db, &[LIB], &[source]), @r"
-    [E0102] Error: duplicate POU
+    [E0102] Error: duplicate name
        ,-[ file:///test0.st:3:20 ]
        |
      3 |     FUNCTION_BLOCK TON
        |                    ^|^
-       |                     `--- duplicate POU 'TON'
+       |                     `--- FUNCTION_BLOCK 'TON' is declared twice
        |
        |-[ file:///lib0.st:3:20 ]
        |
      3 |     FUNCTION_BLOCK TON
        |                    ^|^
-       |                     `--- POU 'TON' is already declared here
+       |                     `--- FUNCTION_BLOCK 'TON' is already declared here
     ---'
     ");
 }
