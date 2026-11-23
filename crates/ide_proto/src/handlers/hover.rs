@@ -50,10 +50,23 @@ use crate::{
 /// 40`, and `offset = 8` where it sits in a STRUCT or an instance. Empty for
 /// what has no storage of its own, a FUNCTION or an `ARRAY[*]`.
 fn layout_section(size: Option<u64>, offset: Option<u64>) -> String {
-    match (size, offset) {
-        (Some(size), Some(offset)) => format!("\n---\nsize = {size}, offset = {offset}\n"),
-        (Some(size), None) => format!("\n---\nsize = {size}\n"),
-        (None, _) => String::new(),
+    section(None, size, offset)
+}
+
+/// [`layout_section`], led by what a constant's value comes to when it is
+/// written as an expression or in another base: `value = 20`.
+fn section(value: Option<i128>, size: Option<u64>, offset: Option<u64>) -> String {
+    let parts: Vec<String> = [
+        value.map(|value| format!("value = {value}")),
+        size.map(|size| format!("size = {size}")),
+        size.and(offset).map(|offset| format!("offset = {offset}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    match parts.is_empty() {
+        true => String::new(),
+        false => format!("\n---\n{}\n", parts.join(", ")),
     }
 }
 
@@ -300,14 +313,7 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
             Pou::Constant(constant) => folded_integer(db, *constant),
             _ => None,
         };
-        let layout = match value {
-            Some(value) => format!(
-                "\n---\nvalue = {value}{}\n",
-                size.map(|size| format!(", size = {size}"))
-                    .unwrap_or_default()
-            ),
-            None => layout_section(size, None),
-        };
+        let layout = section(value, size, None);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -383,15 +389,40 @@ impl<'db> HoverHandler<'db> for VariableDecl<'db> {
         let infer = self.spec(db).infer(db);
         let name = self.name_with_case(db).text(db);
         let type_name = infer.type_name(db);
+        // A CONSTANT shows its value, a VAR_EXTERNAL's being its global's.
+        let (kind, written, value) = match self.qualifier(db).contains(hir::Qualifier::CONSTANT) {
+            true => {
+                let holder = match self.is_external(db) {
+                    true => hir::hir_ty::index_graphs::external_var_lookup(db, self.name(db))
+                        .unwrap_or(*self),
+                    false => *self,
+                };
+                let written = written_value(db, holder)
+                    .map(|value| format!(" := {value}"))
+                    .unwrap_or_default();
+                (
+                    format!("{kind} CONSTANT"),
+                    written,
+                    folded_integer(db, holder),
+                )
+            }
+            false => (kind.to_string(), String::new(), None),
+        };
         let layout = match member_part(db, *self) {
-            Some(field) => layout_section(Some(field.layout.size), Some(field.offset)),
-            None => layout_section(layout::of_spec(db, self.spec(db)).map(|l| l.size), None),
+            Some(field) => section(value, Some(field.layout.size), Some(field.offset)),
+            None => section(
+                value,
+                layout::of_spec(db, self.spec(db)).map(|l| l.size),
+                None,
+            ),
         };
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: format!("```iecst\n({kind}) {name}: {type_name}\n```\n{layout}{comment}"),
+                value: format!(
+                    "```iecst\n({kind}) {name}: {type_name}{written}\n```\n{layout}{comment}"
+                ),
             }),
             range: Some(
                 hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db))

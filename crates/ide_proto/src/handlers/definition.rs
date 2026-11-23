@@ -236,8 +236,8 @@ impl<'db> DefinitionHandler<'db> for ParamAssign<'db> {
     }
 }
 
-/// `ty` with its aliases followed: a variable or an alias declared as
-/// another name goes to that name's declaration, as many times as it takes.
+/// `ty` with its aliases followed: an alias declared as another name goes to
+/// that name's declaration, as many times as it takes.
 /// A cycle of aliases, `TYPE A : B; B : A;`, is E1302 where it is declared;
 /// followed name by name it took the language server down. A second walker
 /// two names ahead meets the first only on a cycle, and the chase then
@@ -262,12 +262,11 @@ fn through_aliases<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Type<'
     }
 }
 
-/// The name `ty` is declared as, when it is a variable or an alias declared
-/// as another name.
+/// The name `ty` is declared as, when it is an alias declared as another
+/// name.
 fn aliased<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Option<Type<'db>> {
     let spec = match ty {
         Type::DataType(dt) => dt.spec(db),
-        Type::Variable((var, _)) => var.spec(db),
         _ => return None,
     };
     matches!(spec.kind(db), SpecKind::Target(_)).then(|| spec.infer(db))
