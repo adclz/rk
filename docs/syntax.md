@@ -19,6 +19,9 @@ END_FUNCTION
 
 The formatter writes the missing ones in.
 
+A sign after an operand continues the expression, on the next line too.
+Before a CASE value with a sign, the `;` is needed: without it, `1: x := a` followed by `-2: x := b;` reads `a - 2`.
+
 A `;` on its own is the empty statement and is accepted wherever a statement is, `IF ready THEN ; END_IF` included.
 
 - Keywords and identifiers are case-insensitive: `myFn` and `MyFn` are one name.
