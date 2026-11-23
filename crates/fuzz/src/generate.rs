@@ -65,6 +65,15 @@
 //!   member. A FUNCTION writes part of its own result after assigning it.
 //!   The evaluator works on the two's-complement bits of the place's width.
 //!
+//! - CONSTANTs of the PROGRAM (`VAR CONSTANT`), of the CONFIGURATION
+//!   (`VAR_GLOBAL CONSTANT`) and of a namespace (`VAR_CONSTANT`, at the top
+//!   of the file or in `NAMESPACE Nk`). Any POU or TYPE names a namespace's,
+//!   bare through the file's `USING Nk` or qualified: in a body, a bound of
+//!   an array TYPE, a named value or a field's default. One of them may be a
+//!   STRUCT, read by field or copied whole, or an ARRAY, read by element, or
+//!   hold no value; a bit of an integer one is read as a BOOL. A constant
+//!   expression names only the constants that hold a value.
+//!
 //! - A member of a FUNCTION_BLOCK or a CLASS named through `THIS` in its body
 //!   and its methods, for reads, writes and partial access, one per block or
 //!   class. `THIS.s.f0.%X3` is a bit of `f0`.
@@ -306,8 +315,17 @@ enum Expr {
     SameRef(bool, RefSide, RefSide),
     /// `cycle{k}(n)`: goes round the type and answers `n + 1` ([`CYCLES`]).
     Cycle(usize, Box<Expr>),
-    /// A CONSTANT, by its place in [`Decls::constants`].
-    Const(usize),
+    /// A CONSTANT, by its place in [`Decls::constants`]: a namespace's is
+    /// written qualified, `Nk.nk0`, when set.
+    Const(usize, bool),
+    /// Field `f` of a STRUCT CONSTANT: `nk0.f1`.
+    ConstField(usize, bool, usize),
+    /// An element of an ARRAY CONSTANT of [`Decls::const_arrays`], at an index
+    /// wrapped into its range: `nka0[i]`.
+    ConstElem(usize, bool, Box<Expr>),
+    /// Bit `n` of an integer CONSTANT, as a BOOL: `nk0.%Xn`, or `nk0.n` when
+    /// bare.
+    ConstBit(usize, bool, u32, bool),
     /// `E{k}#n{j}`: a named value, its number at the type's base.
     Named(usize, usize),
     /// `AND`, `OR` or `XOR` of two integers of type `ty`, bit by bit.
@@ -568,6 +586,9 @@ struct Array {
     /// The bounds written as constant expressions that fold to them, or as
     /// themselves when not set.
     bounds: Option<(Expr, Expr)>,
+    /// Declared through a TYPE of its own, `A{k}`, whose bounds name only
+    /// what a TYPE sees: a namespace's CONSTANTs.
+    alias: bool,
     init: Vec<Val>,
     /// Each element, as the initializer writes it.
     written: Vec<Written>,
@@ -847,14 +868,67 @@ struct Named {
     numbers: Vec<i128>,
 }
 
-/// A CONSTANT: `k{n}` of the PROGRAM, or `gk{n}` of the CONFIGURATION,
-/// which a POU naming it declares `VAR_EXTERNAL CONSTANT`.
+/// Who declares a CONSTANT, which says where it is written and who names it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Owner {
+    /// `k{n}`, the PROGRAM's `VAR CONSTANT`: only the PROGRAM names it.
+    Program,
+    /// `gk{n}`, the CONFIGURATION's `VAR_GLOBAL CONSTANT`, which a POU naming
+    /// it declares `VAR_EXTERNAL CONSTANT`.
+    Configuration,
+    /// `nk{n}`, a `VAR_CONSTANT` at the top of the file, or in `NAMESPACE Nk`
+    /// when set: every POU and TYPE names it.
+    Namespace(bool),
+}
+
+/// What a CONSTANT is written with.
+#[derive(Clone, Debug)]
+enum ConstValue {
+    /// A constant expression.
+    Expr(Expr),
+    /// A STRUCT's fields, each written with a constant expression or left
+    /// to its TYPE's default.
+    Fields(Vec<Option<Expr>>),
+    /// Nothing: it holds its type's default.
+    Nothing,
+}
+
+/// A CONSTANT: `k{n}` of the PROGRAM, `gk{n}` of the CONFIGURATION, or
+/// `nk{n}` of a namespace.
 struct Constant {
     name: String,
     ty: Ty,
-    expr: Expr,
+    written: ConstValue,
     value: Val,
-    global: bool,
+    owner: Owner,
+}
+
+impl Constant {
+    /// Whether a constant expression may name it: it holds one value, and
+    /// a value is written.
+    fn folds(&self) -> bool {
+        matches!(self.written, ConstValue::Expr(_))
+    }
+
+    fn namespaced(&self) -> bool {
+        self.owner == Owner::Namespace(true)
+    }
+
+    /// The constant expression of one that holds a number: the PROGRAM's and
+    /// the CONFIGURATION's always do.
+    fn expr(&self) -> &Expr {
+        match &self.written {
+            ConstValue::Expr(e) => e,
+            _ => unreachable!("a CONSTANT of a POU is written with its value"),
+        }
+    }
+}
+
+/// An ARRAY `VAR_CONSTANT`, `nka{n}`, at the top of the file or in `NAMESPACE
+/// Nk` when `namespaced`: read element by element.
+struct ConstArray {
+    array: Array,
+    namespaced: bool,
 }
 
 /// A `VAR_GLOBAL` of the CONFIGURATION, `gv{n}`, started by a constant
@@ -871,8 +945,10 @@ struct Global {
 struct Decls {
     /// The types with named values, `E{k}`.
     named: Vec<Named>,
-    /// The CONSTANTs, the CONFIGURATION's and the PROGRAM's.
+    /// The CONSTANTs: the namespace's, the CONFIGURATION's and the PROGRAM's.
     constants: Vec<Constant>,
+    /// The namespace's ARRAY CONSTANTs.
+    const_arrays: Vec<ConstArray>,
     globals: Vec<Global>,
     /// Initial values written as constant expressions: a program variable's,
     /// by its place in the program's variables; a field's of `S{k}`, by
@@ -900,6 +976,28 @@ struct Decls {
 }
 
 impl Decls {
+    /// How a use names CONSTANT `c`: `Nk.nk0` when `qualified`.
+    fn constant_name(&self, c: usize, qualified: bool) -> String {
+        match qualified {
+            true => format!("Nk.{}", self.constants[c].name),
+            false => self.constants[c].name.clone(),
+        }
+    }
+
+    /// How a use names ARRAY CONSTANT `a`.
+    fn const_array_name(&self, a: usize, qualified: bool) -> String {
+        match qualified {
+            true => format!("Nk.{}", self.const_arrays[a].array.name),
+            false => self.const_arrays[a].array.name.clone(),
+        }
+    }
+
+    /// Whether the file has a `NAMESPACE Nk`, which it then says `USING`.
+    fn has_namespace(&self) -> bool {
+        self.constants.iter().any(Constant::namespaced)
+            || self.const_arrays.iter().any(|a| a.namespaced)
+    }
+
     /// A class's variables, the inherited ones first.
     fn class_vars(&self, c: usize) -> Vec<Var> {
         let class = &self.classes[c];
@@ -1067,7 +1165,8 @@ impl Generator<'_> {
             let named = self.named_values(ty);
             return match self.choices.below(3) {
                 0 if !constants.is_empty() => {
-                    Expr::Const(constants[self.choices.below(constants.len())])
+                    let c = constants[self.choices.below(constants.len())];
+                    Expr::Const(c, self.spelled(c))
                 }
                 1 if !named.is_empty() => {
                     let (k, j) = named[self.choices.below(named.len())];
@@ -1144,7 +1243,8 @@ impl Generator<'_> {
             let (written, number) = match counted {
                 true => (None, before.map_or(0, |b| b + 1)),
                 false => {
-                    let e = self.constant(ty, 2, &[]);
+                    let visible = self.namespace_values();
+                    let e = self.constant(ty, 2, &visible);
                     let number = self.folded(ty, &e).int();
                     (Some(e), number)
                 }
@@ -1155,41 +1255,162 @@ impl Generator<'_> {
         }
     }
 
-    /// Up to three CONSTANTs, the CONFIGURATION's when `global`. Each names
-    /// literals, named values, the CONSTANTs of its kind before it and, in
-    /// the PROGRAM, the CONFIGURATION's. One in three is a DINT, for the
-    /// bounds, labels and steps that name them.
-    fn constants(&mut self, global: bool) {
+    /// Up to three CONSTANTs of the CONFIGURATION or of the PROGRAM. Each
+    /// names literals, named values, the namespace's CONSTANTs, the ones of
+    /// its kind before it and, in the PROGRAM, the CONFIGURATION's. One in
+    /// three is a DINT, for the bounds, labels and steps that name them.
+    fn constants(&mut self, owner: Owner) {
         for n in 0..self.choices.below(4) {
-            let ty = match self.choices.below(4) {
-                0 => [Ty::Real, Ty::Lreal][self.choices.below(2)],
-                1 => Ty::Dint,
-                _ => self.integer(),
-            };
+            let ty = self.constant_type();
             let visible: Vec<usize> = (0..self.d.constants.len())
-                .filter(|&c| !global || self.d.constants[c].global)
+                .filter(|&c| {
+                    let constant = &self.d.constants[c];
+                    constant.folds()
+                        && (owner == Owner::Program || constant.owner != Owner::Program)
+                })
                 .collect();
             let expr = self.constant(ty, 3, &visible);
             let value = self.folded(ty, &expr);
-            let name = match global {
-                true => format!("gk{n}"),
-                false => format!("k{n}"),
+            let name = match owner {
+                Owner::Configuration => format!("gk{n}"),
+                _ => format!("k{n}"),
             };
             self.d.constants.push(Constant {
                 name,
                 ty,
-                expr,
+                written: ConstValue::Expr(expr),
                 value,
-                global,
+                owner,
             });
         }
     }
 
+    /// The type of a CONSTANT that holds one number: one in three a DINT.
+    fn constant_type(&mut self) -> Ty {
+        match self.choices.below(4) {
+            0 => [Ty::Real, Ty::Lreal][self.choices.below(2)],
+            1 => Ty::Dint,
+            _ => self.integer(),
+        }
+    }
+
+    /// Up to four CONSTANTs of the namespace, `nk{n}`, written before
+    /// anything else may name them: at the top of the file, or in `NAMESPACE
+    /// Nk`. Each names literals and the namespace's CONSTANTs before it; one
+    /// in eight holds no value, its type's default.
+    fn namespace_constants(&mut self) {
+        for n in 0..self.choices.below(5) {
+            let ty = self.constant_type();
+            let owner = Owner::Namespace(self.choices.percent(50));
+            let (written, value) = match self.choices.percent(12) {
+                true => (ConstValue::Nothing, zero(ty)),
+                false => {
+                    let visible = self.namespace_values();
+                    let expr = self.constant(ty, 3, &visible);
+                    let value = self.folded(ty, &expr);
+                    (ConstValue::Expr(expr), value)
+                }
+            };
+            self.d.constants.push(Constant {
+                name: format!("nk{n}"),
+                ty,
+                written,
+                value,
+                owner,
+            });
+        }
+    }
+
+    /// The namespace's STRUCT and ARRAY CONSTANTs, once the STRUCTs are
+    /// declared: up to two of each. A STRUCT one writes some of its fields,
+    /// each a constant expression or a literal; an ARRAY one is written as
+    /// a program array is, its bounds over the namespace's CONSTANTs.
+    fn namespace_aggregates(&mut self) {
+        if !self.d.structs.is_empty() {
+            for _ in 0..self.choices.below(3) {
+                let k = self.choices.below(self.d.structs.len());
+                let mut fields = Vec::new();
+                let mut values = Vec::new();
+                for f in 0..self.d.structs[k].len() {
+                    let field = self.d.structs[k][f].clone();
+                    if !self.choices.percent(70) {
+                        fields.push(None);
+                        values.push(field.init);
+                        continue;
+                    }
+                    let e = match field.ty {
+                        t if t.is_int() || t.is_float() => {
+                            let visible = self.namespace_values();
+                            self.constant(t, 2, &visible)
+                        }
+                        t => Expr::Lit(t, self.literal(t)),
+                    };
+                    values.push(self.folded(field.ty, &e));
+                    fields.push(Some(e));
+                }
+                let written = match fields.iter().any(Option::is_some) {
+                    true => ConstValue::Fields(fields),
+                    false => ConstValue::Nothing,
+                };
+                let n = self.d.constants.len();
+                self.d.constants.push(Constant {
+                    name: format!("nk{n}"),
+                    ty: Ty::Struct(k),
+                    written,
+                    value: Val::Struct(values),
+                    owner: Owner::Namespace(self.choices.percent(50)),
+                });
+            }
+        }
+        for k in 0..self.choices.below(3) {
+            let ty = self.scalar_type();
+            let lo = self.choices.below(6) as i128 - 3;
+            let count = 1 + self.choices.below(5);
+            let (init, written) = self.elements(ty, count);
+            let hi = lo + count as i128 - 1;
+            let visible = self.namespace_values();
+            let bounds = self
+                .const_for(lo, &visible)
+                .zip(self.const_for(hi, &visible));
+            let namespaced = self.choices.percent(50);
+            self.d.const_arrays.push(ConstArray {
+                array: Array {
+                    name: format!("nka{k}"),
+                    ty,
+                    lo,
+                    bounds,
+                    alias: false,
+                    init,
+                    written,
+                },
+                namespaced,
+            });
+        }
+    }
+
+    /// The namespace's CONSTANTs that hold one value: what a TYPE names, and
+    /// what any constant expression may.
+    fn namespace_values(&self) -> Vec<usize> {
+        (0..self.d.constants.len())
+            .filter(|&c| {
+                let constant = &self.d.constants[c];
+                matches!(constant.owner, Owner::Namespace(_)) && constant.folds()
+            })
+            .collect()
+    }
+
+    /// Whether a use names CONSTANT `c` qualified: one in `NAMESPACE Nk`, now
+    /// and then; bare, it is named through the file's `USING Nk`.
+    fn spelled(&mut self, c: usize) -> bool {
+        self.d.constants[c].namespaced() && self.choices.percent(50)
+    }
+
     /// Up to two `VAR_GLOBAL`s, each started by a constant expression over
-    /// the CONFIGURATION's CONSTANTs: a value `__init` computes.
+    /// the CONFIGURATION's and the namespace's CONSTANTs: a value `__init`
+    /// computes.
     fn globals(&mut self) {
         let visible: Vec<usize> = (0..self.d.constants.len())
-            .filter(|&c| self.d.constants[c].global)
+            .filter(|&c| self.d.constants[c].owner != Owner::Program && self.d.constants[c].folds())
             .collect();
         for n in 0..self.choices.below(3) {
             let ty = match self.choices.below(3) {
@@ -1214,12 +1435,15 @@ impl Generator<'_> {
         if !self.choices.percent(50) {
             return None;
         }
-        let mut sources: Vec<Expr> = visible
+        let dints: Vec<usize> = visible
             .iter()
             .copied()
             .filter(|&c| self.d.constants[c].ty == Ty::Dint)
-            .map(Expr::Const)
             .collect();
+        let mut sources = Vec::new();
+        for c in dints {
+            sources.push(Expr::Const(c, self.spelled(c)));
+        }
         sources.extend(
             self.named_values(Ty::Dint)
                 .into_iter()
@@ -1244,12 +1468,15 @@ impl Generator<'_> {
         }
     }
 
-    /// The CONSTANTs a body may name: in the PROGRAM, all of them; anywhere
-    /// else, none, its named values only.
+    /// The CONSTANTs a body may name where a constant is required, a label
+    /// or a step: in the PROGRAM, all that hold a value; anywhere else, the
+    /// namespace's.
     fn visible_constants(&self) -> Vec<usize> {
         match self.in_program {
-            true => (0..self.d.constants.len()).collect(),
-            false => Vec::new(),
+            true => (0..self.d.constants.len())
+                .filter(|&c| self.d.constants[c].folds())
+                .collect(),
+            false => self.namespace_values(),
         }
     }
 
@@ -1292,6 +1519,24 @@ impl Generator<'_> {
             self.d.arrays[array].lo,
             self.d.arrays[array].init.len() as i128,
         );
+        self.indexing += 1;
+        let e = self.expr(Ty::Dint, 1, readable);
+        self.indexing -= 1;
+        let lit = |v| Box::new(Expr::Lit(Ty::Dint, Val::Int(v)));
+        let arith = |op, a, b| Box::new(Expr::Arith(op, Ty::Dint, a, b));
+        let wrapped = arith(
+            Arith::Mod,
+            arith(Arith::Add, arith(Arith::Mod, Box::new(e), lit(n)), lit(n)),
+            lit(n),
+        );
+        Expr::Arith(Arith::Add, Ty::Dint, wrapped, lit(lo))
+    }
+
+    /// An index into ARRAY CONSTANT `a`, wrapped into its range as
+    /// [`Self::index`] wraps one into a program array's.
+    fn const_index(&mut self, a: usize, readable: &[usize]) -> Expr {
+        let array = &self.d.const_arrays[a].array;
+        let (lo, n) = (array.lo, array.init.len() as i128);
         self.indexing += 1;
         let e = self.expr(Ty::Dint, 1, readable);
         self.indexing -= 1;
@@ -1429,14 +1674,39 @@ impl Generator<'_> {
         }
     }
 
-    /// A CONSTANT the frame sees, or a named value, of type `ty`.
-    fn constant_leaf(&mut self, ty: Ty) -> Option<Expr> {
-        let mut leaves: Vec<Expr> = self
-            .visible_constants()
-            .into_iter()
-            .filter(|&c| self.d.constants[c].ty == ty)
-            .map(Expr::Const)
-            .collect();
+    /// A CONSTANT the frame sees, or a named value, of type `ty`: a whole
+    /// CONSTANT, a namespace's with no value among them, a field of a STRUCT
+    /// one, an element of an ARRAY one.
+    fn constant_leaf(&mut self, ty: Ty, readable: &[usize]) -> Option<Expr> {
+        let mut named: Vec<usize> = self.visible_constants();
+        named.extend((0..self.d.constants.len()).filter(|&c| {
+            let constant = &self.d.constants[c];
+            matches!(constant.owner, Owner::Namespace(_)) && !constant.folds()
+        }));
+        let mut leaves = Vec::new();
+        for c in named {
+            match self.d.constants[c].ty {
+                t if t == ty => leaves.push(Expr::Const(c, self.spelled(c))),
+                Ty::Struct(k) => {
+                    for f in 0..self.d.structs[k].len() {
+                        if self.d.structs[k][f].ty == ty {
+                            leaves.push(Expr::ConstField(c, self.spelled(c), f));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        // An element at an index that reads no element past the first level.
+        if self.indexing <= 1 {
+            for a in 0..self.d.const_arrays.len() {
+                if self.d.const_arrays[a].array.ty == ty {
+                    let qualified = self.d.const_arrays[a].namespaced && self.choices.percent(50);
+                    let index = self.const_index(a, readable);
+                    leaves.push(Expr::ConstElem(a, qualified, Box::new(index)));
+                }
+            }
+        }
         leaves.extend(
             self.named_values(ty)
                 .into_iter()
@@ -1472,7 +1742,7 @@ impl Generator<'_> {
                 }
             }
             if self.choices.percent(20)
-                && let Some(leaf) = self.constant_leaf(ty)
+                && let Some(leaf) = self.constant_leaf(ty, readable)
             {
                 return leaf;
             }
@@ -1489,10 +1759,14 @@ impl Generator<'_> {
                 return same;
             }
             let pick = self.choices.below(5);
-            if pick == 4
-                && let Some(bit) = self.bit_read(readable)
-            {
-                return bit;
+            if pick == 4 {
+                let bit = match self.choices.percent(30) {
+                    true => self.const_bit(),
+                    false => None,
+                };
+                if let Some(bit) = bit.or_else(|| self.bit_read(readable)) {
+                    return bit;
+                }
             }
             return match pick {
                 0 => Expr::Not(Box::new(self.expr(ty, d, readable))),
@@ -1585,6 +1859,24 @@ impl Generator<'_> {
             bit,
             self.choices.percent(50),
         ))
+    }
+
+    /// A bit of an integer CONSTANT of the namespace, read as a BOOL, with a
+    /// value or without.
+    fn const_bit(&mut self) -> Option<Expr> {
+        let integers: Vec<usize> = (0..self.d.constants.len())
+            .filter(|&c| {
+                let constant = &self.d.constants[c];
+                matches!(constant.owner, Owner::Namespace(_)) && constant.ty.is_int()
+            })
+            .collect();
+        if integers.is_empty() {
+            return None;
+        }
+        let c = integers[self.choices.below(integers.len())];
+        let bit = self.choices.below(self.d.constants[c].ty.bits() as usize) as u32;
+        let qualified = self.spelled(c);
+        Some(Expr::ConstBit(c, qualified, bit, self.choices.percent(50)))
     }
 
     /// A bit of an integer place written: `p.%X3 := cond`.
@@ -2147,10 +2439,22 @@ impl Generator<'_> {
             return Some(compound);
         }
         let value = match ty {
-            // A whole STRUCT copies from another of its type.
+            // A whole STRUCT copies from another of its type, or from a
+            // CONSTANT of it.
             Ty::Struct(_) => {
-                let sources = self.places(ty, readable, false);
-                Expr::Read(self.pick(sources)?)
+                let constants: Vec<usize> = (0..self.d.constants.len())
+                    .filter(|&c| self.d.constants[c].ty == ty)
+                    .collect();
+                match constants.is_empty() || !self.choices.percent(30) {
+                    true => {
+                        let sources = self.places(ty, readable, false);
+                        Expr::Read(self.pick(sources)?)
+                    }
+                    false => {
+                        let c = constants[self.choices.below(constants.len())];
+                        Expr::Const(c, self.spelled(c))
+                    }
+                }
             }
             _ => {
                 let ty = self.place_ty(&target);
@@ -2579,28 +2883,33 @@ pub fn program(bytes: &[u8]) -> String {
         this: None,
     };
 
-    // Types with named values, then the CONFIGURATION's CONSTANTs and the
-    // VAR_GLOBALs they start: everything below may name them.
+    // The namespace's CONSTANTs, types with named values, then the
+    // CONFIGURATION's CONSTANTs and the VAR_GLOBALs they start: everything
+    // below may name them.
+    g.namespace_constants();
     for _ in 0..g.choices.below(3) {
         g.named_type();
     }
-    g.constants(true);
+    g.constants(Owner::Configuration);
     g.globals();
 
     for k in 0..g.choices.below(3) {
         let n = 1 + g.choices.below(3);
         let mut fields = g.vars_named("f", n, Role::Plain);
-        // A field's default may be a constant expression: a TYPE sees no
-        // CONSTANT, only literals and named values.
+        // A field's default may be a constant expression: a TYPE sees the
+        // namespace's CONSTANTs, literals and named values.
+        let visible = g.namespace_values();
         for (f, field) in fields.iter_mut().enumerate() {
             if (field.ty.is_int() || field.ty.is_float()) && g.choices.percent(25) {
-                let e = g.constant(field.ty, 2, &[]);
+                let e = g.constant(field.ty, 2, &visible);
                 field.init = g.folded(field.ty, &e);
                 g.d.field_inits.push(((k, f), e));
             }
         }
         g.d.structs.push(fields);
     }
+
+    g.namespace_aggregates();
 
     for _ in 0..g.choices.below(3) {
         let cycle = g.choices.below(CYCLES.len());
@@ -2707,10 +3016,10 @@ pub fn program(bytes: &[u8]) -> String {
         }
         // A member's initial value may be a constant expression over the
         // CONFIGURATION's CONSTANTs, which the block declares VAR_EXTERNAL,
-        // and named values. An instance of the program is `__init`'s to
-        // start, so these are values `__init` computes.
+        // the namespace's, and named values. An instance of the program is
+        // `__init`'s to start, so these are values `__init` computes.
         let global: Vec<usize> = (0..g.d.constants.len())
-            .filter(|&c| g.d.constants[c].global)
+            .filter(|&c| g.d.constants[c].owner != Owner::Program && g.d.constants[c].folds())
             .collect();
         let b = g.d.blocks.len();
         for (m, member) in members.iter_mut().enumerate() {
@@ -2825,8 +3134,10 @@ pub fn program(bytes: &[u8]) -> String {
 
     // The PROGRAM's CONSTANTs, then its variables: one may start at a
     // constant expression, one of a type with named values at a name.
-    g.constants(false);
-    let constants: Vec<usize> = (0..g.d.constants.len()).collect();
+    g.constants(Owner::Program);
+    let constants: Vec<usize> = (0..g.d.constants.len())
+        .filter(|&c| g.d.constants[c].folds())
+        .collect();
     for k in 0..1 + g.choices.below(8) {
         let named = match g.choices.percent(15) {
             true => g.named_ty(),
@@ -2947,12 +3258,20 @@ pub fn program(bytes: &[u8]) -> String {
         let count = 1 + g.choices.below(5);
         let (init, written) = g.elements(ty, count);
         let hi = lo + count as i128 - 1;
-        let bounds = g.const_for(lo, &constants).zip(g.const_for(hi, &constants));
+        // Now and then declared through a TYPE of its own, whose bounds see
+        // only the namespace's CONSTANTs.
+        let alias = g.choices.percent(25);
+        let visible = match alias {
+            true => g.namespace_values(),
+            false => constants.clone(),
+        };
+        let bounds = g.const_for(lo, &visible).zip(g.const_for(hi, &visible));
         g.d.arrays.push(Array {
             name: format!("arr{k}"),
             ty,
             lo,
             bounds,
+            alias,
             init,
             written,
         });
@@ -3150,6 +3469,10 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
         expect(&mut out, d, &g.name, g.ty, &g.value);
     }
     out.push_str("*)\n\n");
+    // A namespace's CONSTANT named bare anywhere in the file.
+    if d.has_namespace() {
+        out.push_str("USING Nk;\n\n");
+    }
 
     let names = |vars: &[Var]| Names {
         vars: vars.iter().map(|v| v.name.clone()).collect(),
@@ -3229,11 +3552,82 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
         }
         out.push_str("END_STRUCT\nEND_TYPE\n\n");
     }
+    // A program array declared through a TYPE of its own.
+    for (k, a) in d.arrays.iter().enumerate() {
+        if a.alias {
+            let _ = writeln!(
+                out,
+                "TYPE A{k} : ARRAY[{}] OF {};\nEND_TYPE\n",
+                array_range(a, &constants),
+                a.ty.name()
+            );
+        }
+    }
+    // The namespace's CONSTANTs, at the top of the file and in `NAMESPACE
+    // Nk`. Written last first, so a CONSTANT names one declared after it.
+    let namespace = |out: &mut String, namespaced: bool, indent: &str| {
+        let scalars: Vec<&Constant> = d
+            .constants
+            .iter()
+            .filter(|c| c.owner == Owner::Namespace(namespaced))
+            .collect();
+        let arrays: Vec<&ConstArray> = d
+            .const_arrays
+            .iter()
+            .filter(|a| a.namespaced == namespaced)
+            .collect();
+        if scalars.is_empty() && arrays.is_empty() {
+            return;
+        }
+        let _ = writeln!(out, "{indent}VAR_CONSTANT");
+        for c in scalars.iter().rev() {
+            let value = match &c.written {
+                ConstValue::Expr(e) => format!(" := {}", constants.expr(e)),
+                ConstValue::Fields(fields) => {
+                    let written: Vec<String> = fields
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(f, e)| {
+                            Some(format!("f{f} := {}", constants.expr(e.as_ref()?)))
+                        })
+                        .collect();
+                    format!(" := ({})", written.join(", "))
+                }
+                ConstValue::Nothing => String::new(),
+            };
+            let _ = writeln!(out, "{indent}    {} : {}{value};", c.name, c.ty.name());
+        }
+        for a in arrays.iter().rev() {
+            let a = &a.array;
+            let values = written_elements(a.ty, &a.init, &a.written, |i| {
+                (a.lo + i as i128).to_string()
+            });
+            let _ = writeln!(
+                out,
+                "{indent}    {} : ARRAY[{}] OF {}{values};",
+                a.name,
+                array_range(a, &constants),
+                a.ty.name()
+            );
+        }
+        let _ = writeln!(out, "{indent}END_VAR");
+    };
+    namespace(&mut out, false, "");
+    if d.constants.iter().any(Constant::namespaced) || d.const_arrays.iter().any(|a| a.namespaced) {
+        out.push_str("\nNAMESPACE Nk\n");
+        namespace(&mut out, true, "    ");
+        out.push_str("END_NAMESPACE\n");
+    }
+    out.push('\n');
     // Every CONSTANT of the CONFIGURATION, as a POU that names one declares
     // them: when the block's starting values name one, and always in the
     // PROGRAM. Written last first, so a CONSTANT names one declared after it.
     let externals = |out: &mut String| {
-        let global: Vec<&Constant> = d.constants.iter().filter(|c| c.global).collect();
+        let global: Vec<&Constant> = d
+            .constants
+            .iter()
+            .filter(|c| c.owner == Owner::Configuration)
+            .collect();
         if !global.is_empty() {
             out.push_str("VAR_EXTERNAL CONSTANT\n");
             for c in global.iter().rev() {
@@ -3331,7 +3725,7 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
             .iter()
             .filter(|((block, _), _)| *block == k)
             .collect();
-        if inits.iter().any(|(_, e)| names_constant(e)) {
+        if inits.iter().any(|(_, e)| names_global_constant(e, d)) {
             externals(&mut out);
         }
         for (section, role) in [
@@ -3428,7 +3822,11 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
     }
     out.push_str("PROGRAM P\n");
     externals(&mut out);
-    let program: Vec<&Constant> = d.constants.iter().filter(|c| !c.global).collect();
+    let program: Vec<&Constant> = d
+        .constants
+        .iter()
+        .filter(|c| c.owner == Owner::Program)
+        .collect();
     if !program.is_empty() {
         out.push_str("VAR CONSTANT\n");
         for c in program.iter().rev() {
@@ -3437,7 +3835,7 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
                 "    {} : {} := {};",
                 c.name,
                 c.ty.name(),
-                constants.expr(&c.expr)
+                constants.expr(c.expr())
             );
         }
         out.push_str("END_VAR\n");
@@ -3449,27 +3847,21 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
             None => decl(&mut out, v, !matches!(v.ty, Ty::Struct(_))),
         }
     }
-    for a in &d.arrays {
-        let range = match &a.bounds {
-            Some((lo, hi)) => format!("{}..{}", constants.expr(lo), constants.expr(hi)),
-            None => format!("{}..{}", a.lo, a.lo + a.init.len() as i128 - 1),
+    for (k, a) in d.arrays.iter().enumerate() {
+        let ty = match a.alias {
+            true => format!("A{k}"),
+            false => format!("ARRAY[{}] OF {}", array_range(a, &constants), a.ty.name()),
         };
         match a.ty {
             // Elements of a STRUCT type take the TYPE's defaults.
             Ty::Struct(_) => {
-                let _ = writeln!(out, "    {} : ARRAY[{range}] OF {};", a.name, a.ty.name());
+                let _ = writeln!(out, "    {} : {ty};", a.name);
             }
             _ => {
                 let values = written_elements(a.ty, &a.init, &a.written, |i| {
                     (a.lo + i as i128).to_string()
                 });
-                let _ = writeln!(
-                    out,
-                    "    {} : ARRAY[{range}] OF {}{};",
-                    a.name,
-                    a.ty.name(),
-                    values
-                );
+                let _ = writeln!(out, "    {} : {ty}{values};", a.name);
             }
         }
     }
@@ -3526,7 +3918,11 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
     out.push_str("END_VAR\n");
     names(vars).block(&mut out, body, 1);
     out.push_str("END_PROGRAM\n\nCONFIGURATION C\n");
-    let global: Vec<&Constant> = d.constants.iter().filter(|c| c.global).collect();
+    let global: Vec<&Constant> = d
+        .constants
+        .iter()
+        .filter(|c| c.owner == Owner::Configuration)
+        .collect();
     if !global.is_empty() {
         out.push_str("    VAR_GLOBAL CONSTANT\n");
         for c in global.iter().rev() {
@@ -3535,7 +3931,7 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
                 "        {} : {} := {};",
                 c.name,
                 c.ty.name(),
-                constants.expr(&c.expr)
+                constants.expr(c.expr())
             );
         }
         out.push_str("    END_VAR\n");
@@ -3559,15 +3955,24 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
     out
 }
 
-/// Whether `e` names a CONSTANT, which its POU then declares.
-fn names_constant(e: &Expr) -> bool {
+/// Whether `e` names a CONSTANT of the CONFIGURATION, which its POU then
+/// declares `VAR_EXTERNAL CONSTANT`.
+fn names_global_constant(e: &Expr, d: &Decls) -> bool {
     match e {
-        Expr::Const(_) => true,
+        Expr::Const(c, _) => d.constants[*c].owner == Owner::Configuration,
         Expr::Arith(_, _, a, b) | Expr::Bits(_, _, a, b) | Expr::Pow(a, b) => {
-            names_constant(a) || names_constant(b)
+            names_global_constant(a, d) || names_global_constant(b, d)
         }
-        Expr::Neg(_, a) => names_constant(a),
+        Expr::Neg(_, a) => names_global_constant(a, d),
         _ => false,
+    }
+}
+
+/// An array's range, as its bounds are written.
+fn array_range(a: &Array, names: &Names) -> String {
+    match &a.bounds {
+        Some((lo, hi)) => format!("{}..{}", names.expr(lo), names.expr(hi)),
+        None => format!("{}..{}", a.lo, a.lo + a.init.len() as i128 - 1),
     }
 }
 
@@ -4151,7 +4556,19 @@ impl Names<'_> {
                 format!("({} {op} {})", side(a), side(b))
             }
             Expr::Cycle(k, n) => format!("cycle{k}({})", self.expr(n)),
-            Expr::Const(c) => self.d.constants[*c].name.clone(),
+            Expr::Const(c, qualified) => self.d.constant_name(*c, *qualified),
+            Expr::ConstField(c, qualified, f) => {
+                format!("{}.f{f}", self.d.constant_name(*c, *qualified))
+            }
+            Expr::ConstElem(a, qualified, index) => format!(
+                "{}[{}]",
+                self.d.const_array_name(*a, *qualified),
+                self.expr(index)
+            ),
+            Expr::ConstBit(c, qualified, bit, bare) => match bare {
+                true => format!("{}.{bit}", self.d.constant_name(*c, *qualified)),
+                false => format!("{}.%X{bit}", self.d.constant_name(*c, *qualified)),
+            },
             Expr::Named(k, j) => format!("E{k}#n{j}"),
             Expr::Bits(op, _, a, b) => {
                 let op = match op {
@@ -5166,7 +5583,19 @@ fn eval(e: &Expr, st: &State, d: &Decls) -> Val {
             Val::Int(((side(a) == side(b)) == *equal) as i128)
         }
         Expr::Cycle(_, n) => Val::Int(Ty::Dint.wrap(ev(n).int() + 1)),
-        Expr::Const(c) => d.constants[*c].value.clone(),
+        Expr::Const(c, _) => d.constants[*c].value.clone(),
+        Expr::ConstField(c, _, f) => match &d.constants[*c].value {
+            Val::Struct(fields) => fields[*f].clone(),
+            _ => unreachable!("a field of a STRUCT CONSTANT"),
+        },
+        Expr::ConstElem(a, _, index) => {
+            let array = &d.const_arrays[*a].array;
+            array.init[(ev(index).int() - array.lo) as usize].clone()
+        }
+        Expr::ConstBit(c, _, bit, _) => {
+            let constant = &d.constants[*c];
+            Val::Int(get_slice(raw(constant.ty, &constant.value), *bit, 1) as i128)
+        }
         Expr::Named(k, j) => Val::Int(d.named[*k].numbers[*j]),
         // Bit by bit on two's complement, which is the value's own bits at
         // its type: nothing wraps.
@@ -5824,6 +6253,7 @@ mod tests {
             ty: Ty::Dint,
             lo: 0,
             bounds: None,
+            alias: false,
             init: Vec::new(),
             written: Vec::new(),
         });
@@ -6004,6 +6434,199 @@ mod tests {
         let mut seed = 0x9E37_79B9_7F4A_7C15u64;
         let mut reached: Vec<&str> = Vec::new();
         for _ in 0..4000 {
+            let text = random_program(&mut seed);
+            let fresh: Vec<&str> = forms
+                .iter()
+                .filter(|(name, has)| has(&text) && !reached.contains(name))
+                .map(|(name, _)| *name)
+                .collect();
+            if fresh.is_empty() {
+                continue;
+            }
+            if let Err(finding) = crate::check_generated(&text) {
+                panic!("{finding}\n--- the program ---\n{text}");
+            }
+            reached.extend(fresh);
+            if reached.len() == forms.len() {
+                break;
+            }
+        }
+        let missing: Vec<&str> = forms
+            .iter()
+            .map(|(name, _)| *name)
+            .filter(|name| !reached.contains(name))
+            .collect();
+        assert!(missing.is_empty(), "no program writes {missing:?}");
+    }
+
+    #[test]
+    fn namespace_constants_are_written_and_compute() {
+        // The words of `text`, a qualified name and a part of one kept whole:
+        // `Nk.nk0`, `nk1.f2`, `nk0.%X3`.
+        fn words(text: &str) -> impl Iterator<Item = &str> {
+            text.split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '%')))
+                .filter(|w| !w.is_empty())
+        }
+        // `nk{n}` or `nka{n}`, alone.
+        fn constant_name(word: &str) -> bool {
+            word.strip_prefix("nka")
+                .or_else(|| word.strip_prefix("nk"))
+                .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+        }
+        // A name of the namespace at the start of `word`, qualified or not,
+        // and what follows it.
+        fn named(word: &str) -> Option<&str> {
+            let word = word.strip_prefix("Nk.").unwrap_or(word);
+            let end = word.find(['.', '[']).unwrap_or(word.len());
+            constant_name(&word[..end]).then_some(&word[end..])
+        }
+        // The text of `NAMESPACE Nk`, and the rest of the file.
+        fn split_namespace(text: &str) -> (&str, String) {
+            match text.split_once("NAMESPACE Nk\n") {
+                Some((before, rest)) => {
+                    let (inside, after) = rest.split_once("END_NAMESPACE").unwrap_or((rest, ""));
+                    (inside, format!("{before}{after}"))
+                }
+                None => ("", text.to_string()),
+            }
+        }
+        // The declarations of the namespace's CONSTANTs: `nk{n} : T...;`.
+        fn declarations(text: &str) -> Vec<&str> {
+            text.lines()
+                .map(str::trim)
+                .filter(|l| l.split(" : ").next().is_some_and(constant_name))
+                .collect()
+        }
+        type Form = (&'static str, Box<dyn Fn(&str) -> bool>);
+        let forms: Vec<Form> = vec![
+            (
+                "a VAR_CONSTANT at the top of the file",
+                Box::new(|t| t.contains("\nVAR_CONSTANT\n")),
+            ),
+            (
+                "a VAR_CONSTANT in a NAMESPACE",
+                Box::new(|t| t.contains("NAMESPACE Nk\n    VAR_CONSTANT\n")),
+            ),
+            (
+                "a namespace's CONSTANT named qualified",
+                Box::new(|t| words(t).any(|w| w.starts_with("Nk.") && named(w).is_some())),
+            ),
+            (
+                "a namespace's CONSTANT named bare through USING",
+                Box::new(|t| {
+                    let (inside, outside) = split_namespace(t);
+                    let names: Vec<&str> = declarations(inside)
+                        .iter()
+                        .filter_map(|l| l.split(" : ").next())
+                        .collect();
+                    words(&outside).any(|w| {
+                        let w = w.split(['.', '[']).next().unwrap_or(w);
+                        names.contains(&w)
+                    })
+                }),
+            ),
+            (
+                "a namespace's CONSTANT in a FUNCTION",
+                Box::new(|t| {
+                    t.split("\nFUNCTION g").skip(1).any(|f| {
+                        let f = f.split("END_FUNCTION").next().unwrap_or_default();
+                        words(f).any(|w| named(w).is_some())
+                    })
+                }),
+            ),
+            (
+                "a namespace's CONSTANT in an array TYPE's bound",
+                Box::new(|t| {
+                    t.lines()
+                        .any(|l| l.starts_with("TYPE A") && words(l).any(|w| named(w).is_some()))
+                }),
+            ),
+            (
+                "a named value naming a namespace's CONSTANT",
+                Box::new(|t| {
+                    t.lines()
+                        .any(|l| l.starts_with("TYPE E") && words(l).any(|w| named(w).is_some()))
+                }),
+            ),
+            (
+                "a CONSTANT of the CONFIGURATION naming a namespace's",
+                Box::new(|t| {
+                    t.lines().any(|l| {
+                        l.trim_start().starts_with("gk") && words(l).any(|w| named(w).is_some())
+                    })
+                }),
+            ),
+            (
+                "a STRUCT CONSTANT",
+                Box::new(|t| {
+                    declarations(t)
+                        .iter()
+                        .any(|l| l.contains(" : S") && l.contains(":= ("))
+                }),
+            ),
+            (
+                "an ARRAY CONSTANT",
+                Box::new(|t| declarations(t).iter().any(|l| l.contains(" : ARRAY["))),
+            ),
+            (
+                "a namespace's CONSTANT with no value",
+                Box::new(|t| {
+                    declarations(t)
+                        .iter()
+                        .any(|l| !l.contains(":=") && !l.contains(" : ARRAY["))
+                }),
+            ),
+            (
+                "a field of a STRUCT CONSTANT",
+                Box::new(|t| words(t).any(|w| named(w).is_some_and(|rest| rest.starts_with(".f")))),
+            ),
+            (
+                "an element of an ARRAY CONSTANT",
+                Box::new(|t| {
+                    t.contains("nka") && words(t).count() > 0 && {
+                        t.match_indices("nka").any(|(at, _)| {
+                            let rest = &t[at + 3..];
+                            let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+                            digits > 0 && rest[digits..].starts_with('[')
+                        })
+                    }
+                }),
+            ),
+            (
+                "a bit of a CONSTANT",
+                Box::new(|t| {
+                    words(t).any(|w| {
+                        named(w).is_some_and(|rest| {
+                            rest.starts_with(".%X")
+                                || rest.strip_prefix('.').is_some_and(|b| {
+                                    !b.is_empty() && b.bytes().all(|c| c.is_ascii_digit())
+                                })
+                        })
+                    })
+                }),
+            ),
+            (
+                "a STRUCT copied whole from a CONSTANT",
+                Box::new(|t| {
+                    let structs: Vec<&str> = declarations(t)
+                        .into_iter()
+                        .filter(|l| l.split(" : ").nth(1).is_some_and(|ty| ty.starts_with('S')))
+                        .filter_map(|l| l.split(" : ").next())
+                        .collect();
+                    t.lines().any(|l| {
+                        l.trim_end().strip_suffix(';').is_some_and(|l| {
+                            l.rsplit(" := ").next().is_some_and(|value| {
+                                let value = value.strip_prefix("Nk.").unwrap_or(value);
+                                structs.contains(&value)
+                            })
+                        })
+                    })
+                }),
+            ),
+        ];
+        let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        let mut reached: Vec<&str> = Vec::new();
+        for _ in 0..6000 {
             let text = random_program(&mut seed);
             let fresh: Vec<&str> = forms
                 .iter()
