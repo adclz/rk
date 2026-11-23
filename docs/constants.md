@@ -72,7 +72,7 @@ You can use them anywhere a constant is expected:
 
 - **In a TYPE**: an array's bounds, a `STRING`'s length, a subrange, an enum's values, a STRUCT field's initial value.
 - **In a POU**: its declarations, its initial values and its body, `CASE` labels included.
-- **In the `CONFIGURATION`**: a `VAR_GLOBAL`'s initial value.
+- **In the `CONFIGURATION`**: a `VAR_GLOBAL`'s initial value and a task's `INTERVAL`.
 - **In another constant's value.**
 
 A constant can be of any type.
