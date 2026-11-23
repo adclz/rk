@@ -105,6 +105,8 @@ pub enum InitError<'db> {
     /// other constants: `A : INT := A + 1`.
     OwnValue {
         constant: crate::hir_def::pous::variable::VariableDecl<'db>,
+        /// The name in its value where the loop starts.
+        reference: Expr<'db>,
         /// The constants between, in the order its value reaches them.
         through: Vec<crate::hir_def::pous::variable::VariableDecl<'db>>,
     },
@@ -470,7 +472,11 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                 ));
                 d
             }
-            Self::OwnValue { constant, through } => {
+            Self::OwnValue {
+                constant,
+                reference,
+                through,
+            } => {
                 use crate::HasName;
                 let name = |var: &crate::hir_def::pous::variable::VariableDecl<'db>| {
                     format!("'{}'", var.get_name_with_case(db).text(db))
@@ -494,8 +500,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(
-                        crate::denormalize(db, file, &constant.get_name_span(db))
-                            .unwrap_or_default(),
+                        crate::denormalize(db, file, &reference.get_span(db)).unwrap_or_default(),
                     )
                     .call();
                 for other in through {

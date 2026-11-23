@@ -199,10 +199,13 @@ impl<'db> InitInference<'db> {
             if !var.qualifier(db).contains(crate::Qualifier::CONSTANT) || var.init(db).is_none() {
                 continue;
             }
-            if let Some(through) = crate::hir_ty::infer::const_eval::own_value_loop(db, *var) {
+            if let Some((reference, through)) =
+                crate::hir_ty::infer::const_eval::own_value_loop(db, *var)
+            {
                 self.errors.push(
                     crate::check::errors::e04_init::InitError::OwnValue {
                         constant: *var,
+                        reference,
                         through,
                     }
                     .to_diagnostic(db, self.scope.file(db)),
