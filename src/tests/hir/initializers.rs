@@ -164,11 +164,11 @@ END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0408] Error: constant defined by its own value
-       ,-[ file:///test0.st:4:5 ]
+       ,-[ file:///test0.st:4:18 ]
        |
      4 |     k1 : DINT := k2;
-       |     ^|
-       |      `-- 'k1' is defined by its own value, through 'k2'
+       |                  ^|
+       |                   `-- 'k1' is defined by its own value, through 'k2'
      5 |     k2 : DINT := k1;
        |     ^|
        |      `-- 'k2' is declared here
@@ -176,14 +176,14 @@ END_PROGRAM
        | Note: a constant's value is computed before the program runs, from the constants it names
     ---'
     [E0408] Error: constant defined by its own value
-       ,-[ file:///test0.st:5:5 ]
+       ,-[ file:///test0.st:5:18 ]
        |
      4 |     k1 : DINT := k2;
        |     ^|
        |      `-- 'k1' is declared here
      5 |     k2 : DINT := k1;
-       |     ^|
-       |      `-- 'k2' is defined by its own value, through 'k1'
+       |                  ^|
+       |                   `-- 'k2' is defined by its own value, through 'k1'
        |
        | Note: a constant's value is computed before the program runs, from the constants it names
     ---'
@@ -1398,11 +1398,11 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0408] Error: constant defined by its own value
-       ,-[ file:///test0.st:4:5 ]
+       ,-[ file:///test0.st:4:19 ]
        |
      4 |     HIGH : INT := LOW + 10;
-       |     ^^|^
-       |       `--- 'HIGH' is defined by its own value, through 'LOW'
+       |                   ^|^
+       |                    `--- 'HIGH' is defined by its own value, through 'LOW'
      5 |     LOW : INT := HIGH - 10;
        |     ^|^
        |      `--- 'LOW' is declared here
@@ -1410,14 +1410,14 @@ END_FUNCTION
        | Note: a constant's value is computed before the program runs, from the constants it names
     ---'
     [E0408] Error: constant defined by its own value
-       ,-[ file:///test0.st:5:5 ]
+       ,-[ file:///test0.st:5:18 ]
        |
      4 |     HIGH : INT := LOW + 10;
        |     ^^|^
        |       `--- 'HIGH' is declared here
      5 |     LOW : INT := HIGH - 10;
-       |     ^|^
-       |      `--- 'LOW' is defined by its own value, through 'HIGH'
+       |                  ^^|^
+       |                    `--- 'LOW' is defined by its own value, through 'HIGH'
        |
        | Note: a constant's value is computed before the program runs, from the constants it names
     ---'

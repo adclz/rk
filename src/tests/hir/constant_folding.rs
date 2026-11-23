@@ -183,24 +183,24 @@ fn invalid_bool_logic_that_does_not_fold(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0408] Error: constant defined by its own value
-       ,-[ file:///test0.st:3:22 ]
+       ,-[ file:///test0.st:3:34 ]
        |
      3 |         VAR CONSTANT a : BOOL := b; b : BOOL := a; END_VAR
-       |                      |              |
-       |                      `----------------- 'a' is defined by its own value, through 'b'
+       |                                  |  |
+       |                                  `----- 'a' is defined by its own value, through 'b'
        |                                     |
        |                                     `-- 'b' is declared here
        |
        | Note: a constant's value is computed before the program runs, from the constants it names
     ---'
     [E0408] Error: constant defined by its own value
-       ,-[ file:///test0.st:3:37 ]
+       ,-[ file:///test0.st:3:49 ]
        |
      3 |         VAR CONSTANT a : BOOL := b; b : BOOL := a; END_VAR
-       |                      |              |
-       |                      `----------------- 'a' is declared here
-       |                                     |
-       |                                     `-- 'b' is defined by its own value, through 'a'
+       |                      |                          |
+       |                      `----------------------------- 'a' is declared here
+       |                                                 |
+       |                                                 `-- 'b' is defined by its own value, through 'a'
        |
        | Note: a constant's value is computed before the program runs, from the constants it names
     ---'

@@ -8,7 +8,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_diagnostics, with_db};
+use crate::tests::utils::{test_diagnostics, test_diagnostics_with_library, with_db};
 
 /// A bound and a length name a constant of the file's top level: in a TYPE
 /// and in a STRUCT element.
@@ -240,25 +240,33 @@ NAMESPACE Limits
     TYPE Col : ARRAY[0..B] OF INT; END_TYPE
 END_NAMESPACE
 
+NAMESPACE Ring
+    VAR_CONSTANT
+        X : INT := Y;
+        Y : INT := Z + 1;
+        Z : INT := X;
+    END_VAR
+END_NAMESPACE
+
 TYPE Row : ARRAY[0..A] OF INT; END_TYPE
 TYPE Name : STRING[A]; END_TYPE
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0408] Error: constant defined by its own value
-       ,-[ file:///test0.st:3:5 ]
+       ,-[ file:///test0.st:3:16 ]
        |
      3 |     A : INT := A + 1;
-       |     |
-       |     `-- 'A' is defined by its own value
+       |                |
+       |                `-- 'A' is defined by its own value
        |
        | Note: a constant's value is computed before the program runs, from the constants it names
     ---'
     [E0408] Error: constant defined by its own value
-       ,-[ file:///test0.st:8:9 ]
+       ,-[ file:///test0.st:8:20 ]
        |
      8 |         B : INT := C * 2;
-       |         |
-       |         `-- 'B' is defined by its own value, through 'C'
+       |                    |
+       |                    `-- 'B' is defined by its own value, through 'C'
      9 |         C : INT := B;
        |         |
        |         `-- 'C' is declared here
@@ -266,17 +274,62 @@ TYPE Name : STRING[A]; END_TYPE
        | Note: a constant's value is computed before the program runs, from the constants it names
     ---'
     [E0408] Error: constant defined by its own value
-       ,-[ file:///test0.st:9:9 ]
+       ,-[ file:///test0.st:9:20 ]
        |
      8 |         B : INT := C * 2;
        |         |
        |         `-- 'B' is declared here
      9 |         C : INT := B;
-       |         |
-       |         `-- 'C' is defined by its own value, through 'B'
+       |                    |
+       |                    `-- 'C' is defined by its own value, through 'B'
        |
        | Note: a constant's value is computed before the program runs, from the constants it names
     ---'
+    [E0408] Error: constant defined by its own value
+        ,-[ file:///test0.st:16:20 ]
+        |
+     16 |         X : INT := Y;
+        |                    |
+        |                    `-- 'X' is defined by its own value, through 'Y' and 'Z'
+     17 |         Y : INT := Z + 1;
+        |         |
+        |         `-- 'Y' is declared here
+     18 |         Z : INT := X;
+        |         |
+        |         `-- 'Z' is declared here
+        |
+        | Note: a constant's value is computed before the program runs, from the constants it names
+    ----'
+    [E0408] Error: constant defined by its own value
+        ,-[ file:///test0.st:17:20 ]
+        |
+     16 |         X : INT := Y;
+        |         |
+        |         `-- 'X' is declared here
+     17 |         Y : INT := Z + 1;
+        |                    |
+        |                    `-- 'Y' is defined by its own value, through 'Z' and 'X'
+     18 |         Z : INT := X;
+        |         |
+        |         `-- 'Z' is declared here
+        |
+        | Note: a constant's value is computed before the program runs, from the constants it names
+    ----'
+    [E0408] Error: constant defined by its own value
+        ,-[ file:///test0.st:18:20 ]
+        |
+     16 |         X : INT := Y;
+        |         |
+        |         `-- 'X' is declared here
+     17 |         Y : INT := Z + 1;
+        |         |
+        |         `-- 'Y' is declared here
+     18 |         Z : INT := X;
+        |                    |
+        |                    `-- 'Z' is defined by its own value, through 'X' and 'Y'
+        |
+        | Note: a constant's value is computed before the program runs, from the constants it names
+    ----'
     ");
 }
 
@@ -303,5 +356,286 @@ END_VAR
        |
        | Note: a call is not a constant
     ---'
+    ");
+}
+
+/// A POU names a constant as it names a TYPE: a bound and a body read one of
+/// the root namespace from another file, of its own namespace bare, of
+/// another as `Limits.HIGH`, or through `USING Limits`.
+#[rstest]
+fn valid_a_pou_names_a_constant_as_it_names_a_type(mut with_db: RootDatabase) {
+    let constants = r#"
+VAR_CONSTANT
+    ROWS : INT := 10;
+END_VAR
+
+NAMESPACE Limits
+    VAR_CONSTANT
+        HIGH : INT := 6;
+    END_VAR
+    FUNCTION Inside : INT
+    VAR cells : ARRAY[0..HIGH] OF INT; END_VAR
+        cells[HIGH] := HIGH;
+        Inside := cells[HIGH];
+    END_FUNCTION
+END_NAMESPACE
+"#;
+    let uses = r#"
+TYPE Row : ARRAY[0..ROWS] OF INT; END_TYPE
+
+FUNCTION Bare : INT
+VAR cells : ARRAY[1..ROWS] OF INT; END_VAR
+    cells[ROWS] := ROWS;
+    Bare := cells[ROWS];
+END_FUNCTION
+
+FUNCTION Qualified : INT
+VAR cells : ARRAY[0..Limits.HIGH] OF INT; END_VAR
+    Qualified := Limits.HIGH;
+END_FUNCTION
+
+FUNCTION Imported : INT
+USING Limits;
+VAR cells : ARRAY[0..HIGH] OF INT; END_VAR
+    Imported := HIGH;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[constants, uses]), @"");
+}
+
+/// A library's constant is named as its TYPEs are: bare, every library
+/// being imported, or from its root.
+#[rstest]
+fn valid_a_library_s_constant(mut with_db: RootDatabase) {
+    let library = r#"
+VAR_CONSTANT
+    LIMIT : INT := 8;
+END_VAR
+"#;
+    let source = r#"
+FUNCTION Uses : INT
+VAR cells : ARRAY[0..Std.LIMIT] OF INT; END_VAR
+    Uses := LIMIT + Std.LIMIT;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics_with_library(&mut with_db, &[library], &[source]), @"");
+}
+
+/// A constant is read, never written: an assignment, a VAR_IN_OUT and a
+/// reference are refused, as for a POU's own constant (E0404).
+#[rstest]
+fn invalid_a_constant_is_not_written(mut with_db: RootDatabase) {
+    let source = r#"
+VAR_CONSTANT
+    ROWS : INT := 10;
+END_VAR
+
+FUNCTION Bump : INT
+VAR_IN_OUT n : INT; END_VAR
+    n := n + 1;
+    Bump := n;
+END_FUNCTION
+
+FUNCTION Writes : INT
+VAR r : REF_TO INT; END_VAR
+    ROWS := 1;
+    Writes := Bump(n := ROWS);
+    r := REF(ROWS);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0404] Error: write to a constant
+        ,-[ file:///test0.st:14:5 ]
+        |
+      3 |     ROWS : INT := 10;
+        |     ^^|^
+        |       `--- 'ROWS' is declared CONSTANT here
+        |
+     14 |     ROWS := 1;
+        |     ^^|^
+        |       `--- cannot write to constant 'ROWS'
+        |
+        | Help: copy it into a variable to change the copy
+        |
+        | Note: a CONSTANT keeps the value it is declared with
+    ----'
+    [E0404] Error: write to a constant
+        ,-[ file:///test0.st:15:25 ]
+        |
+      3 |     ROWS : INT := 10;
+        |     ^^|^
+        |       `--- 'ROWS' is declared CONSTANT here
+        |
+     15 |     Writes := Bump(n := ROWS);
+        |                         ^^|^
+        |                           `--- cannot pass constant 'ROWS' to a VAR_IN_OUT
+        |
+        | Help: pass it to a VAR_INPUT, or copy it into a variable and pass that
+        |
+        | Note: a VAR_IN_OUT could change it
+    ----'
+    [E0404] Error: write to a constant
+        ,-[ file:///test0.st:16:14 ]
+        |
+      3 |     ROWS : INT := 10;
+        |     ^^|^
+        |       `--- 'ROWS' is declared CONSTANT here
+        |
+     16 |     r := REF(ROWS);
+        |              ^^|^
+        |                `--- cannot take a reference to constant 'ROWS'
+        |
+        | Help: copy it into a variable and take the reference of that
+        |
+        | Note: a reference could change it
+    ----'
+    ");
+}
+
+/// Two USINGs that each bring a constant of one name leave it ambiguous
+/// (E0205), as two TYPEs would.
+#[rstest]
+fn invalid_two_usings_bring_a_constant_of_one_name(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE A
+    VAR_CONSTANT N : INT := 1; END_VAR
+END_NAMESPACE
+
+NAMESPACE B
+    VAR_CONSTANT N : INT := 2; END_VAR
+END_NAMESPACE
+
+FUNCTION Both : INT
+USING A, B;
+    Both := N;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0205] Error: ambiguous name
+        ,-[ file:///test0.st:12:13 ]
+        |
+     12 |     Both := N;
+        |             |
+        |             `-- multiple items named 'N' available in scope
+        |
+        | Help: qualify the name: A.N or B.N
+    ----'
+    ");
+}
+
+/// A constant of the program's root named as a library's hides it, as a
+/// TYPE and a FUNCTION do: the program's `N`, `Shape` and `Twice` are read
+/// (the library's would be a STRING, a `Shape` with no `b`), and a library
+/// that adds a name breaks no program. Two libraries answering is E0205.
+#[rstest]
+fn valid_a_program_s_constant_hides_a_library_s(mut with_db: RootDatabase) {
+    let library = r#"
+VAR_CONSTANT
+    N : STRING := 'library';
+END_VAR
+TYPE Shape : STRUCT a : INT; END_STRUCT; END_TYPE
+FUNCTION Twice : STRING
+    Twice := 'library';
+END_FUNCTION
+"#;
+    let source = r#"
+VAR_CONSTANT
+    N : INT := 2;
+END_VAR
+TYPE Shape : STRUCT b : INT; END_STRUCT; END_TYPE
+FUNCTION Twice : INT
+    Twice := 2;
+END_FUNCTION
+FUNCTION Reads : INT
+VAR
+    s : Shape;
+END_VAR
+    s.b := N;
+    Reads := s.b + Twice();
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics_with_library(&mut with_db, &[library], &[source]), @r"");
+}
+
+/// A partial access of a constant is a slice of its value, held to the
+/// constant's width as a variable's is.
+#[rstest]
+fn invalid_a_partial_access_past_a_constant_s_width(mut with_db: RootDatabase) {
+    let source = r#"
+VAR_CONSTANT
+    FLAGS : WORD := 16#0008;
+END_VAR
+
+FUNCTION Bits : BOOL
+    Bits := FLAGS.%X3 AND FLAGS.%X16;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1429] Error: partial access out of range
+       ,-[ file:///test0.st:7:27 ]
+       |
+     3 |     FLAGS : WORD := 16#0008;
+       |     ^^|^^
+       |       `---- 'FLAGS' is declared here
+       |
+     7 |     Bits := FLAGS.%X3 AND FLAGS.%X16;
+       |                           ^^|^^
+       |                             `---- offset 16 is out of range for type 'WORD' (valid range: 0..15)
+    ---'
+    ");
+}
+
+/// An initial value that names a part of a constant, a slice or a field, or
+/// a whole STRUCT, is refused (E0401): an initial value folds, and these do
+/// not. A FUNCTION's local is set at each call and may.
+#[rstest]
+fn invalid_an_initial_value_of_a_constant_s_part(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Point : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+VAR_CONSTANT
+    FLAGS : WORD := 16#0008;
+    ORIGIN : Point := (x := 1, y := 2);
+    BIT : BOOL := FLAGS.%X3;
+END_VAR
+
+PROGRAM P
+VAR
+    copy : Point := ORIGIN;
+    y : INT := ORIGIN.y;
+END_VAR
+END_PROGRAM
+
+FUNCTION Local : INT
+VAR
+    l : Point := ORIGIN;
+END_VAR
+    Local := l.y;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0401] Error: initial value not constant
+       ,-[ file:///test0.st:7:19 ]
+       |
+     7 |     BIT : BOOL := FLAGS.%X3;
+       |                   ^^^^|^^^^
+       |                       `------ this initial value must be a constant: it is fixed before the program runs
+    ---'
+    [E0401] Error: initial value not constant
+        ,-[ file:///test0.st:12:21 ]
+        |
+     12 |     copy : Point := ORIGIN;
+        |                     ^^^|^^
+        |                        `---- this initial value must be a constant: it is fixed before the program runs
+        |
+        | Note: 'ORIGIN' is CONSTANT, but its own value does not fold (a reference cycle, or a non-constant initializer)
+    ----'
+    [E0401] Error: initial value not constant
+        ,-[ file:///test0.st:13:16 ]
+        |
+     13 |     y : INT := ORIGIN.y;
+        |                ^^^^|^^^
+        |                    `----- this initial value must be a constant: it is fixed before the program runs
+    ----'
     ");
 }
