@@ -110,6 +110,14 @@ pub enum InitError<'db> {
         /// The constants between, in the order its value reaches them.
         through: Vec<crate::hir_def::pous::variable::VariableDecl<'db>>,
     },
+    /// A value in an initializer's parentheses with no field's name before
+    /// it, `(1, 2)`. It was typed against the STRUCT or the instance itself,
+    /// and placed nowhere: `((x := 5))` passed, and its value was dropped.
+    ValueWithoutField {
+        value: InitExpr<'db>,
+        /// What the parentheses initialize, as declared.
+        ty: Type<'db>,
+    },
 }
 
 /// What keeps a `REF()` from being one address everywhere.
@@ -158,6 +166,7 @@ impl<'db> ErrorCode for InitError<'db> {
             Self::ReadBeforeInitialized { .. } => "E0406",
             Self::AggregateInputDefault { .. } => "E0407",
             Self::OwnValue { .. } => "E0408",
+            Self::ValueWithoutField { .. } => "E0409",
         }
     }
 }
@@ -513,6 +522,23 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                 d.with_note(
                     "a constant's value is computed before the program runs, from the constants it names"
                         .to_string(),
+                );
+                d
+            }
+            Self::ValueWithoutField { value, ty } => {
+                let mut d = diag()
+                    .message(format!(
+                        "this value names no field of '{}'",
+                        ty.type_name(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
+                    .call();
+                ty.with_location(db, &mut d);
+                d.with_note("an initializer in parentheses names each field it sets".to_string());
+                d.with_help(
+                    "write the field's name before the value: <field> := <value>".to_string(),
                 );
                 d
             }

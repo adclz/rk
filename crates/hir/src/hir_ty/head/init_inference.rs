@@ -7,7 +7,9 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     CallSite,
-    check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError, e05_array::ArrayError},
+    check::errors::{
+        ToIdeDiagnostic, e01_duplicates::DuplicateError, e04_init::InitError, e05_array::ArrayError,
+    },
     hir_def::{
         expressions::expression::{Expr, InitExpr, InitExprKind},
         interned::identifier::Ident,
@@ -718,12 +720,10 @@ impl<'db> InitExprInferenceResult<'db> {
             }
             InitExprWalkStep::FieldInit { expr, values } => {
                 expected.walk_init_expr(db, step, place, self);
-                let expected = self
-                    .type_of_init_expr
-                    .get(expr)
-                    .copied()
-                    .unwrap_or_default()
-                    .normalize(db);
+                // What the parentheses initialize, as declared; none once
+                // they are refused (E0403).
+                let declared = self.type_of_init_expr.get(expr).copied();
+                let expected = declared.unwrap_or_default().normalize(db);
 
                 // Clear seen fields for new struct
                 ctx.clear_fields();
@@ -733,7 +733,26 @@ impl<'db> InitExprInferenceResult<'db> {
                 let saved_positions = ctx.positions.clone();
                 let saved_overflow = ctx.overflow_reported.clone();
 
-                self.resolve_steps(db, expected, place, body_ctx, ctx, values);
+                for value in values {
+                    // Each value names the field it sets. One without a
+                    // name was typed against the STRUCT or the instance
+                    // itself, and nothing placed it: `((x := 5))` passed,
+                    // and dropped its 5.
+                    if let Some(ty) = declared
+                        && !matches!(value, InitExprWalkStep::Field { .. })
+                    {
+                        self.errors.push(
+                            InitError::ValueWithoutField {
+                                value: *value.get_expr(),
+                                ty,
+                            }
+                            .to_diagnostic(db, self.scope.file(db)),
+                        );
+                        continue;
+                    }
+                    let mut child_place = *place;
+                    self.resolve_step(db, expected, &mut child_place, body_ctx, ctx, value);
+                }
 
                 // Restore context
                 ctx.array_root = saved_root;
