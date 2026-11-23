@@ -36,6 +36,16 @@ fn pous_collide<'db>(db: &'db dyn WorkspaceDataBase, a: Pou<'db>, b: Pou<'db>) -
     }
 }
 
+/// Where a name is declared, as the duplicate checks order two declarations:
+/// by file, then by place in it.
+fn declared_at(
+    db: &dyn WorkspaceDataBase,
+    span: auto_lsp::tree_sitter::Range,
+    file: auto_lsp::default::db::file::File,
+) -> (String, usize) {
+    (file.url(db).to_string(), span.start_byte)
+}
+
 /// Whether `file` was loaded as a library rather than workspace source.
 pub(crate) fn is_library_file(
     db: &dyn WorkspaceDataBase,
@@ -62,7 +72,18 @@ pub fn check_duplicate_pous<'db>(
     let own_file = pou.get_scope_id(db).file(db);
     let own_is_library = is_library_file(db, own_file);
     // A PROGRAM is a POU too; its side reports in `check_duplicate_programs`.
-    if !own_is_library && let Some(program) = program_index(db, pou.get_name_ident(db)) {
+    // A constant is nothing a configuration could name instead of it, so
+    // the two report once, at the later.
+    if !own_is_library
+        && let Some(program) = program_index(db, pou.get_name_ident(db))
+        && (!matches!(pou, Pou::Constant(_))
+            || declared_at(db, pou.get_name_span(db), own_file)
+                > declared_at(
+                    db,
+                    program.get_name_span(db),
+                    program.get_scope_id(db).file(db),
+                ))
+    {
         errors.push(
             DuplicateError::ProgramPou {
                 program,
@@ -146,12 +167,17 @@ pub fn check_duplicate_programs<'db>(
     // sides report; this one points at the smallest other by (file URL,
     // span), so the message reads the same on every run.
     let mut pous = pou_candidates(db, program.get_name_ident(db));
-    pous.sort_by_key(|p| {
-        (
-            p.get_scope_id(db).file(db).url(db).to_string(),
-            p.get_name_span(db).start_byte,
-        )
+    // A constant after the PROGRAM reports at itself (`check_duplicate_pous`).
+    let own = declared_at(
+        db,
+        program.get_name_span(db),
+        program.get_scope_id(db).file(db),
+    );
+    pous.retain(|p| {
+        !matches!(p, Pou::Constant(_))
+            || declared_at(db, p.get_name_span(db), p.get_scope_id(db).file(db)) < own
     });
+    pous.sort_by_key(|p| declared_at(db, p.get_name_span(db), p.get_scope_id(db).file(db)));
     if let Some(pou) = pous.first() {
         errors.push(
             DuplicateError::ProgramPou {
