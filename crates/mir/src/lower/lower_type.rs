@@ -305,6 +305,7 @@ fn lower_struct_fields<'db>(
             ty: lower_spec(db, element.spec(db))?,
             offset: narrow(*offset)?,
             by_ref: false,
+            constant: false,
         });
     }
 
@@ -716,6 +717,8 @@ fn instance_struct<'db>(
             ty,
             offset: narrow(field.offset)?,
             by_ref,
+            constant: field.part == Part::Value
+                && var.qualifier(db).contains(hir::Qualifier::CONSTANT),
         });
     }
     Ok(MirType::Struct(MirStructType {
