@@ -364,7 +364,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let global_scope = self.global_scope;
 
         for child in source.children.iter() {
-            type SourceFileDecl = ast::generated::ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
+            type SourceFileDecl = ast::generated::ClassDecl_ConfigDecl_ConstantVarDecls_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
 
             self.current_scope = global_scope;
             match child.cast(self.ast) {
@@ -408,6 +408,11 @@ impl<'db> SemanticIndexBuilder<'db> {
                             Err(err) => self.errors.push(err),
                         }
                     }
+                }
+                // The root namespace's constants, as its top-level TYPEs are.
+                SourceFileDecl::ConstantVarDecls(constants) => {
+                    let constants = self.parse_constants(constants);
+                    self.global_pous.extend(constants);
                 }
                 SourceFileDecl::InterfaceDecl(interface) => match self.parse_interface(interface) {
                     Ok(r) => self.global_pous.push(r),

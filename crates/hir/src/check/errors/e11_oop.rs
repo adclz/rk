@@ -1246,5 +1246,6 @@ fn pou_keyword(pou: Pou) -> &'static str {
         Pou::Class(_) => "CLASS",
         Pou::Interface(_) => "INTERFACE",
         Pou::DataType(_) => "TYPE",
+        Pou::Constant(_) => "VAR_CONSTANT",
     }
 }

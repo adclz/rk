@@ -109,6 +109,9 @@ impl<'db> ScopeId<'db> {
                 Pou::Function(f) => global_variables(db, f.variables(db)),
                 Pou::FunctionBlock(fb) => global_variables(db, fb.variables(db)),
                 Pou::Class(cl) => global_variables(db, cl.variables(db)),
+                // A constant's own scope declares it, as a POU's declares its
+                // variables: its type and its value are checked there.
+                Pou::Constant(constant) => global_variables(db, &[constant]),
                 _ => FxHashMap::default(),
             },
             ScopeKind::MethodDecl(m) => global_variables(db, m.variables(db)),

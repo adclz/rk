@@ -14,6 +14,7 @@ use crate::{
 
 pub mod class;
 pub mod config;
+pub mod constant;
 pub mod data_type;
 pub mod expression;
 pub mod function;

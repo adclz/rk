@@ -9,7 +9,7 @@ use crate::{
         interned::identifier::Ident,
         pous::{
             class::Class, data_type::DataType, function::Function, function_block::FunctionBlock,
-            interface::Interface,
+            interface::Interface, variable::VariableDecl,
         },
         scope::ScopeId,
     },
@@ -23,6 +23,10 @@ pub enum Pou<'db> {
     Class(Class<'db>),
     Interface(Interface<'db>),
     DataType(DataType<'db>),
+    /// A constant of a `VAR_CONSTANT` section, at the top of a file or in a
+    /// NAMESPACE: an item of the namespace as a TYPE is, with a scope of its
+    /// own that declares it.
+    Constant(VariableDecl<'db>),
 }
 
 impl<'db> Pou<'db> {
@@ -43,6 +47,7 @@ impl<'db> HirNodeInfo<'db> for Pou<'db> {
             Pou::Class(c) => c.get_id(db),
             Pou::Interface(i) => i.get_id(db),
             Pou::DataType(dt) => dt.get_id(db),
+            Pou::Constant(constant) => constant.get_id(db),
         }
     }
 
@@ -53,6 +58,7 @@ impl<'db> HirNodeInfo<'db> for Pou<'db> {
             Pou::Class(c) => c.get_scope_id(db),
             Pou::Interface(i) => i.get_scope_id(db),
             Pou::DataType(dt) => dt.get_scope_id(db),
+            Pou::Constant(constant) => constant.get_scope_id(db),
         }
     }
 }
@@ -68,6 +74,7 @@ impl<'db> HasName<'db> for Pou<'db> {
             Pou::Class(c) => c.get_name_with_case(db),
             Pou::Interface(i) => i.get_name_with_case(db),
             Pou::DataType(dt) => dt.get_name_with_case(db),
+            Pou::Constant(constant) => constant.get_name_with_case(db),
         }
     }
 
@@ -78,6 +85,7 @@ impl<'db> HasName<'db> for Pou<'db> {
             Pou::Class(c) => c.get_name_ident(db),
             Pou::Interface(i) => i.get_name_ident(db),
             Pou::DataType(dt) => dt.get_name_ident(db),
+            Pou::Constant(constant) => constant.get_name_ident(db),
         }
     }
 
@@ -88,6 +96,7 @@ impl<'db> HasName<'db> for Pou<'db> {
             Pou::Class(c) => c.get_name_id(db),
             Pou::Interface(i) => i.get_name_id(db),
             Pou::DataType(dt) => dt.get_name_id(db),
+            Pou::Constant(constant) => constant.get_name_id(db),
         }
     }
 }

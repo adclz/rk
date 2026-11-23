@@ -574,8 +574,13 @@ pub fn spec_name_binding<'db>(
 
     let mut scope = Some(va.get_scope_id(db));
     while let Some(sc) = scope {
-        if let Some(decl) = sc.def_map(db).global_variables.get(&ident) {
+        let def_map = sc.def_map(db);
+        if let Some(decl) = def_map.global_variables.get(&ident) {
             return Some(*decl);
+        }
+        // A constant of the namespace, an item of it as its TYPEs are.
+        if let Some(Pou::Constant(constant)) = def_map.local_pous.get(&ident) {
+            return Some(*constant);
         }
         let scope_data = get_scope(db, sc);
         if let ScopeKind::Pou(pou @ (Pou::FunctionBlock(_) | Pou::Class(_))) = scope_data.kind

@@ -95,9 +95,20 @@ impl<'db> ScopeId<'db> {
             // A RESOURCE holds no variables: VAR_GLOBAL is application-scoped,
             // declared on the CONFIGURATION itself.
             ScopeKind::Config(c) => c.variables(db),
+            // A constant's own scope declares it, alone.
+            ScopeKind::Pou(Pou::Constant(constant)) => constant_alone(db, constant),
             _ => None?,
         })
     }
+}
+
+/// The variables a constant's own scope declares: the constant itself.
+#[salsa::tracked(returns(ref))]
+fn constant_alone<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    constant: crate::hir_def::pous::variable::VariableDecl<'db>,
+) -> Vec<crate::hir_def::pous::variable::VariableDecl<'db>> {
+    vec![constant]
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
