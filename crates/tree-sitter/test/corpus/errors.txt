@@ -1616,3 +1616,92 @@ END_FUNCTION
                       (int_literal
                         (signed_int
                           (unsigned_int))))))))))))))
+
+================================================================================
+A CASE value with a sign after a statement with no semicolon
+================================================================================
+
+FUNCTION fn
+  VAR x : INT; c : INT; END_VAR
+  CASE c OF
+    1: x := c
+    -2: x := 2;
+  END_CASE;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (func_body
+      (stmt_list
+        (case_stmt
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (ERR_case_value_in_assignment
+                  (add_operator
+                    (variable_access
+                      (variable
+                        (begin_path_expression
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))))
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))))))
