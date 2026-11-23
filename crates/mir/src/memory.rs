@@ -141,6 +141,9 @@ pub enum MirAllocKind {
     StringData,
     /// Instance data (FB/Class).
     InstanceData,
+    /// A namespace's constant held in memory, a STRUCT or an ARRAY: the
+    /// module's own data, past every variable.
+    Constant,
 }
 
 impl MirMemoryLayout {

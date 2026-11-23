@@ -92,17 +92,6 @@ impl<'db> ExprLowerCtx<'db> {
         var_access: VariableAccess<'db>,
         hir_ty: Type<'db>,
     ) -> Result<Sliced, LowerTypeError> {
-        let Some(multibits) = var_access.multibits(self.db) else {
-            return Err(LowerTypeError::UnsupportedType(
-                "partial access lowering called on a plain variable access".to_string(),
-            ));
-        };
-        let Some(slice) = multibits_slice(self.db, multibits) else {
-            return Err(LowerTypeError::UnsupportedType(
-                "unrecognized partial access size (expected %X, %B, %W, %D or %L)".to_string(),
-            ));
-        };
-
         // The base type comes from the declaration HIR bound the access to.
         let base = match hir_ty {
             Type::Variable((var, _)) => {
@@ -124,6 +113,26 @@ impl<'db> ExprLowerCtx<'db> {
                 Some(base) => base,
                 None => self.type_to_mir_elementary_pub(other)?,
             },
+        };
+        self.slice_of(base, var_access)
+    }
+
+    /// The slice `var_access` reads of a value of `base`: where it starts and
+    /// what it is read as.
+    pub(crate) fn slice_of(
+        &self,
+        base: MirElementary,
+        var_access: VariableAccess<'db>,
+    ) -> Result<Sliced, LowerTypeError> {
+        let Some(multibits) = var_access.multibits(self.db) else {
+            return Err(LowerTypeError::UnsupportedType(
+                "partial access lowering called on a plain variable access".to_string(),
+            ));
+        };
+        let Some(slice) = multibits_slice(self.db, multibits) else {
+            return Err(LowerTypeError::UnsupportedType(
+                "unrecognized partial access size (expected %X, %B, %W, %D or %L)".to_string(),
+            ));
         };
 
         // Lowering can run on a rejected body (E0808): refuse rather than wrap.
@@ -379,8 +388,13 @@ impl View {
 
 /// `(base >> shift) & mask`, read from `place`.
 pub(crate) fn slice_read(place: MirPlace, sliced: Sliced) -> MirExpr {
+    let base = MirType::Elementary(sliced.base);
+    slice_value(MirExpr::Load(place, base), sliced)
+}
+
+/// `(value >> shift) & mask`, of a value of the slice's base type.
+pub(crate) fn slice_value(mut value: MirExpr, sliced: Sliced) -> MirExpr {
     let Sliced { base, shift, elem } = sliced;
-    let mut value = MirExpr::Load(place, MirType::Elementary(base));
     if shift > 0 {
         value = binop(MirBinOp::Shr, value, const_of(base, shift as i64), base);
     }

@@ -752,6 +752,28 @@ impl<'db> ExprLowerCtx<'db> {
             PrimaryExpr::Literal(elem) => self.lower_literal(elem, parent_expr),
 
             PrimaryExpr::VariableAccess(var_access) => {
+                // A namespace's constant whose value is one expression is
+                // that value, folded where it is read, and a partial access
+                // of it (`FLAGS.%X3`) a slice of that value; a STRUCT or an
+                // ARRAY is read from the cell it is held in.
+                if let Type::Variable((decl, partial)) = parent_expr.infer(self.db)
+                    && decl.is_namespace_constant(self.db)
+                    && let Some(init) = hir::hir_ty::infer::const_eval::constant_init(self.db, decl)
+                {
+                    let ty = crate::lower::lower_func::lower_var_type(self.db, decl)?;
+                    let value = self.lower_named_constant(init, &ty)?;
+                    if partial.is_none() {
+                        return Ok(value);
+                    }
+                    let MirType::Elementary(base) = ty else {
+                        return Err(LowerTypeError::UnsupportedType(
+                            "a partial access of a constant that is no elementary value"
+                                .to_string(),
+                        ));
+                    };
+                    let sliced = self.slice_of(base, *var_access)?;
+                    return Ok(super::multibit::slice_value(value, sliced));
+                }
                 if self.fold_constants.get()
                     && let Some(decl) =
                         hir::hir_ty::infer::const_eval::spec_name_binding(self.db, *var_access)
@@ -1549,6 +1571,19 @@ impl<'db> ExprLowerCtx<'db> {
         base: MirPlace,
         path_expr: hir::hir_def::expressions::expression::PathExpr<'db>,
     ) -> Result<MirPlace, LowerTypeError> {
+        // A namespace's constant named by its path (`Limits.ORIGIN`): the
+        // steps before it named its namespace, and the constant is the root.
+        if let Some(decl) = self
+            .inference(path_expr.scope_id(self.db))
+            .variable_for_path_expr(path_expr)
+            && decl.is_namespace_constant(self.db)
+        {
+            return Ok(MirPlace::Global {
+                name: Some(crate::lower::lower_module::global_key(self.db, decl)),
+                address: 0,
+                ty: MirType::Void,
+            });
+        }
         match path_expr.expr(self.db) {
             PathExprKind::Field(field_expr) => {
                 let inner = self.lower_path_expr_chain(base, field_expr.path)?;

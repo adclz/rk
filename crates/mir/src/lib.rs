@@ -77,6 +77,11 @@ pub struct MirModule {
     pub marker_base: u32,
     pub marker_size: u32,
 
+    /// Where the cells of the namespaces' constants start, past the
+    /// variables and their bands: the end of what a host may write. The
+    /// string literals come after them.
+    pub constants_base: u32,
+
     /// Resolved task schedule of the module's CONFIGURATION; `None` without one.
     pub schedule: Option<schedule::MirSchedule>,
 
