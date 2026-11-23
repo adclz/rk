@@ -281,3 +281,142 @@ END_FUNCTION_BLOCK
         (edge_decl
           (bit_str_type_name
             (bool_name)))))))
+
+================================================================================
+Semicolons - a sign after an operand in a CASE body is the operator
+================================================================================
+
+FUNCTION fn : INT
+VAR_INPUT k : INT; x : INT; END_VAR
+	CASE k OF
+	1: fn := x+1;
+	2: fn := x-16#10;
+	-3: fn := x-1
+	END_CASE;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))
+    (input_decls
+      (input_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (input_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (func_body
+      (stmt_list
+        (case_stmt
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (add_operator
+                    (variable_access
+                      (variable
+                        (begin_path_expression
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (add_operator
+                    (variable_access
+                      (variable
+                        (begin_path_expression
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (hex_int)))))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int)))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (add_operator
+                    (variable_access
+                      (variable
+                        (begin_path_expression
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))))))))))

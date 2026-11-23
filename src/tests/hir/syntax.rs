@@ -408,6 +408,133 @@ END_FUNCTION
     ");
 }
 
+/// In a CASE body, a sign after an operand is the operator. A statement
+/// needs no `;`, so the value of the next branch may start there, and the
+/// lexer took `+1` of `x+1` as that value, the longest token: `x`, then a
+/// value with no `:` (E0001). The signed value after it stays a value.
+#[rstest]
+#[case::a_sum("f := x+1;")]
+#[case::a_difference("f := x-1;")]
+#[case::a_space_before_the_sign("f := x +1;")]
+#[case::a_real("r := r+1.5;")]
+#[case::an_exponent("r := r-1.5E3;")]
+#[case::a_based_literal("f := x-16#10;")]
+#[case::a_plus_before_a_base("f := x+2#101;")]
+#[case::after_a_call("f := g(a := x)-1;")]
+#[case::after_an_element("f := v[1]-1;")]
+#[case::after_parentheses("f := (x)-1;")]
+#[case::before_another_statement("x := x+1; f := x;")]
+fn a_sign_after_an_operand_in_a_case_body(mut with_db: RootDatabase, #[case] branch: &str) {
+    let source = format!(
+        "
+FUNCTION g : INT
+VAR_INPUT a : INT; END_VAR
+    g := a;
+END_FUNCTION
+
+FUNCTION f : INT
+VAR_INPUT k : INT; x : INT; END_VAR
+VAR v : ARRAY[0..2] OF INT; r : REAL; END_VAR
+    CASE k OF
+        1: {branch}
+        -2: f := 2;
+    END_CASE;
+END_FUNCTION
+"
+    );
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source.as_str()]), @"");
+}
+
+/// A statement of a CASE body without its `;` before a value that starts
+/// with a sign: the sign is the operator, `x - 3`, up to the value's `:`.
+/// The `;` is reported missing after the operand before the sign that
+/// starts a line, or before the last sign, and the value is named: after an
+/// assignment, a compound one, on one line, and for a value of two terms.
+/// Before a value with no sign, or before `END_CASE`, the `;` can still go.
+#[rstest]
+fn a_case_body_statement_without_a_semicolon(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f1 : INT
+VAR_INPUT k : INT; x : INT; END_VAR
+    CASE k OF
+        1: f1 := x+1
+        2: f1 := x
+        -3: f1 := 3;
+        4: f1 := x-1
+    END_CASE;
+END_FUNCTION
+
+FUNCTION f2 : INT
+VAR_INPUT k : INT; x : INT; END_VAR
+    CASE k OF
+        4: f2 += x
+        -5: f2 := 5;
+    END_CASE;
+END_FUNCTION
+
+FUNCTION f3 : INT
+VAR_INPUT k : INT; x : INT; END_VAR
+    CASE k OF
+        6: f3 := x -7: f3 := 7;
+    END_CASE;
+END_FUNCTION
+
+FUNCTION f4 : INT
+VAR_INPUT k : INT; x : INT; END_VAR
+    CASE k OF
+        8: f4 := x
+        -9 - 1: f4 := 9;
+    END_CASE;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0002] Error: missing element
+       ,-[ file:///test0.st:6:19 ]
+       |
+     6 |         2: f1 := x
+       |                   |
+       |                   `- missing ';'
+       |
+       | Help: insert ';' before the CASE value '-3'
+       |
+       | Note: a sign after an operand is an operator, on the next line too
+    ---'
+    [E0002] Error: missing element
+        ,-[ file:///test0.st:15:19 ]
+        |
+     15 |         4: f2 += x
+        |                   |
+        |                   `- missing ';'
+        |
+        | Help: insert ';' before the CASE value '-5'
+        |
+        | Note: a sign after an operand is an operator, on the next line too
+    ----'
+    [E0002] Error: missing element
+        ,-[ file:///test0.st:23:19 ]
+        |
+     23 |         6: f3 := x -7: f3 := 7;
+        |                   |
+        |                   `- missing ';'
+        |
+        | Help: insert ';' before the CASE value '-7'
+        |
+        | Note: a sign after an operand is an operator, on the next line too
+    ----'
+    [E0002] Error: missing element
+        ,-[ file:///test0.st:30:19 ]
+        |
+     30 |         8: f4 := x
+        |                   |
+        |                   `- missing ';'
+        |
+        | Help: insert ';' before the CASE value '-9 - 1'
+        |
+        | Note: a sign after an operand is an operator, on the next line too
+    ----'
+    ");
+}
+
 /// `IMPLEMENTS a EXTENDS` followed by what is no base: the misplaced
 /// IMPLEMENTS is reported, with nowhere to move it to, and the base that
 /// does not parse is a syntax error. The builder unwrapped the EXTENDS

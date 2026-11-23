@@ -693,12 +693,26 @@
                       "value": ":="
                     },
                     {
-                      "type": "STRING",
-                      "value": "+="
+                      "type": "TOKEN",
+                      "content": {
+                        "type": "PREC",
+                        "value": 1,
+                        "content": {
+                          "type": "STRING",
+                          "value": "+="
+                        }
+                      }
                     },
                     {
-                      "type": "STRING",
-                      "value": "-="
+                      "type": "TOKEN",
+                      "content": {
+                        "type": "PREC",
+                        "value": 1,
+                        "content": {
+                          "type": "STRING",
+                          "value": "-="
+                        }
+                      }
                     },
                     {
                       "type": "STRING",
@@ -755,12 +769,26 @@
                       "value": ":="
                     },
                     {
-                      "type": "STRING",
-                      "value": "+="
+                      "type": "TOKEN",
+                      "content": {
+                        "type": "PREC",
+                        "value": 1,
+                        "content": {
+                          "type": "STRING",
+                          "value": "+="
+                        }
+                      }
                     },
                     {
-                      "type": "STRING",
-                      "value": "-="
+                      "type": "TOKEN",
+                      "content": {
+                        "type": "PREC",
+                        "value": 1,
+                        "content": {
+                          "type": "STRING",
+                          "value": "-="
+                        }
+                      }
                     },
                     {
                       "type": "STRING",
@@ -879,12 +907,26 @@
                       "value": ":="
                     },
                     {
-                      "type": "STRING",
-                      "value": "+="
+                      "type": "TOKEN",
+                      "content": {
+                        "type": "PREC",
+                        "value": 1,
+                        "content": {
+                          "type": "STRING",
+                          "value": "+="
+                        }
+                      }
                     },
                     {
-                      "type": "STRING",
-                      "value": "-="
+                      "type": "TOKEN",
+                      "content": {
+                        "type": "PREC",
+                        "value": 1,
+                        "content": {
+                          "type": "STRING",
+                          "value": "-="
+                        }
+                      }
                     },
                     {
                       "type": "STRING",
@@ -12060,14 +12102,46 @@
         "type": "CHOICE",
         "members": [
           {
-            "type": "STRING",
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_binary_plus"
+            },
+            "named": false,
             "value": "+"
           },
           {
-            "type": "STRING",
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_binary_minus"
+            },
+            "named": false,
             "value": "-"
           }
         ]
+      }
+    },
+    "_binary_plus": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": 1,
+        "content": {
+          "type": "PATTERN",
+          "value": "\\+"
+        }
+      }
+    },
+    "_binary_minus": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": 1,
+        "content": {
+          "type": "PATTERN",
+          "value": "-"
+        }
       }
     },
     "mult_operator": {
@@ -12768,6 +12842,10 @@
               },
               {
                 "type": "SYMBOL",
+                "name": "ERR_case_value_in_assignment"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "ERR_output_assign_in_assignment"
               }
             ]
@@ -12825,6 +12903,40 @@
         ]
       }
     },
+    "ERR_case_value_in_assignment": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "STRING",
+                "value": ":="
+              },
+              {
+                "type": "SYMBOL",
+                "name": "compound_operator"
+              }
+            ]
+          },
+          {
+            "type": "FIELD",
+            "name": "value",
+            "content": {
+              "type": "SYMBOL",
+              "name": "add_operator"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": ":"
+          }
+        ]
+      }
+    },
     "assignment": {
       "type": "SEQ",
       "members": [
@@ -12863,12 +12975,26 @@
       "type": "CHOICE",
       "members": [
         {
-          "type": "STRING",
-          "value": "+="
+          "type": "TOKEN",
+          "content": {
+            "type": "PREC",
+            "value": 1,
+            "content": {
+              "type": "STRING",
+              "value": "+="
+            }
+          }
         },
         {
-          "type": "STRING",
-          "value": "-="
+          "type": "TOKEN",
+          "content": {
+            "type": "PREC",
+            "value": 1,
+            "content": {
+              "type": "STRING",
+              "value": "-="
+            }
+          }
         },
         {
           "type": "STRING",
@@ -14689,6 +14815,14 @@
     {
       "type": "SYMBOL",
       "name": "_plus_before_base"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_binary_minus"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_binary_plus"
     }
   ],
   "inline": [],

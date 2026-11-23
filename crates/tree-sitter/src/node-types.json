@@ -770,6 +770,32 @@
     }
   },
   {
+    "type": "ERR_case_value_in_assignment",
+    "named": true,
+    "fields": {
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "add_operator",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "compound_operator",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "ERR_chain_outside_statement",
     "named": true,
     "fields": {},
@@ -2089,6 +2115,10 @@
         "multiple": false,
         "required": true,
         "types": [
+          {
+            "type": "ERR_case_value_in_assignment",
+            "named": true
+          },
           {
             "type": "ERR_empty_compound_assignment",
             "named": true

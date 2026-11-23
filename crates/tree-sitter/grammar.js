@@ -153,6 +153,12 @@ const assignment = ($, errors) =>
     ),
   );
 
+// `+=` and `-=`, lexed at the precedence of the binary `+` and `-` (`add`),
+// so that where both are valid, after `b` in `a := b += 1`, the longer one is
+// taken. At a lower precedence the operator would win, however short.
+const PLUS_ASSIGN = token(prec(1, "+="));
+const MINUS_ASSIGN = token(prec(1, "-="));
+
 // Precedences from the standard
 const RK_PREC = {
   expression: 11,
@@ -261,6 +267,10 @@ module.exports = grammar({
     $.pragma,
     $._minus_before_base,
     $._plus_before_base,
+    // Never returned by the scanner, which only asks whether one is valid: a
+    // sign there is that operator, never the sign before a based literal.
+    $._binary_minus,
+    $._binary_plus,
   ],
 
   extras: ($) => [
@@ -446,7 +456,7 @@ module.exports = grammar({
     ERR_chain_outside_statement: ($) =>
       prec(
         -1,
-        seq(":=", $._expression, repeat(seq(choice(":=", "+=", "-=", "*=", "/="), $._expression))),
+        seq(":=", $._expression, repeat(seq(choice(":=", PLUS_ASSIGN, MINUS_ASSIGN, "*=", "/="), $._expression))),
       ),
     // A compound assignment where one assignment stands, in an argument or
     // at the start of a FOR: `F(a += 1)`, `FOR i := j += 1 TO 9`, with the
@@ -458,7 +468,7 @@ module.exports = grammar({
         seq(
           field("operator", $.compound_operator),
           field("value", $._expression),
-          repeat(seq(choice(":=", "+=", "-=", "*=", "/="), $._expression)),
+          repeat(seq(choice(":=", PLUS_ASSIGN, MINUS_ASSIGN, "*=", "/="), $._expression)),
         ),
       ),
     ERR_empty_compound_assignment: ($) => prec(-1, $.compound_operator), // x += ?
@@ -486,7 +496,7 @@ module.exports = grammar({
           field("place", $._expression),
           field("operator", $.compound_operator),
           field("value", $._expression),
-          repeat(seq(choice(":=", "+=", "-=", "*=", "/="), $._expression)),
+          repeat(seq(choice(":=", PLUS_ASSIGN, MINUS_ASSIGN, "*=", "/="), $._expression)),
         ),
       ),
 
@@ -696,7 +706,7 @@ module.exports = grammar({
 
     // token() prevents whitespace between sign and digits:
     // -42 is a signed literal, - 42 is unary minus on 42.
-    // No precedence needed - token boundary disambiguates.
+    // After an operand, `x-42`, the sign is the operator: see `add`.
     // -16#10 is unary minus on 16#10: see `unary`.
     signed_int: ($) =>
       choice(
@@ -724,7 +734,7 @@ module.exports = grammar({
 
     // Signed real value: sign + real digits with no whitespace allowed.
     // -3.7 is a signed literal, - 3.7 is unary minus on 3.7.
-    // No precedence needed - token boundary disambiguates.
+    // After an operand, `x-3.7`, the sign is the operator: see `add`.
     signed_real_value: ($) =>
       choice(
         $._explicit_signed_real,
@@ -2278,7 +2288,17 @@ module.exports = grammar({
         ),
       ),
 
-    add: ($) => prec(RK_PREC.add, choice("+", "-")),
+    add: ($) =>
+      prec(RK_PREC.add, choice(alias($._binary_plus, "+"), alias($._binary_minus, "-"))),
+
+    // The `+` and `-` between two operands. A statement needs no `;`, so in a
+    // CASE body the value of the next branch may start after `x`, and `+1` of
+    // `x+1` is a signed literal there, which the lexer took as the longest
+    // token. Lexed at a higher precedence, the operator wins wherever both are
+    // valid. A pattern, not the string: `externals` lists these two, and a
+    // rule that is a string alone is the anonymous `+`, which it cannot list.
+    _binary_plus: (_) => token(prec(1, /\+/)),
+    _binary_minus: (_) => token(prec(1, /-/)),
 
     mult_operator: ($) =>
       prec.left(
@@ -2373,6 +2393,7 @@ module.exports = grammar({
     case_assign: ($) =>
       assignment($, [
         alias($.ERR_case_missing_equal, $.ERR_missing_equal_in_assignment),
+        $.ERR_case_value_in_assignment,
       ]),
 
     // `x : 5` in a CASE body: an assignment that lost its `=` when what
@@ -2396,6 +2417,12 @@ module.exports = grammar({
         ),
       ),
 
+    // `1: x := a`, then `-2: x := b;` on the next line, with no `;` between:
+    // a sign after an operand is the operator, so the value `-2` is read into
+    // `a - 2`, up to its `:`. Refused as a missing `;`.
+    ERR_case_value_in_assignment: ($) =>
+      prec(-1, seq(choice(":=", $.compound_operator), field("value", $.add_operator), ":")),
+
     assignment: ($) => seq(":=", $._expression),
 
     // `x += e` is `x := x + e`, with the place `x` found once, for the four
@@ -2403,7 +2430,7 @@ module.exports = grammar({
     compound_assignment: ($) =>
       seq(field("operator", $.compound_operator), field("value", $._expression)),
 
-    compound_operator: ($) => choice("+=", "-=", "*=", "/="),
+    compound_operator: ($) => choice(PLUS_ASSIGN, MINUS_ASSIGN, "*=", "/="),
 
     // A place after the first of a chain, with the operator before it, which
     // writes the place to its left: `+=` in `a += b := 1` writes `a`. Ranked

@@ -428,7 +428,10 @@ enum Label {
 
 #[derive(Clone, Debug)]
 enum Stmt {
-    Assign(Place, Expr),
+    /// `v := e`. TRUE writes an addition or a subtraction tight, with no
+    /// parentheses and no space, `v := a-5;`: in a CASE body, where a value
+    /// may start after an operand, `-5` was read as the next branch's.
+    Assign(Place, Expr, bool),
     /// `a := b += e`, the places as written, each with its operator, `None`
     /// for `:=`: the last is written the value, then each other what the
     /// place after it holds, or its operation over that.
@@ -2129,7 +2132,7 @@ impl Generator<'_> {
         };
         let target = self.target(self.d.functions[f].ty)?;
         let args = self.args(f, 2, readable)?;
-        Some(Stmt::Assign(target, Expr::Call(f, args)))
+        Some(Stmt::Assign(target, Expr::Call(f, args), false))
     }
 
     /// An overload of an earlier FUNCTION: its name and return type, and its
@@ -2475,7 +2478,10 @@ impl Generator<'_> {
             places.push((target, operator));
             return Some(Stmt::Chain(places, value));
         }
-        Some(Stmt::Assign(target, value))
+        // Now and then an addition or a subtraction written tight, `v := a-5;`.
+        let tight =
+            matches!(value, Expr::Arith(Arith::Add | Arith::Sub, ..)) && self.choices.percent(30);
+        Some(Stmt::Assign(target, value, tight))
     }
 
     /// The operator a place of a chain is written with: `:=` mostly, and now
@@ -4497,6 +4503,22 @@ impl Names<'_> {
         }
     }
 
+    /// `a-5`: an addition or a subtraction with no parentheses and no space,
+    /// and a literal of no sign on its right written without its type, so
+    /// that its digits follow the operator. Every operand the generator
+    /// writes has a type, which the literal takes.
+    fn tight(&self, op: &Arith, a: &Expr, b: &Expr) -> String {
+        let op = match op {
+            Arith::Add => "+",
+            _ => "-",
+        };
+        let right = match b {
+            Expr::Lit(_, Val::Int(x)) if *x >= 0 => x.to_string(),
+            _ => self.expr(b),
+        };
+        format!("{}{op}{right}", self.expr(a))
+    }
+
     fn expr(&self, e: &Expr) -> String {
         match e {
             Expr::Lit(ty, v) => literal(*ty, v),
@@ -4609,8 +4631,14 @@ impl Names<'_> {
         let pad = "    ".repeat(level);
         for stmt in block {
             match stmt {
-                Stmt::Assign(p, e) => {
-                    let _ = writeln!(out, "{pad}{} := {};", self.place(p), self.expr(e));
+                Stmt::Assign(p, e, tight) => {
+                    let value = match (tight, e) {
+                        (true, Expr::Arith(op @ (Arith::Add | Arith::Sub), _, a, b)) => {
+                            self.tight(op, a, b)
+                        }
+                        _ => self.expr(e),
+                    };
+                    let _ = writeln!(out, "{pad}{} := {value};", self.place(p));
                 }
                 Stmt::Chain(places, e) => {
                     let _ = write!(out, "{pad}");
@@ -5086,7 +5114,7 @@ fn compound_operator(op: Arith) -> &'static str {
 fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
     for stmt in block {
         let flow = match stmt {
-            Stmt::Assign(p, e) => {
+            Stmt::Assign(p, e, _) => {
                 let v = eval(e, st, d);
                 write(p, v, st, tys, d);
                 Flow::Next
@@ -6195,6 +6223,70 @@ mod tests {
             }
         }
         assert_eq!(reached.len(), forms.len(), "forms reached: {reached:?}");
+    }
+
+    /// Whether `line` writes an operator with digits right after it, outside
+    /// parentheses and strings: `v := a-5;`.
+    fn tight_sum(line: &str) -> bool {
+        let Some((_, value)) = line.split_once(" := ") else {
+            return false;
+        };
+        let bytes = value.as_bytes();
+        let (mut depth, mut quoted, mut escaped) = (0, false, false);
+        for (at, &c) in bytes.iter().enumerate() {
+            match c {
+                _ if escaped => escaped = false,
+                b'$' if quoted => escaped = true,
+                b'\'' => quoted = !quoted,
+                _ if quoted => {}
+                b'(' | b'[' => depth += 1,
+                b')' | b']' => depth -= 1,
+                b'+' | b'-' if depth == 0 && at > 0 => {
+                    let before = bytes[at - 1];
+                    let after = bytes.get(at + 1).copied().unwrap_or(b' ');
+                    if (before.is_ascii_alphanumeric() || b")]^_".contains(&before))
+                        && after.is_ascii_digit()
+                    {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    /// Whether line `at` is a statement of a CASE arm: the nearest line above
+    /// it written further left holds the arm's values, which end with `:`.
+    fn in_case_arm(lines: &[&str], at: usize) -> bool {
+        let indent = |l: &str| l.len() - l.trim_start().len();
+        let own = indent(lines[at]);
+        lines[..at]
+            .iter()
+            .rev()
+            .find(|l| !l.trim().is_empty() && indent(l) < own)
+            .is_some_and(|l| l.trim_end().ends_with(':'))
+    }
+
+    /// The generator writes an addition or a subtraction tight, `v := a-5;`,
+    /// as a statement of a CASE arm, where the value of the next arm may
+    /// start after an operand, and the module computes it. `-5` was read as
+    /// that value (E0001).
+    #[test]
+    fn tight_sums_in_case_arms_are_written_and_compute() {
+        let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        for _ in 0..4000 {
+            let text = random_program(&mut seed);
+            let lines: Vec<&str> = text.lines().collect();
+            if !(0..lines.len()).any(|at| tight_sum(lines[at]) && in_case_arm(&lines, at)) {
+                continue;
+            }
+            if let Err(finding) = crate::check_generated(&text) {
+                panic!("{finding}\n--- the program ---\n{text}");
+            }
+            return;
+        }
+        panic!("no program writes a tight sum in a CASE arm");
     }
 
     /// The evaluator runs a chain as the module does: each place takes what

@@ -16,6 +16,8 @@
 // no sign, so `-16#10` is the unary operator on `16#10`, but the lexer takes
 // the longest token it can, and `-16` is longer than `-`. Only a look past
 // the digits for the `#` tells them apart. `-16` with no `#` is no token.
+// After an operand the sign is the binary operator, which the grammar lexes:
+// `x-16#10` subtracts, even where the value of a CASE branch could start.
 
 #include "tree_sitter/parser.h"
 
@@ -30,6 +32,9 @@ enum TokenType {
   PRAGMA,
   MINUS_BEFORE_BASE,
   PLUS_BEFORE_BASE,
+  // The grammar's binary `-` and `+`: never returned, only asked about.
+  BINARY_MINUS,
+  BINARY_PLUS,
 };
 
 // The first words of the pragmas the grammar has a rule for.
@@ -147,10 +152,12 @@ bool tree_sitter_rk_external_scanner_scan(void *payload, TSLexer *lexer,
     return valid_symbols[PRAGMA] && scan_unknown_pragma(lexer);
   }
   if (lexer->lookahead == '-') {
-    return valid_symbols[MINUS_BEFORE_BASE] && scan_sign_before_base(lexer, MINUS_BEFORE_BASE);
+    return valid_symbols[MINUS_BEFORE_BASE] && !valid_symbols[BINARY_MINUS] &&
+           scan_sign_before_base(lexer, MINUS_BEFORE_BASE);
   }
   if (lexer->lookahead == '+') {
-    return valid_symbols[PLUS_BEFORE_BASE] && scan_sign_before_base(lexer, PLUS_BEFORE_BASE);
+    return valid_symbols[PLUS_BEFORE_BASE] && !valid_symbols[BINARY_PLUS] &&
+           scan_sign_before_base(lexer, PLUS_BEFORE_BASE);
   }
 
   // `(` for `(* *)`, `/` for `/* */`: the character before the `*` that
