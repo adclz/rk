@@ -2393,6 +2393,7 @@ module.exports = grammar({
     case_assign: ($) =>
       assignment($, [
         alias($.ERR_case_missing_equal, $.ERR_missing_equal_in_assignment),
+        $.ERR_case_value_in_assignment,
       ]),
 
     // `x : 5` in a CASE body: an assignment that lost its `=` when what
@@ -2415,6 +2416,12 @@ module.exports = grammar({
           ),
         ),
       ),
+
+    // `1: x := a`, then `-2: x := b;` on the next line, with no `;` between:
+    // a sign after an operand is the operator, so the value `-2` is read into
+    // `a - 2`, up to its `:`. Refused as a missing `;`.
+    ERR_case_value_in_assignment: ($) =>
+      prec(-1, seq(choice(":=", $.compound_operator), field("value", $.add_operator), ":")),
 
     assignment: ($) => seq(":=", $._expression),
 
