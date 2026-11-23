@@ -1070,18 +1070,26 @@ pub fn hover_in_a_program_configuration(
 #[rstest]
 #[case::literal("T#10ms", "TIME")]
 #[case::constant("period,", "period: TIME")]
+#[case::namespace_constant("LONG,", "VAR_CONSTANT LONG: TIME := T#50ms")]
+#[case::namespace("Cycle.LONG", "NAMESPACE Cycle")]
 pub fn hover_on_a_task_interval(mut with_db: RootDatabase, #[case] at: &str, #[case] shown: &str) {
     let source = r#"
 PROGRAM P
 END_PROGRAM
+
+NAMESPACE Cycle
+    VAR_CONSTANT LONG : TIME := T#50ms; END_VAR
+END_NAMESPACE
 
 CONFIGURATION Cfg
 VAR_GLOBAL CONSTANT period : TIME := T#20ms; END_VAR
     RESOURCE Res ON CPU
         TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
         TASK Slow(INTERVAL := period, PRIORITY := 2);
+        TASK Slower(INTERVAL := Cycle.LONG, PRIORITY := 3);
         PROGRAM P1 WITH Fast : P;
         PROGRAM P2 WITH Slow : P;
+        PROGRAM P3 WITH Slower : P;
     END_RESOURCE
 END_CONFIGURATION
 "#;
