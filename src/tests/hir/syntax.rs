@@ -446,30 +446,92 @@ END_FUNCTION
 }
 
 /// A statement of a CASE body without its `;` before a value that starts
-/// with a sign: the sign is the operator, `x - 3`, and the `:` after it is
-/// a syntax error. Before a value with no sign, or before `END_CASE`, the
-/// `;` can still go.
+/// with a sign: the sign is the operator, `x - 3`, up to the value's `:`.
+/// The `;` is reported missing after the operand before the sign that
+/// starts a line, or before the last sign, and the value is named: after an
+/// assignment, a compound one, on one line, and for a value of two terms.
+/// Before a value with no sign, or before `END_CASE`, the `;` can still go.
 #[rstest]
 fn a_case_body_statement_without_a_semicolon(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION f : INT
+FUNCTION f1 : INT
 VAR_INPUT k : INT; x : INT; END_VAR
     CASE k OF
-        1: f := x+1
-        2: f := x
-        -3: f := 3;
-        4: f := x-1
+        1: f1 := x+1
+        2: f1 := x
+        -3: f1 := 3;
+        4: f1 := x-1
+    END_CASE;
+END_FUNCTION
+
+FUNCTION f2 : INT
+VAR_INPUT k : INT; x : INT; END_VAR
+    CASE k OF
+        4: f2 += x
+        -5: f2 := 5;
+    END_CASE;
+END_FUNCTION
+
+FUNCTION f3 : INT
+VAR_INPUT k : INT; x : INT; END_VAR
+    CASE k OF
+        6: f3 := x -7: f3 := 7;
+    END_CASE;
+END_FUNCTION
+
+FUNCTION f4 : INT
+VAR_INPUT k : INT; x : INT; END_VAR
+    CASE k OF
+        8: f4 := x
+        -9 - 1: f4 := 9;
     END_CASE;
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0001] Error: syntax error
-       ,-[ file:///test0.st:7:11 ]
+    [E0002] Error: missing element
+       ,-[ file:///test0.st:6:19 ]
        |
-     7 |         -3: f := 3;
-       |           |
-       |           `-- unexpected token(s): ':'
+     6 |         2: f1 := x
+       |                   |
+       |                   `- missing ';'
+       |
+       | Help: insert ';' before the CASE value '-3'
+       |
+       | Note: a sign after an operand is an operator, on the next line too
     ---'
+    [E0002] Error: missing element
+        ,-[ file:///test0.st:15:19 ]
+        |
+     15 |         4: f2 += x
+        |                   |
+        |                   `- missing ';'
+        |
+        | Help: insert ';' before the CASE value '-5'
+        |
+        | Note: a sign after an operand is an operator, on the next line too
+    ----'
+    [E0002] Error: missing element
+        ,-[ file:///test0.st:23:19 ]
+        |
+     23 |         6: f3 := x -7: f3 := 7;
+        |                   |
+        |                   `- missing ';'
+        |
+        | Help: insert ';' before the CASE value '-7'
+        |
+        | Note: a sign after an operand is an operator, on the next line too
+    ----'
+    [E0002] Error: missing element
+        ,-[ file:///test0.st:30:19 ]
+        |
+     30 |         8: f4 := x
+        |                   |
+        |                   `- missing ';'
+        |
+        | Help: insert ';' before the CASE value '-9 - 1'
+        |
+        | Note: a sign after an operand is an operator, on the next line too
+    ----'
     ");
 }
 
