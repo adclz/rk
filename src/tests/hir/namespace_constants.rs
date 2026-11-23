@@ -639,3 +639,91 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// A task's INTERVAL names a constant as a body does, bare, qualified or
+/// through USING, and the schedule holds its value.
+#[rstest]
+fn valid_a_task_s_interval_names_a_constant(mut with_db: RootDatabase) {
+    let source = r#"
+VAR_CONSTANT
+    FAST : TIME := T#5ms;
+END_VAR
+
+NAMESPACE Cycle
+    VAR_CONSTANT
+        SLOW : TIME := T#100ms;
+        SLOWER : LTIME := LTIME#1s;
+    END_VAR
+END_NAMESPACE
+
+USING Cycle;
+
+PROGRAM P VAR n : INT; END_VAR n := n + 1; END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE R ON CPU
+        TASK Quick(INTERVAL := FAST, PRIORITY := 1);
+        TASK Steady(INTERVAL := Cycle.SLOW, PRIORITY := 2);
+        TASK Lazy(INTERVAL := SLOWER, PRIORITY := 3);
+        PROGRAM P1 WITH Quick : P;
+        PROGRAM P2 WITH Steady : P;
+        PROGRAM P3 WITH Lazy : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(crate::tests::hir::config::resolved_schedule(&with_db), @r"
+    RESOURCE R ON CPU
+      TASK Quick every 5ms, priority 1
+        PROGRAM P1 : P
+      TASK Steady every 100ms, priority 2
+        PROGRAM P2 : P
+      TASK Lazy every 1s, priority 3
+        PROGRAM P3 : P
+    ");
+}
+
+/// A constant that holds no TIME gives no period, and a constant SINGLE never
+/// rises, as for a CONSTANT global (E1410).
+#[rstest]
+fn invalid_a_task_parameter_s_constant(mut with_db: RootDatabase) {
+    let source = r#"
+VAR_CONSTANT
+    COUNT : INT := 5;
+    ALWAYS : BOOL := TRUE;
+END_VAR
+
+PROGRAM P VAR n : INT; END_VAR n := n + 1; END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE R ON CPU
+        TASK Counted(INTERVAL := COUNT, PRIORITY := 1);
+        TASK Once(SINGLE := ALWAYS, PRIORITY := 2);
+        PROGRAM P1 WITH Counted : P;
+        PROGRAM P2 WITH Once : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1410] Error: unschedulable TASK
+        ,-[ file:///test0.st:11:14 ]
+        |
+     11 |         TASK Counted(INTERVAL := COUNT, PRIORITY := 1);
+        |              ^^^|^^^
+        |                 `----- task 'Counted' cannot be scheduled: INTERVAL names a constant that holds no TIME literal
+        |
+        | Help: give the constant a TIME literal, such as `T#10ms`
+    ----'
+    [E1410] Error: unschedulable TASK
+        ,-[ file:///test0.st:12:29 ]
+        |
+     12 |         TASK Once(SINGLE := ALWAYS, PRIORITY := 2);
+        |                             ^^^|^^
+        |                                `---- task 'Once' cannot be scheduled: SINGLE is always TRUE, so the task would run once
+        |
+        | Help: name a BOOL variable or a bit address
+        |
+        | Note: a SINGLE already TRUE at its first reading is a rising edge, and an INTERVAL runs while SINGLE stands at FALSE
+    ----'
+    ");
+}
