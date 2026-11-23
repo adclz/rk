@@ -70,6 +70,11 @@ impl<'db> InitInference<'db> {
         infer.check_expr(db, length, &mut self.body_infer_result);
 
         let error = match crate::hir_ty::infer::const_eval::spec_bound(db, length) {
+            // A length naming a constant in a loop is reported at the
+            // constant (E0408).
+            None if crate::hir_ty::infer::const_eval::names_a_looping_constant(db, length) => {
+                return;
+            }
             None => crate::check::errors::e03_type::TypeError::StringLengthNotConstant { length },
             Some(value) if value < 0 => {
                 crate::check::errors::e03_type::TypeError::StringLengthNegative { length, value }

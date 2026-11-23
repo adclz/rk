@@ -884,6 +884,91 @@ pub fn non_constant_part<'db>(
     }
 }
 
+/// The CONSTANTs `expr` names, each as its declaration: those a bound or an
+/// initial value reads, walked as [`non_constant_part`] walks one.
+fn constants_named<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: Expr<'db>,
+    named: &mut Vec<VariableDecl<'db>>,
+) {
+    match expr.expr(db) {
+        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access)) => {
+            if let Some(decl) = spec_name_binding(db, *access)
+                && decl.qualifier(db).contains(Qualifier::CONSTANT)
+            {
+                // A VAR_EXTERNAL CONSTANT is the global it names.
+                let decl = match decl.is_external(db) {
+                    true => crate::hir_ty::index_graphs::external_var_lookup(db, decl.name(db))
+                        .unwrap_or(decl),
+                    false => decl,
+                };
+                named.push(decl);
+            }
+        }
+        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr })
+        | ExprKind::UnaryOperator { expr, .. } => constants_named(db, *expr, named),
+        ExprKind::AddOperator { left, right, .. }
+        | ExprKind::MultOperator { left, right, .. }
+        | ExprKind::ComparisonOperator { left, right, .. }
+        | ExprKind::BooleanOperator { left, right, .. }
+        | ExprKind::PowerOperator { left, right } => {
+            constants_named(db, *left, named);
+            constants_named(db, *right, named);
+        }
+        _ => {}
+    }
+}
+
+/// The constants through which `constant`'s initial value reads `constant`
+/// itself (E0408), in the order its value reaches them: none for
+/// `A : INT := A + 1`, `[C]` for `B : INT := C` with `C : INT := B`. `None`
+/// when its value does not read it.
+pub fn own_value_loop<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    constant: VariableDecl<'db>,
+) -> Option<Vec<VariableDecl<'db>>> {
+    fn reaches<'db>(
+        db: &'db dyn WorkspaceDataBase,
+        from: VariableDecl<'db>,
+        target: VariableDecl<'db>,
+        through: &mut Vec<VariableDecl<'db>>,
+        seen: &mut Vec<VariableDecl<'db>>,
+    ) -> bool {
+        let Some(value) = constant_init(db, from) else {
+            return false;
+        };
+        let mut named = Vec::new();
+        constants_named(db, value, &mut named);
+        for next in named {
+            if next == target {
+                return true;
+            }
+            if seen.contains(&next) {
+                continue;
+            }
+            seen.push(next);
+            through.push(next);
+            if reaches(db, next, target, through, seen) {
+                return true;
+            }
+            through.pop();
+        }
+        false
+    }
+    let mut through = Vec::new();
+    reaches(db, constant, constant, &mut through, &mut vec![constant]).then_some(through)
+}
+
+/// Whether `expr` names a constant whose initial value reads itself: what it
+/// folds to is unknown, and the loop is reported at the constant (E0408).
+pub fn names_a_looping_constant<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
+    let mut named = Vec::new();
+    constants_named(db, expr, &mut named);
+    named
+        .into_iter()
+        .any(|constant| own_value_loop(db, constant).is_some())
+}
+
 /// The ONE acceptance test for a once-per-type initializer leaf (TYPE
 /// defaults, FB/CLASS member defaults, static-host initializers): the check
 /// refuses what this rejects, and MIR folds what it accepts — the two agree

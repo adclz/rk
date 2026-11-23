@@ -29,6 +29,12 @@ impl<'db> InitInference<'db> {
             // every consumer reads, so what the check accepts and what
             // lowering gets cannot disagree.
             let fold = |e| crate::hir_ty::infer::const_eval::spec_bound(db, e);
+            // A bound naming a constant in a loop is reported at the
+            // constant (E0408).
+            let looping = |e| crate::hir_ty::infer::const_eval::names_a_looping_constant(db, e);
+            if looping(lower) || looping(upper) {
+                continue;
+            }
             match (fold(lower), fold(upper)) {
                 (Some(lower_range), Some(upper_range)) => {
                     if lower_range > upper_range {

@@ -101,6 +101,13 @@ pub enum InitError<'db> {
         var: crate::hir_def::pous::variable::VariableDecl<'db>,
         init: InitExpr<'db>,
     },
+    /// A constant whose initial value reads itself, directly or through
+    /// other constants: `A : INT := A + 1`.
+    OwnValue {
+        constant: crate::hir_def::pous::variable::VariableDecl<'db>,
+        /// The constants between, in the order its value reaches them.
+        through: Vec<crate::hir_def::pous::variable::VariableDecl<'db>>,
+    },
 }
 
 /// What keeps a `REF()` from being one address everywhere.
@@ -148,6 +155,7 @@ impl<'db> ErrorCode for InitError<'db> {
             Self::UninitializableMember { .. } => "E0405",
             Self::ReadBeforeInitialized { .. } => "E0406",
             Self::AggregateInputDefault { .. } => "E0407",
+            Self::OwnValue { .. } => "E0408",
         }
     }
 }
@@ -460,6 +468,47 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                 d.with_help(format!(
                     "set '{name}' in the body, or pass it in every call"
                 ));
+                d
+            }
+            Self::OwnValue { constant, through } => {
+                use crate::HasName;
+                let name = |var: &crate::hir_def::pous::variable::VariableDecl<'db>| {
+                    format!("'{}'", var.get_name_with_case(db).text(db))
+                };
+                let message = match through.as_slice() {
+                    [] => format!("{} is defined by its own value", name(constant)),
+                    [only] => format!(
+                        "{} is defined by its own value, through {}",
+                        name(constant),
+                        name(only)
+                    ),
+                    [first @ .., last] => format!(
+                        "{} is defined by its own value, through {} and {}",
+                        name(constant),
+                        first.iter().map(name).collect::<Vec<_>>().join(", "),
+                        name(last)
+                    ),
+                };
+                let mut d = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &constant.get_name_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                for other in through {
+                    d.with_related(Related::new(
+                        format!("{} is declared here", name(other)),
+                        other.get_scope_id(db).file(db),
+                        other.get_name_span(db),
+                    ));
+                }
+                d.with_note(
+                    "a constant's value is computed before the program runs, from the constants it names"
+                        .to_string(),
+                );
                 d
             }
             Self::ReadBeforeInitialized {
