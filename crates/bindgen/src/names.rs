@@ -114,6 +114,7 @@ pub const KEYWORDS: &[&str] = &[
     "VAR",
     "VAR_ACCESS",
     "VAR_CONFIG",
+    "VAR_CONSTANT",
     "VAR_EXTERNAL",
     "VAR_GLOBAL",
     "VAR_INPUT",
