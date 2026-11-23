@@ -64,6 +64,8 @@ fn global_scope() {
 
     INTERFACE in
     END_INTERFACE
+
+    VAR_CONSTANT k : INT := 1; END_VAR
 "#;
     let file = File::from_string()
         .db(&db)
@@ -100,6 +102,11 @@ fn global_scope() {
             assert!(scope.parent.is_some_and(|scope| scope.is_global(&db)));
         }
         Pou::DataType(_) => {}
+        Pou::Constant(constant) => {
+            assert_eq!(pou.get_name_ident(&db).text(&db), "k");
+            let scope = get_scope(&db, constant.scope_id(&db));
+            assert!(scope.parent.is_some_and(|scope| scope.is_global(&db)));
+        }
     });
 }
 
@@ -121,6 +128,8 @@ NAMESPACE ns
 
     INTERFACE in
     END_INTERFACE
+
+    VAR_CONSTANT k : INT := 1; END_VAR
 
 END_NAMESPACE
 "#;
@@ -165,6 +174,11 @@ END_NAMESPACE
                 assert_eq!(scope.parent, Some(main_ns.scope_id(&db)));
             }
             Pou::DataType(_) => {}
+            Pou::Constant(constant) => {
+                assert_eq!(pou.get_name_ident(&db).text(&db), "k");
+                let scope = get_scope(&db, constant.scope_id(&db));
+                assert_eq!(scope.parent, Some(main_ns.scope_id(&db)));
+            }
         }
     }
 }

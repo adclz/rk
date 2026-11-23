@@ -3094,3 +3094,31 @@ END_FUNCTION
     END_FUNCTION
     ");
 }
+
+/// `VAR_CONSTANT` at the top of a file and in a NAMESPACE is laid out as a
+/// POU's sections are: its keyword on its own line, a declaration a line.
+#[rstest]
+pub fn constant_sections(mut with_db: RootDatabase) {
+    let source = r#"
+VAR_CONSTANT ROWS:INT:=10; LEN : INT := 32; END_VAR
+NAMESPACE Limits
+VAR_CONSTANT LOW,HIGH:DINT:=4;END_VAR
+TYPE Span : ARRAY[LOW..HIGH] OF BYTE; END_TYPE
+END_NAMESPACE
+"#;
+    let file = add_source(&mut with_db, source);
+    assert_snapshot!(fmt(file.document(&with_db)), @r"
+    VAR_CONSTANT
+    	ROWS: INT := 10;
+    	LEN: INT := 32;
+    END_VAR
+    NAMESPACE Limits
+    	VAR_CONSTANT
+    		LOW, HIGH: DINT := 4;
+    	END_VAR
+    	TYPE
+    		Span: ARRAY[LOW..HIGH] OF BYTE;
+    	END_TYPE
+    END_NAMESPACE
+    ");
+}

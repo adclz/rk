@@ -621,6 +621,7 @@ fn hir_node_label(node: &HirNode) -> String {
                 Pou::Class(_) => "Class",
                 Pou::Interface(_) => "Interface",
                 Pou::DataType(_) => "DataType",
+                Pou::Constant(_) => "Constant",
             }
         ),
         HirNode::Program(_) => "Program".into(),

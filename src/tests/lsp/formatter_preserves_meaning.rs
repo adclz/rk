@@ -508,3 +508,13 @@ END_FUNCTION_BLOCK
 "#,
     );
 }
+
+/// A `VAR_CONSTANT` section and the TYPEs that name its constants mean the
+/// same once formatted.
+#[rstest]
+fn constant_sections_survive_formatting(#[allow(unused)] with_db: RootDatabase) {
+    assert_meaning_preserved(
+        "constant sections",
+        "VAR_CONSTANT ROWS:INT:=10; END_VAR\nNAMESPACE Limits VAR_CONSTANT LOW,HIGH:DINT:=4;END_VAR TYPE Span : ARRAY[LOW..HIGH] OF BYTE; END_TYPE END_NAMESPACE\nTYPE Row : ARRAY[0..ROWS] OF INT; END_TYPE\n",
+    );
+}
