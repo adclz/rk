@@ -348,7 +348,7 @@ module.exports = grammar({
           $.config_decl, // Declaration of CONFIGURATION and RESOURCE
           $.prog_decl, // Declaration of PROGRAM
           $.namespace_decl, // Declaration of NAMESPACE (including all other declarations)
-          $.constant_var_decls, // VAR_CONSTANT: the constants of the file's top level
+          $.constant_var_decls, // VAR_CONSTANT: constants of the root namespace
           // Global POUs declarations
           $.data_type_decl,
           $.func_decl,
