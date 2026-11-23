@@ -250,8 +250,9 @@ END_FUNCTION_BLOCK
     let node = descendant_at(&with_db, file, motor_offset).expect("should find node at motor");
 
     let def = node.definition(&with_db, motor_offset).unwrap();
-    // Should go to the Engine FUNCTION_BLOCK definition, not the variable declaration
-    assert_snapshot!(format_definition_response(&def), @"/test0.st:1:15-1:21");
+    // A variable goes to where it is declared, whatever its type: its type is
+    // the type definition's.
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:9:8-9:13");
 }
 
 #[rstest]
@@ -664,11 +665,12 @@ END_FUNCTION_BLOCK
 }
 
 /// Each name a task's SINGLE writes goes where it is declared, the names of a
-/// path one by one. A STRUCT variable goes to its type, as it does in a body.
+/// path one by one. A STRUCT variable goes to its own declaration, as it does
+/// in a body.
 #[rstest]
 #[case::global("start, INTERVAL", 0, "start : BOOL")]
 #[case::resource("Res.flags", 0, "Res ON CPU")]
-#[case::global_in_a_path("flags.go", 0, "Flags : STRUCT")]
+#[case::global_in_a_path("flags.go", 0, "flags : Flags")]
 #[case::element("flags.go", 6, "go : BOOL")]
 #[case::instance("inst.done", 0, "inst WITH A")]
 #[case::output("inst.done", 5, "done : BOOL")]
@@ -735,15 +737,15 @@ END_CONFIGURATION
 
 /// Each name in a program configuration goes where it is declared: a variable
 /// of the program, a VAR_GLOBAL, the TASK a function block runs under, and a
-/// member a VAR_CONFIG path names. A function block instance goes to its
-/// type, as it does in a body.
+/// member a VAR_CONFIG path names. A function block instance goes to its own
+/// declaration, as it does in a body.
 #[rstest]
 #[case::input("x1 := %IX", "x1 : BOOL")]
 #[case::input_fed_by_a_global("x2 := w", "x2 : UINT")]
 #[case::source("w, y1", "w : UINT")]
 #[case::output("y1 => total", "y1 : UINT")]
 #[case::sink("total, fb1", "total : UINT")]
-#[case::function_block("fb1 WITH", "Counter\n")]
+#[case::function_block("fb1 WITH", "fb1 : Counter")]
 #[case::task("FAST);", "FAST(INTERVAL")]
 #[case::var_config_member("out AT %QW0", "out AT %Q*")]
 #[case::var_config_resource("Res.P1", "Res ON CPU")]
@@ -771,9 +773,9 @@ pub fn definition_in_a_program_configuration(
 }
 
 /// A VAR_CONFIG path that goes on into a STRUCT: its field leads to its declaration,
-/// and a variable of a named type to that type, as it does in a body.
+/// and so does a variable of a named type, as it does in a body.
 #[rstest]
-#[case::the_variable("e.fuel", "Engine : STRUCT")]
+#[case::the_variable("e.fuel", "e : Engine")]
 #[case::the_field("fuel : INT := 2", "fuel : INT;")]
 pub fn definition_in_a_var_config_path_into_a_struct(
     mut with_db: RootDatabase,
