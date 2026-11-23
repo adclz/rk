@@ -136,6 +136,33 @@ fn test_case_statement(mut with_db: db::RootDatabase) {
     assert_eq!(day_type.call(&mut store, 8).unwrap(), -1, "8 is invalid");
 }
 
+/// A CASE branch computes a sum whose sign touches the digits. `x+1` was
+/// read as `x`, then `+1` as the value of another branch.
+#[rstest]
+fn a_case_branch_with_no_space_before_the_digits(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION pick : INT
+        VAR_INPUT
+            k : INT;
+            x : INT;
+        END_VAR
+            CASE k OF
+                1: pick := x+1;
+                2: pick := x-1;
+                3: pick := x-16#10;
+                -4: pick := x+16#10
+            END_CASE;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let pick = |k: i32, x: i32| -> i32 { super::execute_wasm(&wasm, "pick", (k, x)) };
+    assert_eq!(pick(1, 41), 42);
+    assert_eq!(pick(2, 41), 40);
+    assert_eq!(pick(3, 41), 25);
+    assert_eq!(pick(-4, 41), 57);
+    assert_eq!(pick(5, 41), 0, "no branch");
+}
+
 #[rstest]
 fn test_for_loop(mut with_db: db::RootDatabase) {
     let source = r#"
