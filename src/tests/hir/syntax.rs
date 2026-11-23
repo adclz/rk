@@ -408,6 +408,71 @@ END_FUNCTION
     ");
 }
 
+/// In a CASE body, a sign after an operand is the operator. A statement
+/// needs no `;`, so the value of the next branch may start there, and the
+/// lexer took `+1` of `x+1` as that value, the longest token: `x`, then a
+/// value with no `:` (E0001). The signed value after it stays a value.
+#[rstest]
+#[case::a_sum("f := x+1;")]
+#[case::a_difference("f := x-1;")]
+#[case::a_space_before_the_sign("f := x +1;")]
+#[case::a_real("r := r+1.5;")]
+#[case::an_exponent("r := r-1.5E3;")]
+#[case::a_based_literal("f := x-16#10;")]
+#[case::a_plus_before_a_base("f := x+2#101;")]
+#[case::after_a_call("f := g(a := x)-1;")]
+#[case::after_an_element("f := v[1]-1;")]
+#[case::after_parentheses("f := (x)-1;")]
+#[case::before_another_statement("x := x+1; f := x;")]
+fn a_sign_after_an_operand_in_a_case_body(mut with_db: RootDatabase, #[case] branch: &str) {
+    let source = format!(
+        "
+FUNCTION g : INT
+VAR_INPUT a : INT; END_VAR
+    g := a;
+END_FUNCTION
+
+FUNCTION f : INT
+VAR_INPUT k : INT; x : INT; END_VAR
+VAR v : ARRAY[0..2] OF INT; r : REAL; END_VAR
+    CASE k OF
+        1: {branch}
+        -2: f := 2;
+    END_CASE;
+END_FUNCTION
+"
+    );
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source.as_str()]), @"");
+}
+
+/// A statement of a CASE body without its `;` before a value that starts
+/// with a sign: the sign is the operator, `x - 3`, and the `:` after it is
+/// a syntax error. Before a value with no sign, or before `END_CASE`, the
+/// `;` can still go.
+#[rstest]
+fn a_case_body_statement_without_a_semicolon(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : INT
+VAR_INPUT k : INT; x : INT; END_VAR
+    CASE k OF
+        1: f := x+1
+        2: f := x
+        -3: f := 3;
+        4: f := x-1
+    END_CASE;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0001] Error: syntax error
+       ,-[ file:///test0.st:7:11 ]
+       |
+     7 |         -3: f := 3;
+       |           |
+       |           `-- unexpected token(s): ':'
+    ---'
+    ");
+}
+
 /// `IMPLEMENTS a EXTENDS` followed by what is no base: the misplaced
 /// IMPLEMENTS is reported, with nowhere to move it to, and the base that
 /// does not parse is a syntax error. The builder unwrapped the EXTENDS
