@@ -18,6 +18,7 @@ memory                              the module's, from address 0
 ├─ PROGRAM RETAIN                   retain band
 ├─ VAR_GLOBAL RETAIN                retain band and globals band
 ├─ VAR_GLOBAL                       globals band
+├─ constants                        the STRUCT and array VAR_CONSTANTs
 ├─ strings                          the string literals
 └─ stack                            the frames of recursive calls
 ```
@@ -41,6 +42,10 @@ A module whose memory does not fit in 4 GiB, with its stack, stops the build, wh
 | marker | `marker_base`, `marker_size` | `%M` | can read and write it |
 | retain | `retain_base`, `retain_size` | everything `RETAIN` | keeps it across a power cycle |
 | globals | `globals_base`, `globals_size` | the configuration's `VAR_GLOBAL` | reads and writes it by name |
+
+A STRUCT or array `VAR_CONSTANT` is stored after the bands, see [Constants](constants.md).
+A host can read it, but `write-memory` refuses to write it.
+Any other `VAR_CONSTANT` takes no memory: its value is written where it is used.
 
 ## Inputs and outputs
 

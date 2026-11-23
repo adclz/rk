@@ -111,6 +111,9 @@ Every section is a `VAR…`/`END_VAR` pair.
 `VAR_GLOBAL` only exists inside a `CONFIGURATION`; anywhere else it is a syntax error.
 A POU reaches a global by declaring the same name in `VAR_EXTERNAL`; if no `CONFIGURATION` declares it, that is E0206.
 
+`VAR_CONSTANT … END_VAR` at the top of a file or in a `NAMESPACE` declares constants of that namespace, named like its TYPEs: bare, qualified (`Limits.HIGH`) or through `USING`.
+A TYPE can name them in its bounds, lengths and values; an array bound of a TYPE that names a `VAR_GLOBAL CONSTANT` is E0502.
+
 `VAR_IN_OUT` passes by reference in both `FUNCTION` and `FUNCTION_BLOCK` — the callee writes through to the caller's variable.
 
 Input defaults (`a: INT := 3;`) apply when the argument is omitted, in `FUNCTION`, `FUNCTION_BLOCK` and `PROGRAM` alike.
@@ -131,7 +134,7 @@ What an initial value can be depends on where it is declared:
 | `FUNCTION`/`METHOD` `VAR_INPUT` | a constant (E0401): the caller passes it for an omitted argument |
 | `VAR_TEMP`, `VAR_IN_OUT`, `VAR_EXTERNAL` | none (E0004) |
 
-A constant is a literal, an enum value, `NULL`, a `CONSTANT` declared beside it or imported with `VAR_EXTERNAL CONSTANT`, arithmetic over those, or `REF()` of a global.
+A constant is a literal, an enum value, `NULL`, a `CONSTANT` declared beside it or imported with `VAR_EXTERNAL CONSTANT`, a namespace's `VAR_CONSTANT`, arithmetic over those, or `REF()` of a global.
 On integers and on BOOLs, `AND`, `OR`, `XOR` and `NOT` count as arithmetic.
 A comparison does not.
 A member or STRUCT field default may also be `REF()` of a member beside it: it points into the same instance.

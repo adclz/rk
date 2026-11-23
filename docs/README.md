@@ -7,6 +7,7 @@
 - Programming basics
   - [Syntax](syntax.md)
   - [Namespaces](namespaces.md)
+  - [Constants](constants.md)
   - [Strict casts](strict-casts.md)
   - [Overloading](overloading.md)
   - [Variadics](variadics.md)

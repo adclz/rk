@@ -37,7 +37,7 @@ Where a variable is declared decides what its initial value can be.
 | a `FUNCTION_BLOCK` `VAR_IN_OUT` of a scalar type | a constant, as a member |
 | a `VAR_TEMP`, a `VAR_EXTERNAL`, or any other `VAR_IN_OUT` | none |
 
-A constant is a literal, an enum value, `NULL`, a `CONSTANT` declared beside it or imported with `VAR_EXTERNAL CONSTANT`, arithmetic over those, or `REF()` of a global.
+A constant is a literal, an enum value, `NULL`, a `CONSTANT` declared beside it or imported with `VAR_EXTERNAL CONSTANT`, a namespace's `VAR_CONSTANT`, arithmetic over those, or `REF()` of a global, see [Constants](constants.md).
 On integers and on BOOLs, `AND`, `OR`, `XOR` and `NOT` count as arithmetic.
 A comparison does not.
 A member can also point at a member beside it, in its own instance: `p : REF_TO INT := REF(x)`.
