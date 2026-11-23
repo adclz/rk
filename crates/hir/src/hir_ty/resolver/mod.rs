@@ -630,7 +630,8 @@ impl<'db> Resolver<'db> {
                     // `Limits.ORIGIN.y`). A constant that is the whole path
                     // is that path's name, which the FQ resolution takes.
                     if let Some((count, constant, using)) =
-                        constant_prefix(db, steps, path_expr.get_scope_id(db))
+                        leading_constant(db, steps, path_expr.get_scope_id(db))
+                        && count < steps.len()
                     {
                         let call_site = CallSite::new(path_expr.scope_id(db), path_expr.get_id(db));
                         match using {
@@ -871,10 +872,10 @@ fn own_result<'db>(db: &'db dyn WorkspaceDataBase, base: Type<'db>) -> Option<Ca
     callable.return_type(db).map(|_| callable)
 }
 
-/// The leading steps of a path that name a namespace's constant, with other
-/// steps after them: how many, the constant, and the USING it came through.
-/// `ORIGIN.y` and `PRIMES[1]` start with one, `Limits.ORIGIN.y` with two.
-fn constant_prefix<'db>(
+/// The leading steps of a path that name a namespace's constant: how many,
+/// the constant, and the USING it came through. `ORIGIN.y` and `PRIMES[1]`
+/// start with one, `Limits.ORIGIN.y` with two, and `Limits.HIGH` is one whole.
+pub(crate) fn leading_constant<'db>(
     db: &'db dyn WorkspaceDataBase,
     steps: &[PathExprWalkStep<'db>],
     scope: ScopeId<'db>,
@@ -888,9 +889,6 @@ fn constant_prefix<'db>(
         let PathExprWalkStep::Field { ident, .. } = step else {
             return None;
         };
-        if index + 1 == steps.len() {
-            return None;
-        }
         let access = NamespaceAccess::new(
             db,
             (!namespace.is_empty()).then(|| {

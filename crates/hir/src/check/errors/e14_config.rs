@@ -836,6 +836,9 @@ pub enum UnschedulableReason {
     /// non-CONSTANT global, a directly represented variable, an unknown name.
     /// A CONSTANT global IS accepted; the period just has to be knowable.
     NonLiteralInterval,
+    /// INTERVAL names a constant, a CONSTANT global or a namespace's, whose
+    /// value is no TIME literal: another type, an expression, or no value.
+    IntervalNotTime,
     /// INTERVAL is zero, which schedules nothing, and no SINGLE runs the task
     /// instead.
     ZeroInterval,
@@ -866,9 +869,8 @@ impl UnschedulableReason {
     fn message(self) -> &'static str {
         match self {
             Self::NoTrigger => "a TASK needs an INTERVAL or a SINGLE to run its programs",
-            Self::NonLiteralInterval => {
-                "INTERVAL must be a TIME literal or a CONSTANT global holding one"
-            }
+            Self::NonLiteralInterval => "INTERVAL must be a TIME literal or a constant holding one",
+            Self::IntervalNotTime => "INTERVAL names a constant that holds no TIME literal",
             Self::ZeroInterval => "a zero INTERVAL schedules no periodic run",
             Self::ConstantSingle => "SINGLE is a constant, which never rises",
             Self::SingleAlwaysTrue => "SINGLE is always TRUE, so the task would run once",
@@ -912,6 +914,7 @@ impl UnschedulableReason {
             // CONSTANT — the value looks fixed right there in the source, so
             // without this the rejection reads as arbitrary.
             Self::NonLiteralInterval => Some("declare the global `VAR_GLOBAL CONSTANT`"),
+            Self::IntervalNotTime => Some("give the constant a TIME literal, such as `T#10ms`"),
             Self::ConstantSingle
             | Self::SingleAlwaysTrue
             | Self::SingleAlwaysTrueBesideInterval => Some("name a BOOL variable or a bit address"),

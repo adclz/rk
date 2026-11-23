@@ -91,8 +91,8 @@ pub struct SingleRead<'db> {
 /// a host reads it without running anything.
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum SingleSource<'db> {
-    /// A VAR_GLOBAL, or what is reached inside one: `go`, `Res.go`, `flags.go`,
-    /// `timer.q`.
+    /// A VAR_GLOBAL or a namespace's constant, or what is reached inside
+    /// one: `go`, `Res.go`, `flags.go`, `timer.q`, `Cycle.PERIOD`.
     Global {
         global: VariableDecl<'db>,
         elements: Vec<SourceStep>,
@@ -142,6 +142,11 @@ pub struct TaskPaths<'db> {
     /// The step of a refused path that is at fault, by the whole path, when
     /// it is not the last one.
     pub refused_at: FxHashMap<PathExpr<'db>, PathExpr<'db>>,
+    /// The steps that name the namespace of a constant: `Cycle` in
+    /// `Cycle.PERIOD`.
+    pub namespaces: Vec<PathExpr<'db>>,
+    /// The USINGs a constant was named through.
+    pub usings: Vec<crate::hir_def::using::Using<'db>>,
     pub errors: Vec<IdeDiagnostic>,
 }
 
@@ -997,10 +1002,15 @@ fn task_interval<'db>(
             if !elements.is_empty() || part.is_some() {
                 return Err(not_fixed);
             }
+            // A constant whose value is no TIME literal has a fix of its own.
+            let no_time = match global.qualifier(db).contains(crate::Qualifier::CONSTANT) {
+                true => UnschedulableReason::IntervalNotTime,
+                false => not_fixed,
+            };
             crate::hir_ty::infer::const_eval::constant_init(db, global)
                 .and_then(|init| time_literal_nanos(db, init))
                 .map(Some)
-                .ok_or(not_fixed)
+                .ok_or(no_time)
         }
         // `%MW0` and friends: a period read from process memory is not a
         // compile-time fact at all.
@@ -1158,6 +1168,40 @@ fn read_task_path<'db>(
     }
 
     let Some(instance) = instance_named(name) else {
+        // A namespace's constant, named as a body names one: bare, qualified
+        // or through USING. It is fixed, as a CONSTANT global is.
+        if at == 0
+            && let Some((count, constant, using)) =
+                crate::hir_ty::resolver::leading_constant(db, steps, path.get_scope_id(db))
+        {
+            match using {
+                Some(using) => out.usings.push(using),
+                None => crate::hir_ty::resolver::visibility::check_namespace_visibility(
+                    db,
+                    &crate::CallSite::new(path.scope_id(db), path.get_id(db)),
+                    constant.get_scope_id(db),
+                    &mut out.errors,
+                ),
+            }
+            out.namespaces
+                .extend(steps[..count - 1].iter().map(|step| step.get_expr(db)));
+            out.names.insert(steps[count - 1].get_expr(db), constant);
+            let (elements, ty) = walk_source_steps(
+                db,
+                &fragments,
+                path,
+                constant.spec(db).infer(db),
+                &steps[count..],
+                out,
+            )?;
+            return Ok(ReachedPath {
+                source: SingleSource::Global {
+                    global: constant,
+                    elements,
+                },
+                ty,
+            });
+        }
         out.errors.push(
             ResolveError::NoItemInScope {
                 expr: *expr,
@@ -2152,13 +2196,17 @@ pub(crate) fn record_config_paths<'db>(
         }
         named.extend(steps.zip(entry.members.iter().rev().copied()));
     }
-    // A task's INTERVAL or SINGLE may name a VAR_GLOBAL or a program's output,
-    // and go on inside it.
+    // A task's INTERVAL or SINGLE may name a VAR_GLOBAL, a program's output
+    // or a namespace's constant, and go on inside it.
     let paths = task_paths(db, config);
     named.extend(paths.names.iter().map(|(path, var)| (*path, *var)));
     for (path, ty) in &paths.elements {
         result.type_of_path_expr.insert(*path, *ty);
     }
+    result
+        .namespace_of_path_expr
+        .extend(paths.namespaces.iter().copied());
+    result.usings_used.extend(paths.usings.iter().copied());
     for (path, var) in named {
         result
             .type_of_path_expr
