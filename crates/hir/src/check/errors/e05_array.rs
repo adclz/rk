@@ -94,6 +94,14 @@ pub enum ArrayError<'db> {
         /// The block that declares it, as written.
         block: Ident,
     },
+    /// A repetition given as a field's or a member's whole value, with no
+    /// brackets of its own: `(x := 2(5))`, `(arr := 2([1, 2]))`. Nothing
+    /// placed its values, which were dropped.
+    RepetitionOutsideBrackets {
+        expr: InitExpr<'db>,
+        /// The count, as written.
+        size: SpanIdent<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ArrayError<'db> {
@@ -113,6 +121,7 @@ impl<'db> ErrorCode for ArrayError<'db> {
             Self::IncompleteSubscript { .. } => "E0510",
             Self::ElementOfAnyType { .. } => "E0511",
             Self::ConformandOutsideBody { .. } => "E0513",
+            Self::RepetitionOutsideBrackets { .. } => "E0515",
         }
     }
 }
@@ -338,6 +347,22 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
                 diag.with_help(
                     "pass it from the body to an ARRAY[*] parameter of the method".to_string(),
                 );
+                diag
+            }
+            Self::RepetitionOutsideBrackets { expr, size } => {
+                let mut diag = diag()
+                    .message("this repetition is outside an array's brackets".to_string())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "a repetition writes elements of an array, in its brackets".to_string(),
+                );
+                diag.with_help(format!(
+                    "write the array's value in brackets: [{}(...)]",
+                    size.with_case.text(db)
+                ));
                 diag
             }
         }

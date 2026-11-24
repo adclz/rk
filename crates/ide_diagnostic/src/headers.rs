@@ -115,6 +115,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E0511", "element of an ARRAY[*] of any type"),
     ("E0513", "ARRAY[*] read outside its block's body"),
     ("E0514", "initializer index not constant"),
+    ("E0515", "repetition outside an array's brackets"),
     ("E0601", "ENUM base type not an integer"),
     ("E0602", "not an ENUM type"),
     ("E0603", "unknown ENUM variant"),

@@ -614,6 +614,19 @@ impl<'db> InitExprInferenceResult<'db> {
         ctx: &mut InitContext<'db>,
         value: &'db InitExprWalkStep,
     ) {
+        // A repetition writes an array's elements, in its brackets. As a
+        // field's whole value nothing placed it: `(x := 2(5))` and
+        // `(arr := 2([1, 2]))` passed, and their values were dropped.
+        if let InitExprWalkStep::SizedIndex { expr, size, .. } = value {
+            self.errors.push(
+                ArrayError::RepetitionOutsideBrackets {
+                    expr: *expr,
+                    size: *size,
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+            return;
+        }
         // Each field walks in its own array context, restored after.
         // Resetting only for an ARRAY field left a scalar written after one
         // counting as that array's next element: `n := 1` behind
@@ -730,19 +743,6 @@ impl<'db> InitExprInferenceResult<'db> {
                 }
             }
             InitExprWalkStep::SizedIndex { expr, size, values } => {
-                // A repetition repeats an array's elements. As the value of a
-                // field that is no array, nothing placed it: `(x := 2(5))`
-                // passed, and x kept its 0.
-                if ctx.array_root.is_none() && !expected.is_never() {
-                    self.errors.push(
-                        ArrayError::IndexNonArrayTypeInitExpr {
-                            expr: *expr,
-                            ty: place.current_init_typ,
-                        }
-                        .to_diagnostic(db, self.scope.file(db)),
-                    );
-                    return;
-                }
                 let repeat_count = size.with_case.as_u64(db).unwrap_or_else(|_| {
                     self.errors.push(
                         ArrayError::InvalidIndex { size: *size }
