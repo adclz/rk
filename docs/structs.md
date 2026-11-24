@@ -23,6 +23,20 @@ END_VAR
 END_FUNCTION
 ```
 
+A value can also come without a name.
+It sets the next field that no value names, in the order the fields are declared.
+`()` in its place keeps that field's default.
+
+```iecst continues
+FUNCTION Positions
+VAR
+    c : Point := (1, 2);
+    d : Point := (y := 2, 1);       // d.x is 1
+    e : Point := ((), 4);           // e.x is 3
+END_VAR
+END_FUNCTION
+```
+
 Structs nest, and so do their initializers:
 
 ```iecst
