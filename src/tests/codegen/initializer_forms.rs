@@ -430,6 +430,60 @@ END_FUNCTION
     );
 }
 
+/// A STRUCT's values without a name, each in the next field no value names:
+/// mixed with named ones, `()` keeping a default, a STRING, a struct and an
+/// array in a field's place, computed at run time in a FUNCTION's locals and
+/// folded in a TYPE's, a member's, an input's, a global's and a constant's.
+#[rstest]
+fn positional_forms(mut with_db: db::RootDatabase) {
+    run_all(
+        &mut with_db,
+        r#"
+TYPE Named : STRUCT id : INT; name : STRING[8]; END_STRUCT; END_TYPE
+TYPE Origin : Pt := (1, 2); END_TYPE
+TYPE Holder : STRUCT p : Pt := (3, 4); n : INT; END_STRUCT; END_TYPE
+VAR_CONSTANT CORNER : Pt := (5, 6); END_VAR
+CONFIGURATION cfg VAR_GLOBAL g : Pt := (8, 9); END_VAR END_CONFIGURATION
+FUNCTION_BLOCK Takes VAR_INPUT p : Pt := (10, 11); END_VAR END_FUNCTION_BLOCK
+
+{test}
+FUNCTION t_positional_locals
+VAR
+    i : INT := 2;
+    a : Pt := (1, i * 3);
+    b : Pt := (1, y := 2);
+    c : Pt := (y := 2, 1);
+    d : Pt := ((), 4);
+    e : Named := (3, 'pump');
+    f : Box := ((x := i), [4, 5, 6]);
+END_VAR
+    check(a.x = 1, 'a.x'); check(a.y = 6, 'a.y');
+    check(b.x = 1, 'b.x'); check(b.y = 2, 'b.y');
+    check(c.x = 1, 'c.x: the first field no value names'); check(c.y = 2, 'c.y');
+    check(d.x = 7, 'd.x keeps its default'); check(d.y = 4, 'd.y');
+    check(e.id = 3, 'e.id'); check(e.name = 'pump', 'e.name');
+    check(f.p.x = 2, 'f.p.x'); check(f.p.y = 0, 'f.p.y'); check(f.arr[2] = 5, 'f.arr[2]');
+END_FUNCTION
+
+{test}
+FUNCTION t_positional_defaults
+VAR
+    o : Origin;
+    h : Holder;
+    t : Takes;
+END_VAR
+VAR_EXTERNAL g : Pt; END_VAR
+    check(o.x = 1, 'a TYPE default'); check(o.y = 2, 'o.y');
+    check(h.p.x = 3, 'a member default'); check(h.p.y = 4, 'h.p.y');
+    check(t.p.x = 10, 'an input default'); check(t.p.y = 11, 't.p.y');
+    check(g.x = 8, 'a global'); check(g.y = 9, 'g.y');
+    check(CORNER.x = 5, 'a namespace constant'); check(CORNER.y = 6, 'CORNER.y');
+END_FUNCTION
+    "#,
+        2,
+    );
+}
+
 /// What a static's or a type default's initializer folds to, against the same
 /// expression computed at run time on variables, so that side is wasm's and
 /// no folder's. Integers wrap at their declared width, as
