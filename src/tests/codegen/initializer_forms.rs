@@ -434,6 +434,8 @@ END_FUNCTION
 /// mixed with named ones, `()` keeping a default, a STRING, a struct and an
 /// array in a field's place, computed at run time in a FUNCTION's locals and
 /// folded in a TYPE's, a member's, an input's, a global's and a constant's.
+/// They nest: an array's rows, a member's value, an element at its index, a
+/// repetition's value, a struct in another's place.
 #[rstest]
 fn positional_forms(mut with_db: db::RootDatabase) {
     run_all(
@@ -442,6 +444,7 @@ fn positional_forms(mut with_db: db::RootDatabase) {
 TYPE Named : STRUCT id : INT; name : STRING[8]; END_STRUCT; END_TYPE
 TYPE Origin : Pt := (1, 2); END_TYPE
 TYPE Holder : STRUCT p : Pt := (3, 4); n : INT; END_STRUCT; END_TYPE
+TYPE Rows : ARRAY[0..1] OF Pt := [(18, 19), (20, 21)]; END_TYPE
 VAR_CONSTANT CORNER : Pt := (5, 6); END_VAR
 CONFIGURATION cfg VAR_GLOBAL g : Pt := (8, 9); END_VAR END_CONFIGURATION
 FUNCTION_BLOCK Takes VAR_INPUT p : Pt := (10, 11); END_VAR END_FUNCTION_BLOCK
@@ -479,8 +482,31 @@ VAR_EXTERNAL g : Pt; END_VAR
     check(g.x = 8, 'a global'); check(g.y = 9, 'g.y');
     check(CORNER.x = 5, 'a namespace constant'); check(CORNER.y = 6, 'CORNER.y');
 END_FUNCTION
+
+{test}
+FUNCTION t_positional_nested
+VAR
+    i : INT := 3;
+    rows : ARRAY[0..1] OF Pt := [(1, 2), (i, i + 1)];
+    member : Holder := (p := (5, 6), n := 7);
+    indexed : ARRAY[0..3] OF Pt := [[2] := (8, 9)];
+    repeated : ARRAY[0..3] OF Pt := [2((10, 11)), 2((y := 12, 13))];
+    kept : ARRAY[0..0] OF Pt := [((), 14)];
+    nested : ARRAY[0..0] OF Holder := [((15, 16), 17)];
+    folded : Rows;
+END_VAR
+    check(rows[0].x = 1, 'rows[0].x'); check(rows[0].y = 2, 'rows[0].y');
+    check(rows[1].x = 3, 'rows[1].x'); check(rows[1].y = 4, 'rows[1].y');
+    check(member.p.x = 5, 'member.p.x'); check(member.p.y = 6, 'member.p.y'); check(member.n = 7, 'member.n');
+    check(indexed[2].x = 8, 'indexed[2].x'); check(indexed[2].y = 9, 'indexed[2].y'); check(indexed[1].x = 7, 'indexed[1].x keeps its default');
+    check(repeated[1].x = 10, 'repeated[1].x'); check(repeated[1].y = 11, 'repeated[1].y');
+    check(repeated[3].x = 13, 'repeated[3].x: the first field no value names'); check(repeated[3].y = 12, 'repeated[3].y');
+    check(kept[0].x = 7, 'kept[0].x keeps its default'); check(kept[0].y = 14, 'kept[0].y');
+    check(nested[0].p.x = 15, 'nested[0].p.x'); check(nested[0].p.y = 16, 'nested[0].p.y'); check(nested[0].n = 17, 'nested[0].n');
+    check(folded[1].x = 20, 'a TYPE default of rows'); check(folded[1].y = 21, 'folded[1].y');
+END_FUNCTION
     "#,
-        2,
+        3,
     );
 }
 
