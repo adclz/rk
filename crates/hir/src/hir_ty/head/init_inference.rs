@@ -465,6 +465,9 @@ pub struct InitExprInferenceResult<'db> {
     /// Resolved, flattened leaves per root initializer expression — the
     /// authoritative output consumed by MIR lowering.
     pub resolved: FxHashMap<InitExpr<'db>, Vec<ResolvedInit<'db>>>,
+    /// The field each value without a name sets in a STRUCT's parentheses,
+    /// for the editor, which shows its name.
+    pub positional: FxHashMap<InitExpr<'db>, StructElement<'db>>,
     /// Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,
 }
@@ -474,6 +477,7 @@ impl<'db> InitExprInferenceResult<'db> {
         Self {
             type_of_init_expr: FxHashMap::default(),
             resolved: FxHashMap::default(),
+            positional: FxHashMap::default(),
             scope,
             errors: Vec::new(),
         }
@@ -800,6 +804,7 @@ impl<'db> InitExprInferenceResult<'db> {
                     let site = *value.get_expr();
                     match positional.get(&site) {
                         Some(Some(field)) => {
+                            self.positional.insert(site, *field);
                             // `()` keeps the field's default, as `n()` keeps
                             // an element's.
                             if matches!(value, InitExprWalkStep::FieldInit { values, .. } if values.is_empty())
