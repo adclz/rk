@@ -3,7 +3,7 @@
 
 //! Run the fuzzing oracles on files and say which one fails.
 //!
-//! `cargo run -p rk-fuzz --bin repro -- [--only pipeline|semantics|format|incremental|ide|debug] <path>...`
+//! `cargo run -p rk-fuzz --bin repro -- [--only pipeline|semantics|format|spacing|formatter|incremental|ide|debug] <path>...`
 //!
 //! With `--generated`, each input is a `fuzz_semantics` crash file: the
 //! bytes the program generator ran on. The program is written again and
@@ -51,7 +51,7 @@ fn main() -> ExitCode {
             "--print" => print = true,
             "-h" | "--help" => {
                 eprintln!(
-                    "usage: repro [--only pipeline|semantics|format|incremental|ide|debug] [--generated [--print]] [--isolate] <file-or-dir>..."
+                    "usage: repro [--only pipeline|semantics|format|spacing|formatter|incremental|ide|debug] [--generated [--print]] [--isolate] <file-or-dir>..."
                 );
                 return ExitCode::SUCCESS;
             }
@@ -60,7 +60,7 @@ fn main() -> ExitCode {
     }
     if paths.is_empty() {
         eprintln!(
-            "usage: repro [--only pipeline|semantics|format|incremental|ide|debug] [--generated [--print]] [--isolate] <file-or-dir>..."
+            "usage: repro [--only pipeline|semantics|format|spacing|formatter|incremental|ide|debug] [--generated [--print]] [--isolate] <file-or-dir>..."
         );
         return ExitCode::FAILURE;
     }
@@ -72,6 +72,9 @@ fn main() -> ExitCode {
         None => |s| rk_fuzz::check_all(s).map(Some),
         Some("pipeline") => |s| rk_fuzz::pipeline::check(s).map(Some),
         Some("format") => |s| rk_fuzz::format::check(s).map(|()| None),
+        Some("spacing") => |s| rk_fuzz::spacing::check(s).map(|()| None),
+        // What `fuzz_formatter` runs: the formatter's oracle and the spacing one.
+        Some("formatter") => |s| rk_fuzz::check_formatter(s).map(|()| None),
         Some("incremental") => |s| rk_fuzz::incremental::check(s).map(|()| None),
         Some("ide") => |s| rk_fuzz::ide::check(s).map(|()| None),
         // The debug-format target's input is a module's bytes, run below.
