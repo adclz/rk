@@ -15,6 +15,8 @@
 //!   same text does.
 //! - [`format`]: the formatter's output parses, is a fixed point, and means
 //!   what its input meant.
+//! - [`spacing`]: written with no space where two tokens stay two, a
+//!   program parses to the same tree.
 //! - [`semantics`]: a program computes the values its header says, which
 //!   [`generate`] works out for the programs it writes.
 //! - [`ide`]: every language server request answers with ranges that fit
@@ -35,6 +37,7 @@ pub mod incremental;
 pub mod pipeline;
 pub mod semantics;
 mod session;
+pub mod spacing;
 mod wasm;
 
 pub use corpus::{create_seed_corpus, load_corpus};
@@ -85,8 +88,16 @@ pub fn check_generated(source: &str) -> Result<pipeline::Verdict, Finding> {
     let verdict = pipeline::check(source)?;
     semantics::check(source)?;
     format::check(source)?;
+    spacing::check(source)?;
     incremental::check(source)?;
     Ok(verdict)
+}
+
+/// What `fuzz_formatter` runs on a text: the formatter's oracle, then the
+/// spaces between its tokens.
+pub fn check_formatter(source: &str) -> Result<(), Finding> {
+    format::check(source)?;
+    spacing::check(source)
 }
 
 /// The `[addresses]` section an input is read with, as `config.toml` would

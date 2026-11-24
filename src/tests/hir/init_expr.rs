@@ -590,6 +590,7 @@ const PLACED: &str = r#"
     TYPE PAIR : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
     TYPE NAMED : STRUCT id : INT; name : STRING[8]; END_STRUCT; END_TYPE
     TYPE HOLDER : STRUCT p : PAIR; n : INT; END_STRUCT; END_TYPE
+    TYPE ROW : STRUCT arr : ARRAY[0..3] OF INT; n : INT; END_STRUCT; END_TYPE
     FUNCTION_BLOCK FB VAR_INPUT k : INT; END_VAR END_FUNCTION_BLOCK
     VAR_CONSTANT ORIGIN : PAIR := (x := 4, y := 9); END_VAR
 "#;
@@ -606,11 +607,23 @@ const PLACED: &str = r#"
 )]
 #[case::a_repetition(
     "FUNCTION F VAR p : PAIR := (2((x := 5))); END_VAR END_FUNCTION",
-    "E0508"
+    "E0515"
 )]
 #[case::a_named_repetition(
     "FUNCTION F VAR p : PAIR := (x := 2(5)); END_VAR END_FUNCTION",
-    "E0508"
+    "E0515"
+)]
+#[case::a_repetition_of_rows_for_an_array(
+    "FUNCTION F VAR r : ROW := (arr := 2([1, 2])); END_VAR END_FUNCTION",
+    "E0515"
+)]
+#[case::a_repetition_for_an_array(
+    "FUNCTION F VAR r : ROW := (arr := 2(7)); END_VAR END_FUNCTION",
+    "E0515"
+)]
+#[case::a_repetition_for_an_array_by_place(
+    "FUNCTION F VAR r : ROW := (2([1, 2]), 3); END_VAR END_FUNCTION",
+    "E0515"
 )]
 #[case::an_instance("FUNCTION F VAR b : FB := ((k := 5)); END_VAR END_FUNCTION", "E0409")]
 #[case::a_value_of_the_struct(
@@ -656,4 +669,34 @@ fn a_value_without_a_name_is_a_field_s_value(
         .map(|(code, _)| code)
         .collect();
     assert_eq!(codes, [code], "{report}");
+}
+
+/// A repetition writes elements of an array, in the brackets of its value.
+/// Given as a field's whole value, it was walked as the array's elements and
+/// placed nowhere: `arr` stayed 0. In brackets, it is the array's value.
+#[rstest]
+fn invalid_a_repetition_outside_an_array_s_brackets(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Recipe : STRUCT steps : ARRAY[0..3] OF INT; END_STRUCT; END_TYPE
+
+        FUNCTION F
+            VAR
+                a : Recipe := (steps := 2([1, 2]));
+                b : Recipe := (steps := [2(1, 2)]);
+            END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0515] Error: repetition outside an array's brackets
+       ,-[ file:///test0.st:6:41 ]
+       |
+     6 |                 a : Recipe := (steps := 2([1, 2]));
+       |                                         ^^^^|^^^^
+       |                                             `------ this repetition is outside an array's brackets
+       |
+       | Help: write the array's value in brackets: [2(...)]
+       |
+       | Note: a repetition writes elements of an array, in its brackets
+    ---'
+    ");
 }

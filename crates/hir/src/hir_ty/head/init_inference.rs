@@ -6,7 +6,7 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    CallSite,
+    CallSite, HirNodeInfo,
     check::errors::{
         ToIdeDiagnostic, e01_duplicates::DuplicateError, e04_init::InitError, e05_array::ArrayError,
     },
@@ -533,6 +533,16 @@ impl<'db> InitExprInferenceResult<'db> {
                 .extend(duplicates.iter().map(|d| d.to_diagnostic(db, file)));
             return;
         }
+        // Every value written reaches the leaves, once each time a
+        // repetition writes it. `((x := 5))` and `(x := 2(5))` passed the
+        // walk and reached none: the value was dropped with nothing said.
+        debug_assert_eq!(
+            placed(&out),
+            written(db, expr),
+            "an initializer of {} at {:?} drops a value",
+            self.scope.file(db).url(db),
+            expr.get_span(db)
+        );
         if !out.is_empty() {
             self.resolved.insert(expr, out);
         }
@@ -604,6 +614,19 @@ impl<'db> InitExprInferenceResult<'db> {
         ctx: &mut InitContext<'db>,
         value: &'db InitExprWalkStep,
     ) {
+        // A repetition writes an array's elements, in its brackets. As a
+        // field's whole value nothing placed it: `(x := 2(5))` and
+        // `(arr := 2([1, 2]))` passed, and their values were dropped.
+        if let InitExprWalkStep::SizedIndex { expr, size, .. } = value {
+            self.errors.push(
+                ArrayError::RepetitionOutsideBrackets {
+                    expr: *expr,
+                    size: *size,
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+            return;
+        }
         // Each field walks in its own array context, restored after.
         // Resetting only for an ARRAY field left a scalar written after one
         // counting as that array's next element: `n := 1` behind
@@ -720,19 +743,6 @@ impl<'db> InitExprInferenceResult<'db> {
                 }
             }
             InitExprWalkStep::SizedIndex { expr, size, values } => {
-                // A repetition repeats an array's elements. As the value of a
-                // field that is no array, nothing placed it: `(x := 2(5))`
-                // passed, and x kept its 0.
-                if ctx.array_root.is_none() && !expected.is_never() {
-                    self.errors.push(
-                        ArrayError::IndexNonArrayTypeInitExpr {
-                            expr: *expr,
-                            ty: place.current_init_typ,
-                        }
-                        .to_diagnostic(db, self.scope.file(db)),
-                    );
-                    return;
-                }
                 let repeat_count = size.with_case.as_u64(db).unwrap_or_else(|_| {
                     self.errors.push(
                         ArrayError::InvalidIndex { size: *size }
@@ -1274,6 +1284,48 @@ impl<'db> Leaves<'_, 'db> {
             });
         }
     }
+}
+
+/// How many times `init` writes each of its values: once, times each
+/// repetition around it. `()` and `n()` write none.
+fn written<'db>(db: &'db dyn WorkspaceDataBase, init: InitExpr<'db>) -> FxHashMap<Expr<'db>, u64> {
+    fn walk<'db>(
+        db: &'db dyn WorkspaceDataBase,
+        init: InitExpr<'db>,
+        times: u64,
+        out: &mut FxHashMap<Expr<'db>, u64>,
+    ) {
+        match init.kind(db) {
+            InitExprKind::ConstantExpr(value) => *out.entry(value).or_default() += times,
+            InitExprKind::ArrayInit { values } | InitExprKind::StructInit { values } => {
+                for value in values {
+                    walk(db, value, times, out);
+                }
+            }
+            InitExprKind::ArrayIndexedElement { size, values } => {
+                let count = size.with_case.as_u64(db).unwrap_or(0);
+                for value in values {
+                    walk(db, value, times.saturating_mul(count), out);
+                }
+            }
+            InitExprKind::StructElement { value, .. } | InitExprKind::ElementAt { value, .. } => {
+                walk(db, *value, times, out)
+            }
+        }
+    }
+    let mut out = FxHashMap::default();
+    walk(db, init, 1, &mut out);
+    out.retain(|_, times| *times > 0);
+    out
+}
+
+/// How many times each value reaches the leaves MIR gets.
+fn placed<'db>(leaves: &[ResolvedInit<'db>]) -> FxHashMap<Expr<'db>, u64> {
+    let mut out = FxHashMap::default();
+    for leaf in leaves {
+        *out.entry(leaf.value).or_default() += 1;
+    }
+    out
 }
 
 /// The field each value without a name sets in a STRUCT's parentheses: the

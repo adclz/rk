@@ -873,6 +873,19 @@ struct Named {
     numbers: Vec<i128>,
 }
 
+/// The right side of a comparison with `left`. A name is a constant of its
+/// type's base, but two types with named values stay two types, which no
+/// comparison takes (docs/enums.md): a name of another type than the left's
+/// is written as its number, a literal of the base.
+fn comparable(d: &Decls, left: &Expr, right: Expr) -> Expr {
+    match (left, right) {
+        (Expr::Named(a, _), Expr::Named(b, j)) if *a != b => {
+            Expr::Lit(d.named[b].base, Val::Int(d.named[b].numbers[j]))
+        }
+        (_, right) => right,
+    }
+}
+
 /// Who declares a CONSTANT, which says where it is written and who names it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Owner {
@@ -1864,11 +1877,10 @@ impl Generator<'_> {
                     };
                     let op = [Cmp::Eq, Cmp::Ne, Cmp::Lt, Cmp::Gt, Cmp::Le, Cmp::Ge]
                         [self.choices.below(6)];
-                    Expr::Cmp(
-                        op,
-                        Box::new(self.expr(operands, d, readable)),
-                        Box::new(self.expr(operands, d, readable)),
-                    )
+                    let left = self.expr(operands, d, readable);
+                    let right = self.expr(operands, d, readable);
+                    let right = comparable(&self.d, &left, right);
+                    Expr::Cmp(op, Box::new(left), Box::new(right))
                 }
             };
         }
@@ -6386,6 +6398,116 @@ mod tests {
             return;
         }
         panic!("no program writes a tight sum in a CASE arm");
+    }
+
+    /// Two names of two types with named values are two types, which no
+    /// comparison takes: the right one is written as its number. A name of
+    /// the left's own type, and a name beside anything else, stay names.
+    #[test]
+    fn a_comparison_holds_no_names_of_two_types() {
+        let mut d = Decls::default();
+        for numbers in [vec![0, 1], vec![4, 9]] {
+            d.named.push(Named {
+                base: Ty::Lint,
+                written: vec![None; numbers.len()],
+                numbers,
+            });
+        }
+        let named = |k, j| Expr::Named(k, j);
+        assert!(matches!(
+            comparable(&d, &named(0, 1), named(1, 1)),
+            Expr::Lit(Ty::Lint, Val::Int(9))
+        ));
+        assert!(matches!(
+            comparable(&d, &named(0, 1), named(0, 0)),
+            Expr::Named(0, 0)
+        ));
+        assert!(matches!(
+            comparable(&d, &Expr::Lit(Ty::Lint, Val::Int(3)), named(1, 0)),
+            Expr::Named(1, 0)
+        ));
+    }
+
+    /// The types of the names each comparison in `e` holds on both sides.
+    fn compared_names(e: &Expr, pairs: &mut Vec<(usize, usize)>) {
+        match e {
+            Expr::Cmp(_, a, b) => {
+                if let (Expr::Named(x, _), Expr::Named(y, _)) = (&**a, &**b) {
+                    pairs.push((*x, *y));
+                }
+                compared_names(a, pairs);
+                compared_names(b, pairs);
+            }
+            Expr::Arith(_, _, a, b)
+            | Expr::Logic(_, a, b)
+            | Expr::Bits(_, _, a, b)
+            | Expr::Pow(a, b) => {
+                compared_names(a, pairs);
+                compared_names(b, pairs);
+            }
+            Expr::Neg(_, a) | Expr::Not(a) | Expr::Cycle(_, a) | Expr::ConstElem(_, _, a) => {
+                compared_names(a, pairs)
+            }
+            Expr::Call(_, args) | Expr::LibCall(_, args, _) => {
+                for arg in args {
+                    compared_names(arg, pairs);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// BOOL expressions over two types with named values of each base, and
+    /// nothing else to read, compare names often: names of one type, never
+    /// of two, which rk refuses (E0302). One did on the night of 2026-11-24.
+    #[test]
+    fn no_comparison_holds_names_of_two_types() {
+        let mut d = Decls::default();
+        for base in INTEGERS {
+            for numbers in [vec![0, 1, 2], vec![4, 9]] {
+                d.named.push(Named {
+                    base,
+                    written: vec![None; numbers.len()],
+                    numbers,
+                });
+            }
+        }
+        let mut seed = 0x517C_C1B7_2722_0A95u64;
+        let mut pairs = Vec::new();
+        for _ in 0..500 {
+            let bytes: Vec<u8> = (0..256)
+                .map(|_| {
+                    seed ^= seed << 13;
+                    seed ^= seed >> 7;
+                    seed ^= seed << 17;
+                    (seed >> 24) as u8
+                })
+                .collect();
+            let mut g = Generator {
+                choices: Choices {
+                    bytes: &bytes,
+                    at: 0,
+                },
+                vars: Vec::new(),
+                in_program: true,
+                d: std::mem::take(&mut d),
+                budget: 28,
+                indexing: 0,
+                unread: None,
+                this: None,
+            };
+            let e = g.expr(Ty::Bool, 3, &[]);
+            d = g.d;
+            compared_names(&e, &mut pairs);
+        }
+        assert!(!pairs.is_empty(), "no comparison of two names");
+        let two_types: Vec<_> = pairs.iter().filter(|(x, y)| x != y).collect();
+        assert!(
+            two_types.is_empty(),
+            "{} of {} compare names of two types",
+            two_types.len(),
+            pairs.len()
+        );
     }
 
     /// Each form a STRUCT's value is written in: by name, in order with `()`

@@ -271,7 +271,7 @@ jobs:
               # Each target's own oracle, so a crash is filed under it.
               case "$target" in
                 fuzz_compiler) flag="--only pipeline" ;;
-                fuzz_formatter) flag="--only format" ;;
+                fuzz_formatter) flag="--only formatter" ;;
                 fuzz_incremental) flag="--only incremental" ;;
                 fuzz_ide) flag="--only ide" ;;
                 fuzz_semantics) flag="--generated" ;;
