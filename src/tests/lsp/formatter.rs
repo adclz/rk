@@ -3122,3 +3122,25 @@ END_NAMESPACE
     END_NAMESPACE
     ");
 }
+
+/// Values without a name in a struct's parentheses are spaced as a list,
+/// wherever they nest, and the text is formatted once.
+#[rstest]
+pub fn values_without_a_name(mut with_db: RootDatabase) {
+    let source = "FUNCTION f\nVAR\nrows : ARRAY[0..1] OF Point := [(1,2),(3,  4)];\nkept : ARRAY[0..0] OF Point := [ ( (),4 ) ];\nnested : Holder := (p := (y := 3,4) , 5);\nEND_VAR\nEND_FUNCTION\n";
+
+    let document = add_source(&mut with_db, source).document(&with_db);
+    let formatted = fmt(document);
+    assert_snapshot!(formatted, @r"
+    FUNCTION f
+    	VAR
+    		rows: ARRAY[0..1] OF Point := [(1, 2), (3, 4)];
+    		kept: ARRAY[0..0] OF Point := [((), 4)];
+    		nested: Holder := (p := (y := 3, 4), 5);
+    	END_VAR
+    END_FUNCTION
+    ");
+
+    let again = add_source(&mut with_db, &formatted).document(&with_db);
+    assert_eq!(fmt(again), formatted, "a fixed point");
+}

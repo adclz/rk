@@ -3,13 +3,16 @@
 
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     CallSite,
-    check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError, e05_array::ArrayError},
+    check::errors::{
+        ToIdeDiagnostic, e01_duplicates::DuplicateError, e04_init::InitError, e05_array::ArrayError,
+    },
     hir_def::{
         expressions::expression::{Expr, InitExpr, InitExprKind},
+        expressions::spec::{Struct, StructElement},
         interned::identifier::Ident,
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
@@ -462,6 +465,9 @@ pub struct InitExprInferenceResult<'db> {
     /// Resolved, flattened leaves per root initializer expression — the
     /// authoritative output consumed by MIR lowering.
     pub resolved: FxHashMap<InitExpr<'db>, Vec<ResolvedInit<'db>>>,
+    /// The field each value without a name sets in a STRUCT's parentheses,
+    /// for the editor, which shows its name.
+    pub positional: FxHashMap<InitExpr<'db>, StructElement<'db>>,
     /// Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,
 }
@@ -471,6 +477,7 @@ impl<'db> InitExprInferenceResult<'db> {
         Self {
             type_of_init_expr: FxHashMap::default(),
             resolved: FxHashMap::default(),
+            positional: FxHashMap::default(),
             scope,
             errors: Vec::new(),
         }
@@ -586,6 +593,34 @@ impl<'db> InitExprInferenceResult<'db> {
         }
     }
 
+    /// The value of one field, given by its name or by its place, of the
+    /// type the field declares.
+    fn resolve_field_value(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        field_type: Type<'db>,
+        place: &mut InitPlaceBuilder<'db>,
+        body_ctx: &mut BodyInferenceResult<'db>,
+        ctx: &mut InitContext<'db>,
+        value: &'db InitExprWalkStep,
+    ) {
+        // Each field walks in its own array context, restored after.
+        // Resetting only for an ARRAY field left a scalar written after one
+        // counting as that array's next element: `n := 1` behind
+        // `v := [4, 5, 6]` was one too many for `v`.
+        let saved_root = ctx.array_root;
+        let saved_positions = ctx.positions.clone();
+        let saved_overflow = ctx.overflow_reported.clone();
+        let own_array = matches!(field_type.normalize(db), Type::Array(_)).then_some(field_type);
+        ctx.reset_for_new_array(own_array);
+
+        self.resolve_step(db, field_type, place, body_ctx, ctx, value);
+
+        ctx.array_root = saved_root;
+        ctx.positions = saved_positions;
+        ctx.overflow_reported = saved_overflow;
+    }
+
     fn resolve_step(
         &mut self,
         db: &'db dyn WorkspaceDataBase,
@@ -685,6 +720,19 @@ impl<'db> InitExprInferenceResult<'db> {
                 }
             }
             InitExprWalkStep::SizedIndex { expr, size, values } => {
+                // A repetition repeats an array's elements. As the value of a
+                // field that is no array, nothing placed it: `(x := 2(5))`
+                // passed, and x kept its 0.
+                if ctx.array_root.is_none() && !expected.is_never() {
+                    self.errors.push(
+                        ArrayError::IndexNonArrayTypeInitExpr {
+                            expr: *expr,
+                            ty: place.current_init_typ,
+                        }
+                        .to_diagnostic(db, self.scope.file(db)),
+                    );
+                    return;
+                }
                 let repeat_count = size.with_case.as_u64(db).unwrap_or_else(|_| {
                     self.errors.push(
                         ArrayError::InvalidIndex { size: *size }
@@ -718,12 +766,18 @@ impl<'db> InitExprInferenceResult<'db> {
             }
             InitExprWalkStep::FieldInit { expr, values } => {
                 expected.walk_init_expr(db, step, place, self);
-                let expected = self
-                    .type_of_init_expr
-                    .get(expr)
-                    .copied()
-                    .unwrap_or_default()
-                    .normalize(db);
+                // What the parentheses initialize, as declared; none once
+                // they are refused (E0403).
+                let declared = self.type_of_init_expr.get(expr).copied();
+                let expected = declared.unwrap_or_default().normalize(db);
+                // A STRUCT's values may come without a name, each the value
+                // of the next field no value names. An instance's are named.
+                let positional = match (expected, expr.kind(db)) {
+                    (Type::Struct(strukt), InitExprKind::StructInit { values }) => {
+                        positional_fields(db, strukt, &values)
+                    }
+                    _ => FxHashMap::default(),
+                };
 
                 // Clear seen fields for new struct
                 ctx.clear_fields();
@@ -733,7 +787,57 @@ impl<'db> InitExprInferenceResult<'db> {
                 let saved_positions = ctx.positions.clone();
                 let saved_overflow = ctx.overflow_reported.clone();
 
-                self.resolve_steps(db, expected, place, body_ctx, ctx, values);
+                for value in values {
+                    let mut child_place = *place;
+                    let Some(holder) =
+                        declared.filter(|_| !matches!(value, InitExprWalkStep::Field { .. }))
+                    else {
+                        self.resolve_step(db, expected, &mut child_place, body_ctx, ctx, value);
+                        continue;
+                    };
+                    // A value without a name is a field's value, walked as a
+                    // named one is, or has none: past a STRUCT's last free
+                    // field (E0410), or in an instance's parentheses, which
+                    // name each member (E0409). Typed against the STRUCT or
+                    // the instance itself, it was placed nowhere.
+                    let file = self.scope.file(db);
+                    let site = *value.get_expr();
+                    match positional.get(&site) {
+                        Some(Some(field)) => {
+                            self.positional.insert(site, *field);
+                            // `()` keeps the field's default, as `n()` keeps
+                            // an element's.
+                            if matches!(value, InitExprWalkStep::FieldInit { values, .. } if values.is_empty())
+                            {
+                                continue;
+                            }
+                            let field_type = Type::StructElement(*field);
+                            child_place.current_init_typ = field_type;
+                            self.resolve_field_value(
+                                db,
+                                field_type,
+                                &mut child_place,
+                                body_ctx,
+                                ctx,
+                                value,
+                            );
+                        }
+                        Some(None) => self.errors.push(
+                            InitError::NoFieldLeft {
+                                value: site,
+                                ty: holder,
+                            }
+                            .to_diagnostic(db, file),
+                        ),
+                        None => self.errors.push(
+                            InitError::ValueWithoutMember {
+                                value: site,
+                                ty: holder,
+                            }
+                            .to_diagnostic(db, file),
+                        ),
+                    }
+                }
 
                 // Restore context
                 ctx.array_root = saved_root;
@@ -769,22 +873,7 @@ impl<'db> InitExprInferenceResult<'db> {
                     );
                 }
 
-                // Each field walks in its own array context, restored after.
-                // Resetting only for an ARRAY field left a scalar written
-                // after one counting as that array's next element: `n := 1`
-                // behind `v := [4, 5, 6]` was one too many for `v`.
-                let saved_root = ctx.array_root;
-                let saved_positions = ctx.positions.clone();
-                let saved_overflow = ctx.overflow_reported.clone();
-                let own_array =
-                    matches!(field_type.normalize(db), Type::Array(_)).then_some(field_type);
-                ctx.reset_for_new_array(own_array);
-
-                self.resolve_step(db, field_type, place, body_ctx, ctx, value);
-
-                ctx.array_root = saved_root;
-                ctx.positions = saved_positions;
-                ctx.overflow_reported = saved_overflow;
+                self.resolve_field_value(db, field_type, place, body_ctx, ctx, value);
             }
             InitExprWalkStep::ConstantExpr { expr, value } => {
                 // Type check the constant expression
@@ -1187,6 +1276,33 @@ impl<'db> Leaves<'_, 'db> {
     }
 }
 
+/// The field each value without a name sets in a STRUCT's parentheses: the
+/// fields no value names, in the order they are declared, as a call's
+/// positional arguments fill the parameters no argument names. A value past
+/// the last of them has none (E0410).
+pub(crate) fn positional_fields<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    strukt: Struct<'db>,
+    values: &[InitExpr<'db>],
+) -> FxHashMap<InitExpr<'db>, Option<StructElement<'db>>> {
+    let named: FxHashSet<Ident> = values
+        .iter()
+        .filter_map(|value| match value.kind(db) {
+            InitExprKind::StructElement { name, .. } => Some(name.ident(db)),
+            _ => None,
+        })
+        .collect();
+    let mut free = strukt
+        .elements(db)
+        .into_iter()
+        .filter(|field| !named.contains(&field.name(db)));
+    values
+        .iter()
+        .filter(|value| !matches!(value.kind(db), InitExprKind::StructElement { .. }))
+        .map(|value| (*value, free.next()))
+        .collect()
+}
+
 /// Flatten an initializer into row-major (path, value) leaves at `path`.
 fn resolve_leaves<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -1208,7 +1324,12 @@ fn resolve_leaves<'db>(
             // two from diverging, rather than teaching MIR to fold a name HIR
             // has already resolved. The walk recorded, for each element, the
             // field or member it named, whatever holds it: a STRUCT, an FB or
-            // CLASS instance, an array's element.
+            // CLASS instance, an array's element. A value without a name is
+            // the value of the next field of the STRUCT no value names.
+            let positional = match leaves.types.get(&init).map(|ty| ty.normalize(db)) {
+                Some(Type::Struct(strukt)) => positional_fields(db, strukt, &values),
+                _ => FxHashMap::default(),
+            };
             for v in &values {
                 if let InitExprKind::StructElement { name, value } = v.kind(db) {
                     let declared = match leaves.types.get(v) {
@@ -1220,6 +1341,10 @@ fn resolve_leaves<'db>(
                         .path
                         .push(InitPathStep::Field(declared.unwrap_or(name.ident(db))));
                     resolve_leaves(db, *value, leaves);
+                    leaves.path.pop();
+                } else if let Some(Some(field)) = positional.get(v) {
+                    leaves.path.push(InitPathStep::Field(field.name(db)));
+                    resolve_leaves(db, *v, leaves);
                     leaves.path.pop();
                 }
             }

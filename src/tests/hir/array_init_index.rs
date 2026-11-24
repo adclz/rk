@@ -333,7 +333,7 @@ fn invalid_an_index_outside_an_array_bracket(mut with_db: RootDatabase) {
        |
      7 |             p : Pt := ([1] := 2);
        |                        ^|^
-       |                         `--- cannot index into type 'Pt'
+       |                         `--- cannot index into type 'INT'
     ---'
     [E0001] Error: syntax error
        ,-[ file:///test0.st:7:28 ]

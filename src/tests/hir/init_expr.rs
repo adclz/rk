@@ -447,3 +447,213 @@ fn empty_repetition_counts_its_elements(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+/// A STRUCT's values may come without a name: each sets the next field that no
+/// value names, in the order the fields are declared, as a call's positional
+/// arguments fill the parameters no argument names. `()` keeps a field's
+/// default. Each place a start value goes takes them.
+#[rstest]
+fn valid_values_without_a_name_fill_the_fields_in_order(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            Point : STRUCT x : INT := 7; y : INT; END_STRUCT;
+            Named : STRUCT id : INT; name : STRING[8]; END_STRUCT;
+            Holder : STRUCT p : Point := (3, 4); arr : ARRAY[0..1] OF INT; n : INT; END_STRUCT;
+            Origin : Point := (1, 2);
+        END_TYPE
+        VAR_CONSTANT CORNER : Point := (5, 6); END_VAR
+        CONFIGURATION C VAR_GLOBAL g : Point := (8, 9); END_VAR END_CONFIGURATION
+
+        FUNCTION_BLOCK Takes
+            VAR_INPUT p : Point := (10, 11); END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION F
+            VAR
+                a : Point := (1, 2);
+                b : Point := (1, y := 2);
+                c : Point := (y := 2, 1);
+                d : Point := ((), 4);
+                e : Named := (3, 'pump');
+                h : Holder := ((x := 1), [4, 5], 6);
+            END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// Values without a name nest: an array's rows, a member's value, an element
+/// at its index, a repetition's value, a struct's in another's place.
+#[rstest]
+fn valid_values_without_a_name_nest(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            Point : STRUCT x : INT; y : INT; END_STRUCT;
+            Holder : STRUCT p : Point; n : INT; END_STRUCT;
+        END_TYPE
+
+        FUNCTION F
+            VAR
+                rows : ARRAY[0..1] OF Point := [(1, 2), (3, 4)];
+                member : Holder := (p := (1, 2), n := 3);
+                indexed : ARRAY[0..3] OF Point := [[2] := (5, 6)];
+                repeated : ARRAY[0..3] OF Point := [2((7, 8)), 2((y := 1, 9))];
+                kept : ARRAY[0..0] OF Point := [((), 4)];
+                nested : ARRAY[0..0] OF Holder := [((1, 2), 3)];
+            END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A value without a name after the last field no value names has no field
+/// to go to.
+#[rstest]
+fn invalid_more_values_than_fields(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Point : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+        FUNCTION F
+            VAR
+                p : Point := (1, 2, 3);
+                q : Point := (y := 2, 1, 3);
+            END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0410] Error: more values than fields
+       ,-[ file:///test0.st:6:37 ]
+       |
+     2 |         TYPE Point : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+       |              ^^|^^
+       |                `---- 'Point' is declared here
+       |
+     6 |                 p : Point := (1, 2, 3);
+       |                                     |
+       |                                     `-- no field of 'Point' is left for this value
+       |
+       | Note: a value without a name sets the next field that no value names
+    ---'
+    [E0410] Error: more values than fields
+       ,-[ file:///test0.st:7:42 ]
+       |
+     2 |         TYPE Point : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+       |              ^^|^^
+       |                `---- 'Point' is declared here
+       |
+     7 |                 q : Point := (y := 2, 1, 3);
+       |                                          |
+       |                                          `-- no field of 'Point' is left for this value
+       |
+       | Note: a value without a name sets the next field that no value names
+    ---'
+    ");
+}
+
+/// An instance's members are named: a value without a name was typed against
+/// the instance itself and placed nowhere, `((k := 5))` passing with its 5
+/// dropped.
+#[rstest]
+fn invalid_a_value_without_a_member_name(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Drive
+            VAR_INPUT speed : INT; ramp : INT; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION F
+            VAR
+                d : Drive := (speed := 100, 5);
+            END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0409] Error: value without a member name
+       ,-[ file:///test0.st:8:45 ]
+       |
+     2 |         FUNCTION_BLOCK Drive
+       |                        ^^|^^
+       |                          `---- FUNCTION_BLOCK 'Drive' is declared here
+       |
+     8 |                 d : Drive := (speed := 100, 5);
+       |                                             |
+       |                                             `-- this value names no member of 'Drive'
+       |
+       | Help: write the member's name before the value: <member> := <value>
+       |
+       | Note: an instance's initializer names each member it sets
+    ---'
+    ");
+}
+
+/// The types each case below initializes.
+const PLACED: &str = r#"
+    TYPE PAIR : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+    TYPE NAMED : STRUCT id : INT; name : STRING[8]; END_STRUCT; END_TYPE
+    TYPE HOLDER : STRUCT p : PAIR; n : INT; END_STRUCT; END_TYPE
+    FUNCTION_BLOCK FB VAR_INPUT k : INT; END_VAR END_FUNCTION_BLOCK
+    VAR_CONSTANT ORIGIN : PAIR := (x := 4, y := 9); END_VAR
+"#;
+
+/// A value without a name is the value of a field, checked as a named one is,
+/// or refused where it has none, at the top of a start value or in an array's
+/// row and a member's value. Each of the first five passed, and the program
+/// ran without it.
+#[rstest]
+#[case::doubled_parentheses("FUNCTION F VAR p : PAIR := ((x := 5)); END_VAR END_FUNCTION", "E0403")]
+#[case::beside_a_named_value(
+    "FUNCTION F VAR p : PAIR := ((x := 5), y := 1); END_VAR END_FUNCTION",
+    "E0403"
+)]
+#[case::a_repetition(
+    "FUNCTION F VAR p : PAIR := (2((x := 5))); END_VAR END_FUNCTION",
+    "E0508"
+)]
+#[case::a_named_repetition(
+    "FUNCTION F VAR p : PAIR := (x := 2(5)); END_VAR END_FUNCTION",
+    "E0508"
+)]
+#[case::an_instance("FUNCTION F VAR b : FB := ((k := 5)); END_VAR END_FUNCTION", "E0409")]
+#[case::a_value_of_the_struct(
+    "FUNCTION F VAR p : PAIR := (ORIGIN, y := 1); END_VAR END_FUNCTION",
+    "E0301"
+)]
+#[case::a_bracket("FUNCTION F VAR p : PAIR := ([1, 2]); END_VAR END_FUNCTION", "E0508")]
+#[case::a_long_string(
+    "FUNCTION F VAR n : NAMED := (1, 'longer than 8'); END_VAR END_FUNCTION",
+    "E0314"
+)]
+#[case::past_the_last_field("FUNCTION F VAR p : PAIR := (1, 2, 3); END_VAR END_FUNCTION", "E0410")]
+#[case::one_value_alone("FUNCTION F VAR p : PAIR := (5); END_VAR END_FUNCTION", "E0301")]
+#[case::a_row_past_the_last_field(
+    "FUNCTION F VAR r : ARRAY[0..0] OF PAIR := [(1, 2, 3)]; END_VAR END_FUNCTION",
+    "E0410"
+)]
+#[case::a_member_s_value_past_the_last_field(
+    "FUNCTION F VAR h : HOLDER := (p := (1, 2, 3)); END_VAR END_FUNCTION",
+    "E0410"
+)]
+#[case::a_row_of_instances(
+    "FUNCTION F VAR r : ARRAY[0..0] OF FB := [(k := 1, 2)]; END_VAR END_FUNCTION",
+    "E0409"
+)]
+#[case::a_row_of_one_value(
+    "FUNCTION F VAR r : ARRAY[0..0] OF PAIR := [(5)]; END_VAR END_FUNCTION",
+    "E0301"
+)]
+#[case::a_long_string_in_a_row(
+    "FUNCTION F VAR r : ARRAY[0..0] OF NAMED := [(1, 'longer than 8')]; END_VAR END_FUNCTION",
+    "E0314"
+)]
+fn a_value_without_a_name_is_a_field_s_value(
+    mut with_db: RootDatabase,
+    #[case] source: &str,
+    #[case] code: &str,
+) {
+    let report = test_diagnostics(&mut with_db, &[PLACED, source]);
+    let codes: Vec<&str> = report
+        .lines()
+        .filter_map(|line| line.strip_prefix('[')?.split_once(']'))
+        .map(|(code, _)| code)
+        .collect();
+    assert_eq!(codes, [code], "{report}");
+}

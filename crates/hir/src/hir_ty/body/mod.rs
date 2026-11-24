@@ -10,10 +10,11 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{
-                BeginPathExpr, Expr, ExprKind, FuncCall, InitExprKind, ParamAssign, PathExpr,
-                PrimaryExpr, RefValue, VariableAccess, VariableAccessKind,
+                BeginPathExpr, Expr, ExprKind, FuncCall, InitExpr, InitExprKind, ParamAssign,
+                PathExpr, PrimaryExpr, RefValue, VariableAccess, VariableAccessKind,
             },
             invocation::Invocation,
+            spec::StructElement,
             statement::Stmt,
         },
         pous::{
@@ -158,6 +159,16 @@ impl<'db> ScopeInference<'db> {
     /// An argument's 1-based position in the variadic pack it binds.
     pub fn variadic_position(self, param: ParamAssign<'db>) -> Option<usize> {
         self.recorded(|r| r.variadic_position.get(&param).copied())
+    }
+
+    /// The field a value without a name sets in a STRUCT's parentheses, as
+    /// a positional argument binds a parameter.
+    pub fn positional_field(self, value: InitExpr<'db>) -> Option<StructElement<'db>> {
+        infer_initialization(self.db, self.scope)
+            .init_expr_result
+            .positional
+            .get(&value)
+            .copied()
     }
 
     /// The plan assembled for a call: its callee and what it binds to each

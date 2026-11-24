@@ -110,6 +110,22 @@ pub enum InitError<'db> {
         /// The constants between, in the order its value reaches them.
         through: Vec<crate::hir_def::pous::variable::VariableDecl<'db>>,
     },
+    /// A value in an instance's initializer with no member's name before it,
+    /// `(100, 5)`: an instance's members are named, where a STRUCT's fields
+    /// may take values in their order. It was typed against the instance
+    /// itself, and placed nowhere: `((k := 5))` passed, and dropped its 5.
+    ValueWithoutMember {
+        value: InitExpr<'db>,
+        /// The FUNCTION_BLOCK or CLASS, as declared.
+        ty: Type<'db>,
+    },
+    /// A value without a name past the last field of a STRUCT no value
+    /// names: `(1, 2, 3)` for two fields.
+    NoFieldLeft {
+        value: InitExpr<'db>,
+        /// The STRUCT, as declared.
+        ty: Type<'db>,
+    },
 }
 
 /// What keeps a `REF()` from being one address everywhere.
@@ -158,6 +174,8 @@ impl<'db> ErrorCode for InitError<'db> {
             Self::ReadBeforeInitialized { .. } => "E0406",
             Self::AggregateInputDefault { .. } => "E0407",
             Self::OwnValue { .. } => "E0408",
+            Self::ValueWithoutMember { .. } => "E0409",
+            Self::NoFieldLeft { .. } => "E0410",
         }
     }
 }
@@ -513,6 +531,39 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                 d.with_note(
                     "a constant's value is computed before the program runs, from the constants it names"
                         .to_string(),
+                );
+                d
+            }
+            Self::ValueWithoutMember { value, ty } => {
+                let mut d = diag()
+                    .message(format!(
+                        "this value names no member of '{}'",
+                        ty.type_name(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
+                    .call();
+                ty.with_location(db, &mut d);
+                d.with_note("an instance's initializer names each member it sets".to_string());
+                d.with_help(
+                    "write the member's name before the value: <member> := <value>".to_string(),
+                );
+                d
+            }
+            Self::NoFieldLeft { value, ty } => {
+                let mut d = diag()
+                    .message(format!(
+                        "no field of '{}' is left for this value",
+                        ty.type_name(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
+                    .call();
+                ty.with_location(db, &mut d);
+                d.with_note(
+                    "a value without a name sets the next field that no value names".to_string(),
                 );
                 d
             }

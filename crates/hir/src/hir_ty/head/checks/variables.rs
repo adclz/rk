@@ -1164,11 +1164,20 @@ impl<'db> InitInference<'db> {
             InitExprKind::ElementAt { value, .. } => self.check_string_init(db, spec, *value),
             InitExprKind::StructInit { values } => {
                 let holder = innermost_element(db, spec);
+                // A value without a name is the next free field's.
+                let positional = match through_aliases(db, holder).kind(db) {
+                    SpecKind::Struct(strukt) => {
+                        crate::hir_ty::head::init_inference::positional_fields(db, *strukt, &values)
+                    }
+                    _ => rustc_hash::FxHashMap::default(),
+                };
                 for value in values {
-                    if let InitExprKind::StructElement { name, value } = value.kind(db)
-                        && let Some(member) = member_spec(db, holder, name.ident(db))
-                    {
-                        self.check_string_init(db, member, *value);
+                    if let InitExprKind::StructElement { name, value } = value.kind(db) {
+                        if let Some(member) = member_spec(db, holder, name.ident(db)) {
+                            self.check_string_init(db, member, *value);
+                        }
+                    } else if let Some(Some(field)) = positional.get(&value) {
+                        self.check_string_init(db, field.spec(db), value);
                     }
                 }
             }
