@@ -1133,7 +1133,36 @@ module.exports = grammar({
 
     repeat_values: ($) => commaSep1($.init_elem),
 
-    struct_init: ($) => seq("(", commaSep($.struct_elem), ")"),
+    // A STRUCT's or an instance's value in parentheses: its parts by name,
+    // `(x := 1)`, or a STRUCT's fields in their order, `(1, 2)`, the two
+    // mixed as a call's arguments are. A value first takes a second one:
+    // `(5)` alone is an expression in parentheses, and a STRUCT of one
+    // field is given its value by name.
+    struct_init: ($) =>
+      seq(
+        "(",
+        optional(
+          choice(
+            seq(alias($._named_value, $.init_elem), repeat(seq(",", $.init_elem))),
+            seq(
+              alias($._positional_value, $.init_elem),
+              repeat1(seq(",", $.init_elem)),
+            ),
+          ),
+        ),
+        ")",
+      ),
+
+    _named_value: ($) => $.struct_elem,
+
+    _positional_value: ($) =>
+      choice(
+        $.struct_init,
+        $.array_init,
+        $.array_index_elem,
+        $.ERR_func_call_in_init,
+        $.constant_expr,
+      ),
 
     struct_elem: ($) =>
       seq(field("name", $.identifier), ":=", field("value", $.init_elem)),

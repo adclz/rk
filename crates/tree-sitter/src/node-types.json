@@ -6903,7 +6903,7 @@
       "required": false,
       "types": [
         {
-          "type": "struct_elem",
+          "type": "init_elem",
           "named": true
         }
       ]

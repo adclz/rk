@@ -4156,27 +4156,67 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "SEQ",
+              "type": "CHOICE",
               "members": [
                 {
-                  "type": "SYMBOL",
-                  "name": "struct_elem"
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "ALIAS",
+                      "content": {
+                        "type": "SYMBOL",
+                        "name": "_named_value"
+                      },
+                      "named": true,
+                      "value": "init_elem"
+                    },
+                    {
+                      "type": "REPEAT",
+                      "content": {
+                        "type": "SEQ",
+                        "members": [
+                          {
+                            "type": "STRING",
+                            "value": ","
+                          },
+                          {
+                            "type": "SYMBOL",
+                            "name": "init_elem"
+                          }
+                        ]
+                      }
+                    }
+                  ]
                 },
                 {
-                  "type": "REPEAT",
-                  "content": {
-                    "type": "SEQ",
-                    "members": [
-                      {
-                        "type": "STRING",
-                        "value": ","
-                      },
-                      {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "ALIAS",
+                      "content": {
                         "type": "SYMBOL",
-                        "name": "struct_elem"
+                        "name": "_positional_value"
+                      },
+                      "named": true,
+                      "value": "init_elem"
+                    },
+                    {
+                      "type": "REPEAT1",
+                      "content": {
+                        "type": "SEQ",
+                        "members": [
+                          {
+                            "type": "STRING",
+                            "value": ","
+                          },
+                          {
+                            "type": "SYMBOL",
+                            "name": "init_elem"
+                          }
+                        ]
                       }
-                    ]
-                  }
+                    }
+                  ]
                 }
               ]
             },
@@ -4188,6 +4228,35 @@
         {
           "type": "STRING",
           "value": ")"
+        }
+      ]
+    },
+    "_named_value": {
+      "type": "SYMBOL",
+      "name": "struct_elem"
+    },
+    "_positional_value": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "struct_init"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "array_init"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "array_index_elem"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ERR_func_call_in_init"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "constant_expr"
         }
       ]
     },
