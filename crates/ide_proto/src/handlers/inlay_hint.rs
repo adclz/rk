@@ -153,7 +153,27 @@ impl<'db> InlayHintHandler<'db> for InitExpr<'db> {
                 tooltip: None,
                 data: None,
             }),
-            _ => None,
+            // A value without a name is named by the field it sets, as a
+            // positional argument is by its parameter, with a link to it.
+            _ => {
+                let scope = self.get_scope_id(db);
+                let field = scope.inference(db).positional_field(*self)?;
+                Some(InlayHint {
+                    position: hir::denormalize(db, scope.file(db), &self.get_span(db))
+                        .unwrap_or_default()
+                        .start,
+                    label: InlayHintLabel::LabelParts(vec![part(
+                        format!("{}:", field.name_with_case(db).text(db)),
+                        located(db, field.get_scope_id(db), &field.get_name_span(db)),
+                    )]),
+                    kind: Some(InlayHintKind::PARAMETER),
+                    padding_left: Some(false),
+                    padding_right: Some(true),
+                    text_edits: None,
+                    tooltip: None,
+                    data: None,
+                })
+            }
         }
     }
 }
