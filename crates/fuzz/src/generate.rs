@@ -24,7 +24,9 @@
 //!   comparison is byte-lexicographic (docs/strings.md).
 //! - BOOL, arrays, and STRUCTs with defaults in their TYPE. An array's
 //!   initializer writes its elements in order, at their index (`[i] := v`)
-//!   or not at all, left at the default (docs/arrays.md).
+//!   or not at all, left at the default (docs/arrays.md). A STRUCT's start
+//!   value gives its fields by name, in order with `()` keeping a field's
+//!   default, or in order then by name (docs/structs.md).
 //! - IF, CASE (integers and strings), FOR with EXIT and CONTINUE, RETURN.
 //! - FUNCTIONs, some taking STRUCTs, some overloaded: an overload takes an
 //!   earlier FUNCTION's name and parameters, with one retyped (a STRUCT for
@@ -890,10 +892,60 @@ enum ConstValue {
     /// A constant expression.
     Expr(Expr),
     /// A STRUCT's fields, each written with a constant expression or left
-    /// to its TYPE's default.
-    Fields(Vec<Option<Expr>>),
+    /// to its TYPE's default, in the parentheses' form.
+    Fields(Vec<Option<Expr>>, Form),
     /// Nothing: it holds its type's default.
     Nothing,
+}
+
+/// How a STRUCT's value in parentheses is written: each field by its name,
+/// `(f0 := a, f2 := c)`; in order, `(a, (), c)`, `()` keeping a field's
+/// default; or the first fields in order and the others by name,
+/// `(a, f2 := c)`. In order, a value takes a second one: one alone in
+/// parentheses is an expression, so such a value is written by name.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Form {
+    Named,
+    Ordered,
+    /// The first `k` fields in order.
+    Mixed(usize),
+}
+
+/// A STRUCT's value in parentheses, from each field's text or nothing for
+/// its default.
+fn struct_value(fields: &[Option<String>], form: Form) -> String {
+    let named = |from: usize| -> Vec<String> {
+        fields
+            .iter()
+            .enumerate()
+            .skip(from)
+            .filter_map(|(f, text)| Some(format!("f{f} := {}", text.as_ref()?)))
+            .collect()
+    };
+    let ordered = |to: usize| -> Vec<String> {
+        fields[..to]
+            .iter()
+            .map(|text| text.clone().unwrap_or_else(|| "()".to_string()))
+            .collect()
+    };
+    let parts = match form {
+        Form::Named => named(0),
+        Form::Ordered => ordered(
+            fields
+                .iter()
+                .rposition(Option::is_some)
+                .map_or(0, |f| f + 1),
+        ),
+        Form::Mixed(k) => {
+            let k = k.min(fields.len());
+            [ordered(k), named(k)].concat()
+        }
+    };
+    let parts = match form != Form::Named && parts.len() < 2 {
+        true => named(0),
+        false => parts,
+    };
+    format!("({})", parts.join(", "))
 }
 
 /// A CONSTANT: `k{n}` of the PROGRAM, `gk{n}` of the CONFIGURATION, or
@@ -959,6 +1011,10 @@ struct Decls {
     var_inits: Vec<(usize, Expr)>,
     field_inits: Vec<((usize, usize), Expr)>,
     member_inits: Vec<((usize, usize), Expr)>,
+    /// A program STRUCT variable's start value, by its place in the
+    /// program's variables: each field's literal or its default, and how
+    /// the parentheses write them.
+    struct_inits: Vec<(usize, Vec<Option<Val>>, Form)>,
     /// Which of [`CYCLES`] each `cycle{k}` goes round.
     cycles: Vec<usize>,
     /// The fields of `S{k}`.
@@ -1106,6 +1162,16 @@ impl Generator<'_> {
     /// A type an expression can have: anything but a STRUCT.
     fn scalar_type(&mut self) -> Ty {
         self.var_type(false)
+    }
+
+    /// How a value of a STRUCT of `fields` fields is written: by name half
+    /// the time, else in order, or in order then by name.
+    fn form(&mut self, fields: usize) -> Form {
+        match self.choices.below(4) {
+            0 => Form::Ordered,
+            1 if fields > 1 => Form::Mixed(1 + self.choices.below(fields - 1)),
+            _ => Form::Named,
+        }
     }
 
     fn literal(&mut self, ty: Ty) -> Val {
@@ -1352,7 +1418,10 @@ impl Generator<'_> {
                     fields.push(Some(e));
                 }
                 let written = match fields.iter().any(Option::is_some) {
-                    true => ConstValue::Fields(fields),
+                    true => {
+                        let form = self.form(fields.len());
+                        ConstValue::Fields(fields, form)
+                    }
                     false => ConstValue::Nothing,
                 };
                 let n = self.d.constants.len();
@@ -3162,6 +3231,24 @@ pub fn program(bytes: &[u8]) -> String {
                 let e = g.constant(t, 3, &constants);
                 (g.folded(t, &e), Some(e))
             }
+            // A STRUCT starts from some of its fields, by name or in order.
+            Ty::Struct(s) if g.choices.percent(50) => {
+                let fields = g.d.structs[s].clone();
+                let written: Vec<Option<Val>> = fields
+                    .iter()
+                    .map(|f| g.choices.percent(60).then(|| g.literal(f.ty)))
+                    .collect();
+                if written.iter().any(Option::is_some) {
+                    let form = g.form(fields.len());
+                    g.d.struct_inits.push((g.vars.len(), written.clone(), form));
+                }
+                let values = written
+                    .into_iter()
+                    .zip(&fields)
+                    .map(|(value, f)| value.unwrap_or_else(|| f.init.clone()))
+                    .collect();
+                (Val::Struct(values), None)
+            }
             t => (g.literal(t), None),
         };
         if let Some(e) = written {
@@ -3589,15 +3676,12 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
         for c in scalars.iter().rev() {
             let value = match &c.written {
                 ConstValue::Expr(e) => format!(" := {}", constants.expr(e)),
-                ConstValue::Fields(fields) => {
-                    let written: Vec<String> = fields
+                ConstValue::Fields(fields, form) => {
+                    let written: Vec<Option<String>> = fields
                         .iter()
-                        .enumerate()
-                        .filter_map(|(f, e)| {
-                            Some(format!("f{f} := {}", constants.expr(e.as_ref()?)))
-                        })
+                        .map(|e| e.as_ref().map(|e| constants.expr(e)))
                         .collect();
-                    format!(" := ({})", written.join(", "))
+                    format!(" := {}", struct_value(&written, *form))
                 }
                 ConstValue::Nothing => String::new(),
             };
@@ -3848,9 +3932,24 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
     }
     out.push_str("VAR\n");
     for (i, v) in vars.iter().enumerate() {
-        match d.var_inits.iter().find(|(at, _)| *at == i) {
-            Some((_, init)) => start(&mut out, v, init),
-            None => decl(&mut out, v, !matches!(v.ty, Ty::Struct(_))),
+        let fields = d.struct_inits.iter().find(|(at, ..)| *at == i);
+        match (d.var_inits.iter().find(|(at, _)| *at == i), v.ty, fields) {
+            (Some((_, init)), ..) => start(&mut out, v, init),
+            (None, Ty::Struct(k), Some((_, fields, form))) => {
+                let written: Vec<Option<String>> = fields
+                    .iter()
+                    .zip(&d.structs[k])
+                    .map(|(value, f)| value.as_ref().map(|value| literal(f.ty, value)))
+                    .collect();
+                let _ = writeln!(
+                    out,
+                    "    {} : {} := {};",
+                    v.name,
+                    v.ty.name(),
+                    struct_value(&written, *form)
+                );
+            }
+            (None, ..) => decl(&mut out, v, !matches!(v.ty, Ty::Struct(_))),
         }
     }
     for (k, a) in d.arrays.iter().enumerate() {
@@ -6287,6 +6386,90 @@ mod tests {
             return;
         }
         panic!("no program writes a tight sum in a CASE arm");
+    }
+
+    /// Each form a STRUCT's value is written in: by name, in order with `()`
+    /// keeping a field's default and the last ones left out, and in order
+    /// then by name. One value in order alone would be an expression in
+    /// parentheses, so it is written by name.
+    #[test]
+    fn struct_values_are_written_by_name_and_in_order() {
+        let fields = |texts: &[Option<&str>]| -> Vec<Option<String>> {
+            texts.iter().map(|t| t.map(str::to_string)).collect()
+        };
+        let a_c = fields(&[Some("a"), None, Some("c")]);
+        assert_eq!(struct_value(&a_c, Form::Named), "(f0 := a, f2 := c)");
+        assert_eq!(struct_value(&a_c, Form::Ordered), "(a, (), c)");
+        assert_eq!(struct_value(&a_c, Form::Mixed(1)), "(a, f2 := c)");
+        assert_eq!(struct_value(&a_c, Form::Mixed(2)), "(a, (), f2 := c)");
+        let a_b = fields(&[Some("a"), Some("b"), None]);
+        assert_eq!(struct_value(&a_b, Form::Ordered), "(a, b)");
+        let b = fields(&[None, Some("b")]);
+        assert_eq!(struct_value(&b, Form::Ordered), "((), b)");
+        let a = fields(&[Some("a"), None]);
+        assert_eq!(struct_value(&a, Form::Ordered), "(f0 := a)");
+        assert_eq!(struct_value(&a, Form::Mixed(1)), "(f0 := a)");
+    }
+
+    /// What a STRUCT variable or CONSTANT starts from, when its fields come
+    /// in order: `(INT#5, (), f2 := 'ab')`.
+    fn in_order(line: &str) -> Option<&str> {
+        let (declared, value) = line.split_once(" := (")?;
+        let (_, ty) = declared.split_once(" : S")?;
+        if !ty.bytes().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        let named = value.strip_prefix('f').is_some_and(|rest| {
+            rest.trim_start_matches(|c: char| c.is_ascii_digit())
+                .starts_with(" := ")
+        });
+        (!named).then_some(value)
+    }
+
+    /// The values a STRUCT variable of the PROGRAM starts from in order,
+    /// before any by name: `v1 : S0 := ((), LINT#-8, f2 := DINT#5);` gives
+    /// `()` and `LINT#-8`.
+    fn ordered_values(line: &str) -> Vec<&str> {
+        let program_variable = line
+            .strip_prefix("    v")
+            .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_digit()));
+        let Some(value) = in_order(line).filter(|_| program_variable) else {
+            return Vec::new();
+        };
+        value
+            .strip_suffix(");")
+            .unwrap_or(value)
+            .split(", ")
+            .take_while(|part| !part.contains(" := "))
+            .collect()
+    }
+
+    /// The generator writes a STRUCT's start value in order, `()` keeping a
+    /// field's default, and the module starts the STRUCT at the values the
+    /// evaluator does: in three programs where a PROGRAM's STRUCT variable
+    /// starts from two values in order or more, so that their order shows.
+    #[test]
+    fn struct_values_in_order_are_written_and_compute() {
+        let mut seed = 0x9E37_79B9_7F4A_7C15u64;
+        let mut checked = 0;
+        for _ in 0..4000 {
+            let text = random_program(&mut seed);
+            let ordered = text
+                .lines()
+                .map(ordered_values)
+                .any(|values| values.iter().filter(|value| **value != "()").count() >= 2);
+            if !ordered {
+                continue;
+            }
+            if let Err(finding) = crate::check_generated(&text) {
+                panic!("{finding}\n--- the program ---\n{text}");
+            }
+            checked += 1;
+            if checked == 3 {
+                return;
+            }
+        }
+        panic!("{checked} programs start a STRUCT from values in order");
     }
 
     /// The evaluator runs a chain as the module does: each place takes what
