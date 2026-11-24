@@ -213,6 +213,56 @@ END_FUNCTION"#;
     ");
 }
 
+/// A value without a name is named by the field it sets, as a positional
+/// argument is by its parameter, and the name links to the field: at the top
+/// of a start value, beside a named one, in an array's rows, `()` included,
+/// and a struct's value in a field's place.
+#[rstest]
+pub fn positional_values_inlay_hints(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    Point : STRUCT x : INT; y : INT; END_STRUCT;
+    Holder : STRUCT p : Point; n : INT; END_STRUCT;
+END_TYPE
+
+FUNCTION fn1
+    VAR
+        a : Point := (1, 2);
+        b : Point := (y := 2, 1);
+        rows : ARRAY[0..1] OF Point := [(3, 4), ((), 5)];
+        h : Holder := ((6, 7), 8);
+    END_VAR
+END_FUNCTION"#;
+
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
+    let mut result = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |n| {
+        if let HirNode::InitExpr(curr) = n
+            && let Some(inlay_hint) = curr.inlay_hint(&with_db)
+        {
+            result.push(inlay_hint);
+        }
+        ControlFlow::Continue(())
+    });
+    result.sort_by_key(|hint| (hint.position.line, hint.position.character));
+
+    assert_snapshot!(render(&result), @r"
+    9:22  x:  -> 3:19
+    9:25  y:  -> 3:28
+    10:23  : INT
+    10:30  x:  -> 3:19
+    11:41  x:  -> 3:19
+    11:44  y:  -> 3:28
+    11:49  x:  -> 3:19
+    11:53  y:  -> 3:28
+    12:23  p:  -> 4:20
+    12:24  x:  -> 3:19
+    12:27  y:  -> 3:28
+    12:31  n:  -> 4:31
+    ");
+}
+
 /// The `: TYPE` a struct field's hint shows is a link to where that type is
 /// declared. Resolving the field instead would send the reader back to the
 /// line the hint already sits on, and an elementary type is declared nowhere.
