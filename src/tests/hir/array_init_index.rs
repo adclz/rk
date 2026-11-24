@@ -328,20 +328,12 @@ fn invalid_an_index_outside_an_array_bracket(mut with_db: RootDatabase) {
        |                                              ^^|^
        |                                                `--- unexpected token(s): ':= 7'
     ---'
-    [E0409] Error: value without a field name
+    [E0508] Error: index into a non-array type
        ,-[ file:///test0.st:7:24 ]
-       |
-     2 |         TYPE Pt : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
-       |              ^|
-       |               `-- 'Pt' is declared here
        |
      7 |             p : Pt := ([1] := 2);
        |                        ^|^
-       |                         `--- this value names no field of 'Pt'
-       |
-       | Help: write the field's name before the value: <field> := <value>
-       |
-       | Note: an initializer in parentheses names each field it sets
+       |                         `--- cannot index into type 'INT'
     ---'
     [E0001] Error: syntax error
        ,-[ file:///test0.st:7:28 ]
