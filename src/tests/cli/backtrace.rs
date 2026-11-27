@@ -358,6 +358,36 @@ fn a_failure_of_an_optimized_module_has_no_calls(
     }
 }
 
+/// The same through wasm-opt, as `rk test -O` builds it. wasm-opt keeps a
+/// custom section as it came, so the tables a failure is placed with
+/// described bodies it had rewritten, and a failure was placed in a
+/// function it never reached. The optimized module drops them, at every
+/// level.
+#[rstest]
+#[case::trap(TRAPPED)]
+#[case::raise(RAISED)]
+fn a_failure_wasm_opt_optimized_has_no_calls(mut with_db: db::RootDatabase, #[case] source: &str) {
+    if !crate::tests::utils::wasm_opt_installed() {
+        crate::tests::utils::skip_without_wasm_opt("an optimized test build's failures");
+        return;
+    }
+    let build = compile_tests(&mut with_db, source);
+    for level in ["0", "1", "2", "3", "4", "s", "z"] {
+        let optimized = rk::compiler::optimize_wasm(build.core.clone(), Some(level), false);
+        let records = run(&build.wrap(&optimized), Some(Duration::from_millis(200)));
+        assert!(!records.is_empty());
+        for record in &records {
+            assert!(record.reason.is_some(), "-O{level}: {record:?}");
+            assert!(record.backtrace.is_empty(), "-O{level}: {record:?}");
+            assert_eq!(
+                record.line,
+                Some(line_of(source, &format!("FUNCTION {}", record.name))),
+                "-O{level}: {record:?}"
+            );
+        }
+    }
+}
+
 /// A test that passes has no backtrace.
 #[rstest]
 fn a_pass_has_no_backtrace(mut with_db: db::RootDatabase) {
