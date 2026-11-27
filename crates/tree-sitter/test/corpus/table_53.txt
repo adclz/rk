@@ -1,0 +1,64 @@
+================================================================================
+SUPER() calls the base body, its parentheses spaced or not
+================================================================================
+
+FUNCTION_BLOCK derived EXTENDS base
+    SUPER();
+    SUPER( );
+    SUPER ( );
+    SUPER (* base *) ( );
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    (identifier)
+    (namespace_access
+      (identifier))
+    (fb_body
+      (stmt_list
+        (begin_path_expression
+          (invocation
+            (super_body_invocation)))
+        (begin_path_expression
+          (invocation
+            (super_body_invocation)))
+        (begin_path_expression
+          (invocation
+            (super_body_invocation)))
+        (begin_path_expression
+          (invocation
+            (super_body_invocation
+              (pascal_style_comment))))))))
+
+================================================================================
+SUPER with an argument is a call of SUPER, for the check to refuse
+================================================================================
+
+FUNCTION_BLOCK derived EXTENDS base
+    SUPER(x);
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    (identifier)
+    (namespace_access
+      (identifier))
+    (fb_body
+      (stmt_list
+        (func_call
+          (begin_path_expression
+            (invocation
+              (any_invocation
+                (super_invocation))))
+          (param_assign
+            (param_assign_input
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field)))))))))))))

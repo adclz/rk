@@ -14607,33 +14607,41 @@
       ]
     },
     "super_body_invocation": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "SUPER",
-          "content": {
-            "type": "ALIAS",
+      "type": "PREC_DYNAMIC",
+      "value": 1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "SUPER",
             "content": {
-              "type": "TOKEN",
+              "type": "ALIAS",
               "content": {
-                "type": "PREC",
-                "value": 0,
+                "type": "TOKEN",
                 "content": {
-                  "type": "PATTERN",
-                  "value": "[sS][uU][pP][eE][rR]"
+                  "type": "PREC",
+                  "value": 0,
+                  "content": {
+                    "type": "PATTERN",
+                    "value": "[sS][uU][pP][eE][rR]"
+                  }
                 }
-              }
-            },
-            "named": false,
-            "value": "SUPER"
+              },
+              "named": false,
+              "value": "SUPER"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "("
+          },
+          {
+            "type": "STRING",
+            "value": ")"
           }
-        },
-        {
-          "type": "STRING",
-          "value": "()"
-        }
-      ]
+        ]
+      }
     },
     "path_expression": {
       "type": "CHOICE",
@@ -14861,6 +14869,11 @@
     [
       "init_elem",
       "index_value"
+    ],
+    [
+      "ERR_unexpected_super_in_path",
+      "super_body_invocation",
+      "super_invocation"
     ]
   ],
   "precedences": [],
