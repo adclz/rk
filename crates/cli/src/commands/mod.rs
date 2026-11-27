@@ -3,6 +3,7 @@
 
 pub mod bindgen;
 pub mod check;
+pub mod clean;
 pub mod compile;
 pub mod env;
 pub mod explain;

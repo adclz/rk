@@ -85,14 +85,14 @@ pub enum Command {
         watch: bool,
     },
     /// Show the paths this toolchain resolved, and where each came from
-    #[command(display_order = 6)]
+    #[command(display_order = 7)]
     Env {
         /// Print just these values, one per line, with no annotation
         /// (e.g. `rk env stdlib`)
         keys: Vec<String>,
     },
     /// Explain a diagnostic code (e.g. `rk explain E0301`)
-    #[command(display_order = 5)]
+    #[command(display_order = 6)]
     Explain {
         /// The code to explain, as diagnostics print it: E0301, L0002, ...
         code: String,
@@ -105,7 +105,7 @@ pub enum Command {
     /// one file per interface. A program names a WIT folder with `--wit`. A
     /// `.st` file this command wrote there before and no longer writes is
     /// removed; any other is left as it is.
-    #[command(display_order = 8)]
+    #[command(display_order = 9)]
     Bindgen {
         /// A WIT folder to read instead of the library's component and
         /// `wit/`: a host's package at its top, and in `deps/` the packages
@@ -128,15 +128,22 @@ pub enum Command {
         public: bool,
     },
     /// Fetch the libraries the workspace depends on, or add one
-    #[command(display_order = 7)]
+    #[command(display_order = 8)]
     Fetch {
         /// Fetch the library at this URL, check it, and add it to
         /// config.toml with the hash of what it holds
         #[arg(value_name = "URL")]
         url: Option<String>,
     },
-    /// Format the workspace's .st files
+    /// Delete the workspace's builds from the cache
+    ///
+    /// What `rk compile` and `rk test` wrote for the workspace, in its build
+    /// folder in the cache (`rk env build`). The libraries the cache holds
+    /// stay, and so do the other workspaces' builds.
     #[command(display_order = 4)]
+    Clean,
+    /// Format the workspace's .st files
+    #[command(display_order = 5)]
     Fmt {
         /// Check formatting without writing (exit 1 if unformatted)
         #[arg(long)]
