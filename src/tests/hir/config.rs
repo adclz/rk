@@ -2184,11 +2184,12 @@ END_CONFIGURATION
 }
 
 /// What stays refused beside a global named like a type. A type named where
-/// no global has its name is no value. A TYPE's default naming the global is
-/// not constant, and no longer E0317 as well. A call named like a global
-/// calls the global, 'INT' is not a callable type, as in a body.
+/// no global has its name is no value (E0317), and that is the one error: no
+/// longer E0401 as well. A TYPE's default naming the global is not constant,
+/// and no longer E0317 as well. A call named like a global calls the global,
+/// 'INT' is not a callable type, as in a body.
 #[rstest]
-#[case::a_type_named_alone("TYPE Other : INT; END_TYPE", "g : INT := Other;", &["E0401", "E0317"])]
+#[case::a_type_named_alone("TYPE Other : INT; END_TYPE", "g : INT := Other;", &["E0317"])]
 #[case::a_type_default_naming_it("TYPE Sized : INT := limit; END_TYPE", "g : Sized;", &["E0401"])]
 #[case::a_call_named_like_it(
     "FUNCTION Twice : INT VAR_INPUT x : INT; END_VAR Twice := x * 2; END_FUNCTION",

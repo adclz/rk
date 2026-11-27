@@ -913,7 +913,8 @@ END_FUNCTION
 }
 
 /// A read by position in a FUNCTION's initializer runs at each call. An input's
-/// default and a member's are constants, and it is none.
+/// default is a constant, and it is none. A FUNCTION_BLOCK takes no variadic
+/// parameter, so its member's reads none (E0814), the one error there.
 #[rstest]
 fn read_by_position_in_an_initializer(mut with_db: RootDatabase) {
     let source = r#"
@@ -938,13 +939,6 @@ END_FUNCTION_BLOCK
        |                    ^^^^^^|^^^^^
        |                          `------- this initial value must be a constant: the caller passes it
     ---'
-    [E0401] Error: initial value not constant
-        ,-[ file:///test0.st:12:20 ]
-        |
-     12 |     VAR x : INT := ...values[0]; END_VAR
-        |                    ^^^^^^|^^^^^
-        |                          `------- this initial value must be a constant: it is fixed before the program runs
-    ----'
     [E0814] Error: not a variadic parameter
         ,-[ file:///test0.st:12:20 ]
         |

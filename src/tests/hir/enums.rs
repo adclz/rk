@@ -221,8 +221,8 @@ fn valid_enum_type_default_is_qualified(mut with_db: RootDatabase) {
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// The bare spelling stays refused in that position too: the once-per-type
-/// rule sees a name it cannot fold.
+/// The bare spelling stays refused in that position too: it is a name no
+/// scope has, as in a body (E0201), and no more than that.
 #[rstest]
 fn invalid_enum_type_default_bare_variant(mut with_db: RootDatabase) {
     let source = r#"
@@ -231,12 +231,12 @@ fn invalid_enum_type_default_bare_variant(mut with_db: RootDatabase) {
         END_TYPE
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value not constant
+    [E0201] Error: unknown name
        ,-[ file:///test0.st:3:43 ]
        |
      3 |             Color : (Red, Green, Blue) := Green;
        |                                           ^^|^^
-       |                                             `---- this initial value must be a constant: it is fixed before the program runs
+       |                                             `---- no item 'Green' found in scope
     ---'
     ");
 }
