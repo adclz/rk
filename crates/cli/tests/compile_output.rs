@@ -6,6 +6,10 @@
 
 use std::process::Command;
 
+mod common;
+
+use common::{Builds, tests_cache};
+
 fn rk(args: &[&str], ws: &std::path::Path) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_rk"))
         .arg("--workspace")
@@ -13,6 +17,7 @@ fn rk(args: &[&str], ws: &std::path::Path) -> std::process::Output {
         .args(args)
         .env("RK_STDLIB_PATH", "")
         .env("RK_HOME", ws.join("home"))
+        .env("RK_CACHE_DIR", tests_cache())
         .output()
         .expect("run rk")
 }
@@ -68,13 +73,14 @@ fn world_of(component: &[u8]) -> String {
 #[test]
 fn a_build_is_one_component() {
     let ws = workspace();
+    let builds = Builds::of(ws.path());
     let out = rk(&["compile"], ws.path());
     assert!(
         out.status.success(),
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let built = ws.path().join("rk_build").join("debug");
+    let built = builds.dir().join("debug");
     let component = std::fs::read(built.join("Plant_A.wasm")).expect("the component");
     assert!(
         wasmparser::Parser::is_component(&component),
@@ -84,6 +90,57 @@ fn a_build_is_one_component() {
     assert!(!built.join("wit").exists(), "and no WIT beside it");
     let world = world_of(&component);
     assert!(world.contains("export rk:plc/control@0.1.0;"), "{world}");
+}
+
+/// A build writes nothing in the workspace: the component lands in the
+/// workspace's build folder in the cache, which `rk env build` prints, and
+/// whose `workspace` file names the workspace. `--output` puts it where it
+/// says, and then nothing goes in the cache.
+#[test]
+fn a_build_writes_nothing_in_the_workspace() {
+    let ws = workspace();
+    let builds = Builds::of(ws.path());
+    let held = |dir: &std::path::Path| {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    };
+    let out = rk(&["compile"], ws.path());
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(held(ws.path()), ["config.toml", "main.st"]);
+    assert!(builds.dir().join("debug").join("Plant_A.wasm").is_file());
+    assert_eq!(
+        std::fs::read_to_string(builds.dir().join("workspace")).unwrap(),
+        format!("{}\n", ws.path().canonicalize().unwrap().display())
+    );
+    let env = rk(&["env", "build"], ws.path());
+    assert_eq!(
+        String::from_utf8_lossy(&env.stdout).trim_end(),
+        builds.dir().display().to_string()
+    );
+
+    std::fs::remove_dir_all(builds.dir()).unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let output = elsewhere.path().join("plant.wasm");
+    let out = rk(
+        &["compile", "--output", output.to_str().unwrap()],
+        ws.path(),
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(output.is_file());
+    assert!(!builds.dir().exists(), "nothing in the cache");
+    assert_eq!(held(ws.path()), ["config.toml", "main.st"]);
 }
 
 /// A library is built into the programs that list it, never alone: `rk
@@ -103,6 +160,7 @@ fn a_library_is_not_compiled_alone() {
          {test}\nFUNCTION test_twice\n    IF Twice(2) <> 4 THEN __RAISE('twice'); END_IF;\nEND_FUNCTION\n",
     )
     .unwrap();
+    let builds = Builds::of(ws.path());
     let out = rk(&["compile"], ws.path());
     assert!(!out.status.success(), "a library compiled alone");
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -112,10 +170,7 @@ fn a_library_is_not_compiled_alone() {
         ),
         "{stderr}"
     );
-    assert!(
-        !ws.path().join("rk_build").join("debug").exists(),
-        "nothing written"
-    );
+    assert!(!builds.dir().exists(), "nothing written");
     for command in ["check", "test"] {
         let out = rk(&[command], ws.path());
         assert!(
@@ -207,6 +262,7 @@ fn an_output_given_holds_the_component() {
 fn a_host_s_package_comes_through_a_library() {
     let ws = workspace();
     let root = ws.path();
+    let builds = Builds::of(root);
     std::fs::write(
         root.join("config.toml"),
         "[project]\nname = \"Plant_A\"\nversion = \"0.1.0\"\n\n[dependencies]\n\
@@ -263,16 +319,11 @@ fn a_host_s_package_comes_through_a_library() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let component =
-        std::fs::read(root.join("rk_build").join("debug").join("Plant_A.wasm")).unwrap();
+    let component = std::fs::read(builds.dir().join("debug").join("Plant_A.wasm")).unwrap();
     let world = world_of(&component);
     assert!(world.contains("import acme:display/text@1.0.0;"), "{world}");
     assert!(
-        !root
-            .join("rk_build")
-            .join("debug")
-            .join("components")
-            .exists(),
+        !builds.dir().join("debug").join("components").exists(),
         "nothing beside: the host gives the interface"
     );
 }
@@ -284,6 +335,7 @@ fn a_host_s_package_comes_through_a_library() {
 fn a_program_carries_no_component() {
     let ws = workspace();
     let root = ws.path();
+    let builds = Builds::of(root);
     std::fs::create_dir_all(root.join("component")).unwrap();
     std::fs::write(root.join("component").join("drive.wasm"), b"\0asm").unwrap();
     for command in ["check", "compile"] {
@@ -295,7 +347,7 @@ fn a_program_carries_no_component() {
             "{stderr}"
         );
     }
-    assert!(!root.join("rk_build").exists(), "nothing built");
+    assert!(!builds.dir().exists(), "nothing built");
 }
 
 /// The `{export}` FUNCTIONs are in an interface named after the project,
@@ -316,6 +368,7 @@ END_NAMESPACE
 "#,
     )
     .unwrap();
+    let builds = Builds::of(ws.path());
     for args in [&["compile"][..], &["compile", "--release"][..]] {
         let out = rk(args, ws.path());
         assert!(
@@ -325,13 +378,7 @@ END_NAMESPACE
         );
     }
     for profile in ["debug", "release"] {
-        let component = std::fs::read(
-            ws.path()
-                .join("rk_build")
-                .join(profile)
-                .join("Plant_A.wasm"),
-        )
-        .unwrap();
+        let component = std::fs::read(builds.dir().join(profile).join("Plant_A.wasm")).unwrap();
         let world = world_of(&component);
         assert!(
             world.contains("export plant-a: interface {")
