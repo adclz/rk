@@ -510,6 +510,36 @@ END_FUNCTION
     );
 }
 
+/// Values that name a member make one element, which a repetition repeats,
+/// as the standard's table of user-defined types does for an array of TON:
+/// each instance gets the member, folded in a TYPE's start value, and each
+/// struct its members, by name and by place, computed at run time.
+#[rstest]
+fn repeated_member_values(mut with_db: db::RootDatabase) {
+    run_all(
+        &mut with_db,
+        r#"
+FUNCTION_BLOCK Timer VAR_INPUT PT : TIME; END_VAR END_FUNCTION_BLOCK
+TYPE Timers : ARRAY[1..3] OF Timer := [3(PT := T#1s)]; END_TYPE
+
+{test}
+FUNCTION t_repeated_member_values
+VAR
+    t : Timers;
+    i : INT := 4;
+    a : ARRAY[0..1] OF Pt := [2(y := i)];
+    b : ARRAY[0..3] OF Pt := [2(x := 1, 6), 2(y := 2)];
+END_VAR
+    check(t[1].PT = T#1s, 't[1].PT'); check(t[3].PT = T#1s, 't[3].PT');
+    check(a[0].x = 7, 'a[0].x keeps its default'); check(a[1].y = 4, 'a[1].y');
+    check(b[1].x = 1, 'b[1].x'); check(b[1].y = 6, 'b[1].y, by place');
+    check(b[3].x = 7, 'b[3].x keeps its default'); check(b[3].y = 2, 'b[3].y');
+END_FUNCTION
+    "#,
+        1,
+    );
+}
+
 /// What a static's or a type default's initializer folds to, against the same
 /// expression computed at run time on variables, so that side is wasm's and
 /// no folder's. Integers wrap at their declared width, as
