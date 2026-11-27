@@ -9,7 +9,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::{
-        expressions::expression::{PathExpr, PathExprKind},
+        expressions::expression::{ParamAssignKind, PathExpr, PathExprKind},
         hir_node::HirNode,
         semantic_index::{NodeKey, SemanticIndex, semantic_index},
     },
@@ -74,7 +74,7 @@ pub fn descendant_at<'db>(
         }
         if offset <= range.end_byte {
             let size = range.end_byte - range.start_byte;
-            if size < best_size {
+            if size < best_size || size == best_size && positional(db, best_match.as_ref()) {
                 best_size = size;
                 best_match = Some(node);
             }
@@ -83,6 +83,17 @@ pub fn descendant_at<'db>(
     });
 
     best_match
+}
+
+/// Whether `node` is a positional argument, `level` in `Twice(level)`. It
+/// spans its value alone, and walks before it: on that tie the value, what
+/// the cursor is on, answers. Answering itself, the argument named the
+/// input it binds, so a definition, a hover and a rename on `level` acted
+/// on `Twice`'s input. A binding `value := level` is wider than its value,
+/// and on `value` it still names the input.
+fn positional<'db>(db: &'db dyn WorkspaceDataBase, node: Option<&HirNode<'db>>) -> bool {
+    matches!(node, Some(HirNode::Param(argument))
+        if matches!(argument.kind(db), ParamAssignKind::NonFormal { .. }))
 }
 
 /// Where a path ends in the source. Its node spans the last name alone, and a
