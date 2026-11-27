@@ -599,6 +599,15 @@ impl<'db> InitExprInferenceResult<'db> {
                     ctx.advance(1);
                     self.check_bounds(db, *expr, ctx, ctx.current_pos());
                 }
+                // A member's value is part of an element, in its own
+                // parentheses: `[x := 5]` set no element and placed nothing.
+                InitExprWalkStep::Field { expr, name, .. } => self.errors.push(
+                    ArrayError::MemberOutsideParentheses {
+                        expr: *expr,
+                        name: *name,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                ),
                 _ => self.resolve_step(db, element, &mut child_place, body_ctx, ctx, step),
             }
         }

@@ -102,6 +102,14 @@ pub enum ArrayError<'db> {
         /// The count, as written.
         size: SpanIdent<'db>,
     },
+    /// A member's value written straight in an array's brackets, `[x := 5]`,
+    /// with no parentheses of an element around it. It set no element, and
+    /// nothing placed it.
+    MemberOutsideParentheses {
+        expr: InitExpr<'db>,
+        /// The member, as written.
+        name: SpanIdent<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ArrayError<'db> {
@@ -122,6 +130,7 @@ impl<'db> ErrorCode for ArrayError<'db> {
             Self::ElementOfAnyType { .. } => "E0511",
             Self::ConformandOutsideBody { .. } => "E0513",
             Self::RepetitionOutsideBrackets { .. } => "E0515",
+            Self::MemberOutsideParentheses { .. } => "E0516",
         }
     }
 }
@@ -362,6 +371,22 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
                 diag.with_help(format!(
                     "write the array's value in brackets: [{}(...)]",
                     size.with_case.text(db)
+                ));
+                diag
+            }
+            Self::MemberOutsideParentheses { expr, name } => {
+                let mut diag = diag()
+                    .message("this member's value is outside an element's parentheses".to_string())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "an element of an array is one value, its members in parentheses".to_string(),
+                );
+                diag.with_help(format!(
+                    "write the element in parentheses: ({} := ...)",
+                    name.with_case.text(db)
                 ));
                 diag
             }

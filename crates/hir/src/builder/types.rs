@@ -513,15 +513,32 @@ impl<'db> Parse<'db> for ast::generated::ArrayIndexElem {
 
         // `n()` repeats no value.
         let values = match &self.values {
-            Some(values) => values
-                .cast(sema.ast)
-                .children
-                .iter()
-                .filter_map(|elem| {
-                    let r = elem.cast(sema.ast).parse(sema);
-                    sema.try_parse(r)
-                })
-                .collect(),
+            Some(values) => {
+                let repeated = values.cast(sema.ast);
+                let values: Vec<InitExpr<'db>> = repeated
+                    .children
+                    .iter()
+                    .filter_map(|elem| {
+                        let r = elem.cast(sema.ast).parse(sema);
+                        sema.try_parse(r)
+                    })
+                    .collect();
+                // Values that name a member make one structure, which the
+                // repetition repeats: `[3(PT := T#1s)]` gives each instance
+                // its PT, as `[3((PT := T#1s))]` does. The standard's table
+                // of user-defined types writes an array of TON so.
+                let names = values
+                    .iter()
+                    .any(|value| matches!(value.kind(sema.db), InitExprKind::StructElement { .. }));
+                match names {
+                    true => vec![sema.new_init_expr(
+                        InitExprKind::StructInit { values },
+                        repeated.into(),
+                        sema.current_scope,
+                    )],
+                    false => values,
+                }
+            }
             None => Vec::new(),
         };
 
