@@ -32,10 +32,12 @@ pub fn run_test(
     let component =
         crate::component::wrap(&core_bytes, &project, &interfaces).map_err(CliError::msg)?;
 
-    // The artifact on disk is what ran, in a folder of its own: no other
-    // command builds it. The libraries' components it calls go beside it,
-    // as `rk compile` writes them, and run beside it.
-    let wasm_path = crate::compiler::test_component_path(workspace, opt_level, &project);
+    // The artifact on disk is what ran, in a folder of its own of the
+    // workspace's build folder: no other command builds it. The libraries'
+    // components it calls go beside it, as `rk compile` writes them, and run
+    // beside it.
+    let build = crate::compiler::make_build_dir(workspace).map_err(CliError::msg)?;
+    let wasm_path = crate::compiler::test_component_path(&build, opt_level, &project);
     if let Some(dir) = wasm_path.parent() {
         std::fs::create_dir_all(dir).ok();
     }

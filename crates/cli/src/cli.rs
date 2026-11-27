@@ -60,7 +60,8 @@ pub enum Command {
     /// Compile the workspace to WebAssembly
     #[command(display_order = 2)]
     Compile {
-        /// Output file path (default: <workspace>/rk_build/<profile>/<project>.wasm)
+        /// Output file path (default: <profile>/<project>.wasm in the
+        /// workspace's build folder, in the cache: `rk env build`)
         #[arg(short, long)]
         output: Option<PathBuf>,
 

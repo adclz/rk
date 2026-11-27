@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use crate::cli::OutputFormat;
-use crate::compiler::{build_core_profile, component_path, optimize_wasm_release};
+use crate::compiler::{build_core_profile, component_path, make_build_dir, optimize_wasm_release};
 use crate::error::{CliError, CliResult};
 use crate::ui;
 use crate::workspace::init_db;
@@ -82,10 +82,15 @@ fn compile_once(
     let interfaces = crate::component::interfaces(&db, &mir_module).map_err(CliError::msg)?;
     let component = crate::component::wrap(&core_bytes, &config.project.name, &interfaces)
         .map_err(CliError::msg)?;
-    let default_output = component_path(workspace, profile, &config.project.name);
-    let output = opts.output.unwrap_or(&default_output);
-    write_output(output, &component.bytes, label)?;
-    write_beside(output, &component.beside)
+    let output = match opts.output {
+        Some(output) => output.clone(),
+        None => {
+            let build = make_build_dir(workspace).map_err(CliError::msg)?;
+            component_path(&build, profile, &config.project.name)
+        }
+    };
+    write_output(&output, &component.bytes, label)?;
+    write_beside(&output, &component.beside)
 }
 
 /// The libraries' components the program imports from, beside it in
