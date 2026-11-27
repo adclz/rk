@@ -154,6 +154,52 @@ END_FUNCTION_BLOCK
     assert!(format!("{completions:?}").contains("Start()"));
 }
 
+/// What an editor asks right after the `#` of `List#`, through the server's
+/// own entry point: the type's values, each its name alone, the `#` being
+/// written already. The node of `List` ends before the `#`, so the request
+/// found the POU around it and answered everything in scope, the values
+/// among it as `List#A`, which accepted there wrote `List#List#A`.
+#[rstest]
+#[case::assignment("test := List#|", "A B C")]
+#[case::comparison("IF test = List#| THEN END_IF;", "A B C")]
+#[case::case_label(
+    "CASE test OF\n        List#|: test := List#A;\n    END_CASE;",
+    "A B C"
+)]
+#[case::named_values("code := Code#|", "OK Warn")]
+#[case::qualified("mode := Lib.Mode#|", "Run Stop")]
+pub fn the_values_of_a_type_after_its_hash(
+    mut with_db: RootDatabase,
+    #[case] statement: &str,
+    #[case] values: &str,
+) {
+    let marked = format!(
+        "
+TYPE
+    List : UINT (A, B, C);
+    Code : INT (OK := 0, Warn := 100);
+END_TYPE
+
+NAMESPACE Lib
+    TYPE Mode : (Run, Stop); END_TYPE
+END_NAMESPACE
+
+FUNCTION fn1
+VAR test : List; code : Code; mode : Lib.Mode; END_VAR
+    {statement}
+END_FUNCTION
+"
+    );
+    let (file, offset) = crate::tests::utils::add_marked_source(&mut with_db, &marked);
+    let mut labels: Vec<String> =
+        ide_proto::handlers::completions::complete(&with_db, file, offset, Some("#".into()))
+            .into_iter()
+            .map(|item| item.label)
+            .collect();
+    labels.sort();
+    assert_eq!(labels.join(" "), values);
+}
+
 #[rstest]
 pub fn enum_variants_completion(mut with_db: RootDatabase) {
     let source = r#"
