@@ -186,12 +186,12 @@ fn unexpected_struct_field(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: unknown field
+    [E0403] Error: elementary type initialized with parentheses
        ,-[ file:///test0.st:8:37 ]
        |
      8 |                 Base : Engine := [2(param1 := 0)];
        |                                     ^^^^^|^^^^^
-       |                                          `------- 'INT' has no field named 'param1'
+       |                                          `------- 'INT' is an elementary type and takes no '()' initializer
     ---'
     ");
 }
@@ -625,6 +625,10 @@ const PLACED: &str = r#"
     "FUNCTION F VAR r : ROW := (2([1, 2]), 3); END_VAR END_FUNCTION",
     "E0515"
 )]
+#[case::a_repetition_of_an_instance_s_value_by_place(
+    "FUNCTION F VAR r : ARRAY[0..1] OF FB := [2(k := 1, 5)]; END_VAR END_FUNCTION",
+    "E0409"
+)]
 #[case::an_instance("FUNCTION F VAR b : FB := ((k := 5)); END_VAR END_FUNCTION", "E0409")]
 #[case::a_value_of_the_struct(
     "FUNCTION F VAR p : PAIR := (ORIGIN, y := 1); END_VAR END_FUNCTION",
@@ -738,6 +742,57 @@ fn invalid_an_initializer_of_an_unknown_type(mut with_db: RootDatabase) {
      7 |                 b : ARRAY[0..1] OF Nowhere := [(x := 1), (2, 3)];
        |                                    ^^^|^^^
        |                                       `----- no item found for path 'Nowhere'
+    ---'
+    ");
+}
+
+/// Values that name a member make one element, which a repetition repeats:
+/// `[3(PT := T#1s)]` gives each instance its PT, as `[3((PT := T#1s))]` does,
+/// values without a name following the named ones as in parentheses.
+#[rstest]
+fn valid_a_repetition_of_member_values(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Timer VAR_INPUT PT : TIME; END_VAR END_FUNCTION_BLOCK
+        TYPE
+            Point : STRUCT x : INT; y : INT; END_STRUCT;
+            Timers : ARRAY[1..3] OF Timer := [3(PT := T#1s)];
+        END_TYPE
+
+        FUNCTION F
+            VAR
+                a : ARRAY[0..1] OF Point := [2(x := 5)];
+                b : ARRAY[0..3] OF Point := [2(x := 1, 6), 2(y := 2)];
+            END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A member's value straight in an array's brackets belongs to no element:
+/// it set none and was placed nowhere. In parentheses, it is an element.
+#[rstest]
+fn invalid_a_member_value_outside_an_element_s_parentheses(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Point : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+        FUNCTION F
+            VAR
+                a : ARRAY[0..1] OF Point := [x := 5];
+                b : ARRAY[0..1] OF Point := [(x := 5)];
+            END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0516] Error: member value outside an element's parentheses
+       ,-[ file:///test0.st:6:46 ]
+       |
+     6 |                 a : ARRAY[0..1] OF Point := [x := 5];
+       |                                              ^^^|^^
+       |                                                 `---- this member's value is outside an element's parentheses
+       |
+       | Help: write the element in parentheses: (x := ...)
+       |
+       | Note: an element of an array is one value, its members in parentheses
     ---'
     ");
 }
