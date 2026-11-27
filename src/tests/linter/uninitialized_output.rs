@@ -167,6 +167,36 @@ END_FUNCTION
     assert!(report.contains("file:///test0.st:4:5"), "{report}");
 }
 
+/// A method of the block writes its outputs as the body does: an output only
+/// a method writes does not keep its initial value, and was reported. One a
+/// method only reads still is.
+#[rstest]
+fn an_output_a_method_writes_is_assigned(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR_OUTPUT calls : INT; idle : BOOL; END_VAR
+            METHOD PUBLIC Bump : INT
+                calls := calls + 1;
+                Bump := calls;
+                IF idle THEN Bump := 0; END_IF;
+            END_METHOD
+        END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "uninitialized-output"), @r"
+    [L0203] Info: uninitialized output
+       ,-[ file:///test0.st:3:33 ]
+       |
+     3 |         VAR_OUTPUT calls : INT; idle : BOOL; END_VAR
+       |                                 ^^|^
+       |                                   `--- 1 VAR_OUTPUT is never assigned in the body: 'idle'
+       |                                   |
+       |                                   `--- 'idle' is declared here
+       |
+       | Note: lint rule: uninitialized-output
+    ---'
+    ");
+}
+
 /// An output written by a chain is assigned.
 #[rstest]
 fn output_assigned_by_a_chain(mut with_db: RootDatabase) {
