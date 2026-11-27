@@ -1269,15 +1269,14 @@ fn read_task_path<'db>(
 
 /// The value of a subscript in a task parameter's path. A bare name binds
 /// through the scope chain, which is one fragment's: a CONSTANT of another is
-/// looked up here, and a name no fragment declares is reported as a name of
-/// the path is.
+/// looked up here. A name no fragment declares is reported where the
+/// configuration's initial values type the subscript.
 fn source_subscript<'db>(
     db: &'db dyn WorkspaceDataBase,
     fragments: &[ConfigDecl<'db>],
     subscript: Expr<'db>,
     out: &mut TaskPaths<'db>,
 ) -> Result<i64, UnschedulableReason> {
-    use crate::hir_def::expressions::expression::VariableAccessKind;
     use crate::hir_ty::infer::const_eval::{bare_access_name, constant_init, spec_bound};
     let not_fixed = UnschedulableReason::SingleNotFixed;
     if let Some(value) = spec_bound(db, subscript) {
@@ -1324,17 +1323,8 @@ fn source_subscript<'db>(
             .and_then(|init| spec_bound(db, init))
             .ok_or(not_fixed);
     }
-    if let VariableAccessKind::Symbolic(begin) = access.kind(db)
-        && let Some(path) = begin.expr(db)
-    {
-        out.errors.push(
-            crate::check::errors::e02_resolve::ResolveError::NoItemInScope {
-                expr: path,
-                scope: subscript.get_scope_id(db),
-            }
-            .to_diagnostic(db, subscript.get_scope_id(db).file(db)),
-        );
-    }
+    // A name no global has: unknown, or no value, which the configuration's
+    // initial values say where they type the subscript (E0201, E0317).
     Err(UnschedulableReason::UnknownName)
 }
 
