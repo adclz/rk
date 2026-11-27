@@ -865,6 +865,95 @@ END_FUNCTION
     );
 }
 
+/// A VAR_EXTERNAL names the VAR_GLOBAL it imports by its name: renaming
+/// either renames the global and every VAR_EXTERNAL of it, with their uses
+/// and what a task reads of it, `INTERVAL := period` and `SINGLE := trigger`.
+/// Renaming one side alone left the other unbound (E0206).
+#[rstest]
+fn rename_a_global_renames_every_var_external_of_it(mut with_db: RootDatabase) {
+    let source = r#"PROGRAM Main
+VAR_EXTERNAL trigger : BOOL; count : DINT; END_VAR
+    count := count + 1;
+    trigger := count > 3;
+END_PROGRAM
+
+FUNCTION Reads : DINT
+VAR_EXTERNAL count : DINT; END_VAR
+    Reads := count;
+END_FUNCTION
+
+CONFIGURATION Plant
+    VAR_GLOBAL CONSTANT
+        period : TIME := T#20ms;
+    END_VAR
+    VAR_GLOBAL
+        trigger : BOOL;
+        count : DINT;
+    END_VAR
+    RESOURCE Cpu ON PLC
+        TASK Cyclic(INTERVAL := period, PRIORITY := 1);
+        TASK OnEdge(SINGLE := trigger, PRIORITY := 2);
+        PROGRAM Main1 WITH Cyclic : Main;
+        PROGRAM Main2 WITH OnEdge : Main;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    let count = [
+        ("count : DINT; END_VAR\n    count := count", 0),
+        ("VAR_EXTERNAL count", "VAR_EXTERNAL ".len()),
+        ("Reads := count", "Reads := ".len()),
+        ("count : DINT;\n    END_VAR", 0),
+    ];
+    assert_snapshot!(rename_from_each(&mut with_db, source, &count, "total"), @r"
+    PROGRAM Main
+    VAR_EXTERNAL trigger : BOOL; total : DINT; END_VAR
+        total := total + 1;
+        trigger := total > 3;
+    END_PROGRAM
+
+    FUNCTION Reads : DINT
+    VAR_EXTERNAL total : DINT; END_VAR
+        Reads := total;
+    END_FUNCTION
+
+    CONFIGURATION Plant
+        VAR_GLOBAL CONSTANT
+            period : TIME := T#20ms;
+        END_VAR
+        VAR_GLOBAL
+            trigger : BOOL;
+            total : DINT;
+        END_VAR
+        RESOURCE Cpu ON PLC
+            TASK Cyclic(INTERVAL := period, PRIORITY := 1);
+            TASK OnEdge(SINGLE := trigger, PRIORITY := 2);
+            PROGRAM Main1 WITH Cyclic : Main;
+            PROGRAM Main2 WITH OnEdge : Main;
+        END_RESOURCE
+    END_CONFIGURATION
+    ");
+
+    let trigger = [
+        ("trigger : BOOL; count", 0),
+        ("trigger : BOOL;\n        count", 0),
+    ];
+    let renamed = rename_from_each(&mut RootDatabase::default(), source, &trigger, "edge");
+    assert!(
+        renamed.contains("VAR_EXTERNAL edge : BOOL;")
+            && renamed.contains("edge := count > 3;")
+            && renamed.contains("VAR_GLOBAL\n        edge : BOOL;")
+            && renamed.contains("SINGLE := edge"),
+        "{renamed}"
+    );
+
+    let period = [("period : TIME", 0)];
+    let renamed = rename_from_each(&mut RootDatabase::default(), source, &period, "cycle");
+    assert!(
+        renamed.contains("cycle : TIME := T#20ms;") && renamed.contains("INTERVAL := cycle"),
+        "{renamed}"
+    );
+}
+
 /// A namespace declared with a dotted name is renamed by its last segment,
 /// in its declarations and in the USINGs that name it; the segments before
 /// it are its parents. With the cursor on a parent segment nothing is
