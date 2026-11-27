@@ -78,6 +78,26 @@ pub fn written<'db>(
     written
 }
 
+/// What the methods of the FUNCTION_BLOCK `scope` is may write: an output a
+/// method writes does not keep its initial value, though the body never
+/// writes it. Empty for any other scope.
+pub fn written_by_methods<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+) -> FxHashSet<VariableDecl<'db>> {
+    let ScopeKind::Pou(Pou::FunctionBlock(block)) = get_scope(db, scope).kind else {
+        return FxHashSet::default();
+    };
+    block
+        .methods(db)
+        .iter()
+        .flat_map(|method| {
+            let method_scope = method.scope_id(db);
+            written(db, method_scope.inference(db), method.stmts(db))
+        })
+        .collect()
+}
+
 /// The variable a path starts from. Past a `^`, what it writes is what the
 /// reference points at, and the reference is only read.
 fn root_variable<'db>(

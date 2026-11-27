@@ -123,7 +123,8 @@ pub fn check<'db>(
     }
 
     if ctx.uninitialized_output {
-        let written = uninitialized_output::written(db, body, statements);
+        let mut written = uninitialized_output::written(db, body, statements);
+        written.extend(uninitialized_output::written_by_methods(db, scope));
         run_lint(uninitialized_output::NAME, diagnostics, |d| {
             uninitialized_output::check_outputs(db, scope, &written, d)
         });
