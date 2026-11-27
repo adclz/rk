@@ -576,6 +576,58 @@ END_FUNCTION
     ");
 }
 
+/// The other way: a positional argument written as a name is that name, so
+/// renaming from it renames the variable passed, every use of it included,
+/// and leaves the input it binds alone. It used to rename the input.
+#[rstest]
+fn rename_from_a_positional_argument_renames_what_it_names(mut with_db: RootDatabase) {
+    let source = r#"FUNCTION Twice : DINT
+VAR_INPUT value : DINT; END_VAR
+    Twice := value * 2;
+END_FUNCTION
+
+FUNCTION_BLOCK Acc
+VAR_INPUT amount : DINT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION Caller : DINT
+VAR level : DINT; a : Acc; END_VAR
+    Caller := Twice(level) + Twice(value := level);
+    a(level);
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    let renamed: Vec<String> = ["Twice(level)", "a(level)"]
+        .iter()
+        .map(|marker| {
+            let offset = source.find(marker).unwrap() + marker.find('(').unwrap() + 1;
+            let node = descendant_at(&with_db, file, offset).unwrap();
+            let edit = node.rename(&with_db, offset, "speed").unwrap();
+            apply_rename(&with_db, &edit, &[source])
+        })
+        .collect();
+    assert_eq!(
+        renamed[0], renamed[1],
+        "from an instance's call as from a FUNCTION's"
+    );
+    assert_snapshot!(renamed[0], @r"
+    FUNCTION Twice : DINT
+    VAR_INPUT value : DINT; END_VAR
+        Twice := value * 2;
+    END_FUNCTION
+
+    FUNCTION_BLOCK Acc
+    VAR_INPUT amount : DINT; END_VAR
+    END_FUNCTION_BLOCK
+
+    FUNCTION Caller : DINT
+    VAR speed : DINT; a : Acc; END_VAR
+        Caller := Twice(speed) + Twice(value := speed);
+        a(speed);
+    END_FUNCTION
+    ");
+}
+
 /// A namespace declared with a dotted name is renamed by its last segment,
 /// in its declarations and in the USINGs that name it; the segments before
 /// it are its parents. With the cursor on a parent segment nothing is

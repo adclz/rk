@@ -1727,3 +1727,40 @@ END_CONFIGURATION
     "LIMIT : DINT := 16#10" -> ```iecst (GLOBAL CONSTANT) LIMIT: DINT := 16#10 ```  --- value = 16, size = 4
     "#);
 }
+
+/// A positional argument written as a name is that name: hovering `level` in
+/// `Twice(level)` shows the variable passed, not the input of `Twice` the
+/// argument binds. A binding's name, `value` in `value := level`, still
+/// shows its input.
+#[rstest]
+fn hover_on_a_positional_argument_shows_what_it_names(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Twice : DINT
+VAR_INPUT value : DINT; END_VAR
+    Twice := value * 2;
+END_FUNCTION
+
+FUNCTION Caller : DINT
+VAR level : DINT; END_VAR
+    Caller := Twice(level) + Twice(value := level);
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    let hovered: Vec<String> = [("Twice(level)", "Twice(".len()), ("value := level", 0)]
+        .iter()
+        .map(|(marker, inside)| {
+            let offset = source.find(marker).expect("the marker") + inside;
+            let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
+            let text = node
+                .hover(&with_db, offset)
+                .and_then(|h| hover_markup(h.contents))
+                .expect("hover text");
+            format!("{marker:?} +{inside} -> {}", text.replace('\n', " ").trim())
+        })
+        .collect();
+
+    assert_snapshot!(hovered.join("\n"), @r#"
+    "Twice(level)" +6 -> ```iecst (VAR) level: DINT ```  --- size = 4
+    "value := level" +0 -> ```iecst (INPUT) value: DINT ```  --- size = 4
+    "#);
+}

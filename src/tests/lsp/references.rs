@@ -581,3 +581,40 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// A positional argument written as a name is that name: the references from
+/// `level` in `Twice(level)` are the variable's, the argument and the binding
+/// `value := level` among them. It used to find none, the argument naming
+/// the input it binds.
+#[rstest]
+fn references_from_a_positional_argument(mut with_db: RootDatabase) {
+    let source = r#"FUNCTION Twice : DINT
+VAR_INPUT value : DINT; END_VAR
+    Twice := value * 2;
+END_FUNCTION
+
+FUNCTION Caller : DINT
+VAR level : DINT; END_VAR
+    Caller := Twice(level) + Twice(value := level);
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find("Twice(level)").unwrap() + "Twice(".len();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let refs = node.locations(&with_db).unwrap();
+
+    assert_snapshot!(render_references(&with_db, &refs, "level"), @r"
+    Info: 3 reference(s) to 'level'
+       ,-[ file:///test0.st:7:5 ]
+       |
+     7 | VAR level : DINT; END_VAR
+       |     ^^|^^
+       |       `---- 3 reference(s) to 'level'
+     8 |     Caller := Twice(level) + Twice(value := level);
+       |                     ^^|^^                   ^^|^^
+       |                       `---------------------------- reference
+       |                                               |
+       |                                               `---- reference
+    ---'
+    ");
+}
