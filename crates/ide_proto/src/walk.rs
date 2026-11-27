@@ -173,12 +173,16 @@ pub fn completion_descendant_at<'db>(
     // (e.g. `USING ns.|` where the dot is past the Using HIR span).
     // For Using, also use last_before when best_match is None (top-level USING).
     // A path only stands in for the cursor while the cursor is still ON it:
-    // nothing between them but the dot being typed. Without that, the last
-    // name of one POU's body answered for a blank line several declarations
-    // later, which offered statements where a declaration goes.
+    // nothing between them but the dot being typed, or the `#` of a value
+    // of the type it names, `Kind#`, whose values it then offers. Without
+    // that, the last name of one POU's body answered for a blank line
+    // several declarations later, which offered statements where a
+    // declaration goes; and past `Kind#`, which the parser leaves with the
+    // `#` in an error, the POU answered with everything in scope.
     let reaches_the_cursor = |end: usize| {
         source.get(end..offset).is_some_and(|gap| {
-            gap.contains('.') && gap.chars().all(|c| c == '.' || c == ' ' || c == '\t')
+            gap == "#"
+                || gap.contains('.') && gap.chars().all(|c| c == '.' || c == ' ' || c == '\t')
         })
     };
 
