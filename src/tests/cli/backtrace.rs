@@ -200,6 +200,46 @@ fn a_string_an_import_cannot_take_is_placed_at_the_call(mut with_db: db::RootDat
     );
 }
 
+/// A message reaches the host as WIT's `string`, which is UTF-8. One that is
+/// not is reported cut before its first byte that is not, and still placed:
+/// here a message caught into a STRING too short for its `é` and raised
+/// again, and one holding a byte that starts no character.
+#[rstest]
+#[case::cut_inside_a_character("__RAISE(why);", "a")]
+#[case::a_byte_that_starts_none("__RAISE('ab$C3cd');", "ab")]
+fn a_message_that_is_not_utf8_is_reported_cut(
+    mut with_db: db::RootDatabase,
+    #[case] statement: &str,
+    #[case] message: &str,
+) {
+    let source = format!(
+        r#"
+        FUNCTION Rethrow
+        VAR why : STRING[2]; END_VAR
+            __TRY
+                __RAISE('aé');
+            __CATCH(why)
+            __END_TRY;
+            {statement}                     // raise
+        END_FUNCTION
+
+        {{test}}
+        FUNCTION test_rethrow
+            Rethrow();                      // call
+        END_FUNCTION
+    "#
+    );
+    let record = only(run_build(&compile_tests(&mut with_db, &source), None));
+    assert_eq!(record.reason.as_deref(), Some(message));
+    assert_eq!(
+        calls(&record),
+        [
+            ("Rethrow".to_string(), line_of(&source, "// raise")),
+            ("test_rethrow".to_string(), line_of(&source, "// call")),
+        ]
+    );
+}
+
 /// A trap is not an exception: it comes back with wasmtime's backtrace, read
 /// as it came. Its function indices count the module's imports first, which
 /// the tables do not: one `{extern}` here shifts them. Its offsets count

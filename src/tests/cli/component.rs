@@ -715,6 +715,62 @@ fn a_module_that_cannot_raise_wraps_too(mut with_db: db::RootDatabase) {
     );
 }
 
+/// A host reads a raised message as WIT's `string`, which is UTF-8. One
+/// that is not, cut inside a character when it was caught into a short
+/// STRING, or holding a `$hh` byte that starts none, reaches the host cut
+/// before that byte, as the error of the scan or of the call, and the next
+/// one runs: nothing trapped at the boundary, which would lock the store.
+#[rstest]
+fn a_message_that_is_not_utf8_reaches_the_host_cut(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL input : DINT; output : DINT; END_VAR
+        VAR why : STRING[2]; END_VAR
+            IF input = 1 THEN
+                __TRY
+                    __RAISE('aé');
+                __CATCH(why)
+                __END_TRY;
+                __RAISE(why);
+            END_IF;
+            output := input;
+        END_PROGRAM
+
+        {export}
+        FUNCTION Refuse : DINT
+        VAR_INPUT n : DINT; END_VAR
+            IF n = 1 THEN
+                __RAISE('ab$C3cd');
+            END_IF;
+            Refuse := n;
+        END_FUNCTION
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            input AT %ID0 : DINT;
+            output AT %QD0 : DINT;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Main WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let component = build(&mut with_db, source).expect("the module wraps");
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+    assert_eq!(
+        plc.run_task(0, &1i32.to_le_bytes()),
+        Err(ScanError::Raised("a".to_string()))
+    );
+    assert_eq!(
+        plc.run_task(0, &5i32.to_le_bytes()),
+        Ok(5i32.to_le_bytes().to_vec())
+    );
+    assert_eq!(plc.call::<_, i32>("refuse", (1i32,)), Err("ab".to_string()));
+    assert_eq!(plc.call("refuse", (2i32,)), Ok(2i32));
+}
+
 /// A test runs through the component in a debug build.
 #[rstest]
 fn a_component_runs_its_tests(mut with_db: db::RootDatabase) {
