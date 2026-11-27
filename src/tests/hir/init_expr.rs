@@ -700,3 +700,44 @@ fn invalid_a_repetition_outside_an_array_s_brackets(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+/// An initializer of a type that does not resolve is placed nowhere, and its
+/// type's name is the one error: nothing else is said about it, by name or
+/// by place, nested or in an array.
+#[rstest]
+fn invalid_an_initializer_of_an_unknown_type(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Holder : STRUCT p : Nowhere; n : INT; END_STRUCT; END_TYPE
+
+        FUNCTION F
+            VAR
+                a : Nowhere := (1, 2);
+                b : ARRAY[0..1] OF Nowhere := [(x := 1), (2, 3)];
+                c : Holder := ((1, 2), 3);
+            END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0203] Error: unknown name in a namespace
+       ,-[ file:///test0.st:2:34 ]
+       |
+     2 |         TYPE Holder : STRUCT p : Nowhere; n : INT; END_STRUCT; END_TYPE
+       |                                  ^^^|^^^
+       |                                     `----- no item found for path 'Nowhere'
+    ---'
+    [E0203] Error: unknown name in a namespace
+       ,-[ file:///test0.st:6:21 ]
+       |
+     6 |                 a : Nowhere := (1, 2);
+       |                     ^^^|^^^
+       |                        `----- no item found for path 'Nowhere'
+    ---'
+    [E0203] Error: unknown name in a namespace
+       ,-[ file:///test0.st:7:36 ]
+       |
+     7 |                 b : ARRAY[0..1] OF Nowhere := [(x := 1), (2, 3)];
+       |                                    ^^^|^^^
+       |                                       `----- no item found for path 'Nowhere'
+    ---'
+    ");
+}
