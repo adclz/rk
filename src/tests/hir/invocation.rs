@@ -421,6 +421,27 @@ END_FUNCTION_BLOCK
 }
 
 #[rstest]
+fn super_body_spaced_valid(mut with_db: RootDatabase) {
+    // The parentheses of SUPER() are two tokens, spaced as a call's are:
+    // `SUPER( )` and `SUPER ( )` run the base body as `SUPER()` does. They
+    // were read as a call of SUPER and refused, E0808.
+    let source = r#"
+FUNCTION_BLOCK base
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK spaced_inside EXTENDS base
+    SUPER( );
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK spaced_before EXTENDS base
+    SUPER ( );
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK with_a_comment EXTENDS base
+    SUPER (* the base's body *) ( );
+END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
 fn inherited_member_shadowed(mut with_db: RootDatabase) {
     // Rule 3: variable names in base and derived FBs shall be unique -> E1115.
     let source = r#"
