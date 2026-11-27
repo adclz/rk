@@ -31,7 +31,7 @@ use wasm_encoder::{BlockType, Function, Instruction, ValType};
 
 use crate::WasmGen;
 use crate::canonical::{Canonical, canonical, record_layout, result_payload, store};
-use crate::control::{ControlArea, catching, start_over, write_err_static};
+use crate::control::{Caught, ControlArea, catching, start_over, write_err_static};
 use crate::emit_expr::mem_arg;
 
 /// What a STRING too long for its parameter answers.
@@ -178,12 +178,7 @@ fn elementary(ty: &MirType) -> Option<MirElementary> {
 impl WasmGen<'_> {
     /// Emits a function for each `{export}` FUNCTION, exported as
     /// `<interface>#<name>`, the name a component takes it by.
-    pub(crate) fn emit_exports(
-        &mut self,
-        area: &ControlArea,
-        caught: Option<(u32, u32)>,
-        arena: u32,
-    ) {
+    pub(crate) fn emit_exports(&mut self, area: &ControlArea, caught: Option<Caught>, arena: u32) {
         let module = self.module;
         let interface = hir::hir_ty::exports::export_interface(self.db);
         for func in &module.functions {
@@ -207,7 +202,7 @@ impl WasmGen<'_> {
     fn export_function(
         &self,
         area: &ControlArea,
-        caught: Option<(u32, u32)>,
+        caught: Option<Caught>,
         arena: u32,
         func: &MirFunction,
         callee: u32,

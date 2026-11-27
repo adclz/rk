@@ -743,13 +743,23 @@ impl<'a> WasmGen<'a> {
         // Pre-scan: which `wasm_builtins` exports any function references. The
         // graft goes between imports and user functions, so user indices skip
         // past it.
-        let names_used = self.collect_builtin_names();
+        let mut names_used = self.collect_builtin_names();
 
         // Index layout: [imports] [grafted builtins] [user functions]; the
         // grafted block may include a synthesized `__iec_raise` helper, which
         // `preflight_graft_count` accounts for.
         let n_imports = self.module.extern_functions.len() as u32;
         let needs_iec_raise_synth = self.preflight_needs_iec_raise(&names_used);
+        // A module that can raise declares `$rk_exception`, and what a
+        // function the host calls catches is handed over cut to its UTF-8
+        // start. The cut raises nothing itself.
+        let raises = module_uses_raise(self.module)
+            || module_test_count(self.module) > 0
+            || needs_iec_raise_synth;
+        if raises && !names_used.iter().any(|name| name == control::UTF8_CUT) {
+            names_used.push(control::UTF8_CUT.to_string());
+            names_used.sort();
+        }
         let n_builtins =
             self.preflight_graft_count(&names_used) + if needs_iec_raise_synth { 1 } else { 0 };
 
@@ -798,10 +808,7 @@ impl<'a> WasmGen<'a> {
 
         // 5. Register the `$rk_exception` tag before grafting: the synth
         //    helper references it. Signature `(i32, i32) -> ()`, tag index 0.
-        if module_uses_raise(self.module)
-            || module_test_count(self.module) > 0
-            || needs_iec_raise_synth
-        {
+        if raises {
             let tag_type_idx = self.next_type_idx;
             self.type_section.ty().function(
                 vec![wasm_encoder::ValType::I32, wasm_encoder::ValType::I32],
@@ -2107,9 +2114,11 @@ impl<'a> WasmGen<'a> {
         // `(msg_ptr, msg_len)` on the stack as the block's result.
         wasm_func.instruction(&Instruction::End);
 
-        // Catch handler: stash, then write Err variant into the area.
+        // Catch handler: stash, cut to what the host can read, then write
+        // Err variant into the area.
         wasm_func.instruction(&Instruction::LocalSet(len_tmp));
         wasm_func.instruction(&Instruction::LocalSet(ptr_tmp));
+        crate::control::cut_message(&mut wasm_func, self.utf8_cut(), ptr_tmp, len_tmp);
         // discriminant = 1 (Err) at offset 0
         wasm_func.instruction(&Instruction::I32Const(result_area as i32));
         wasm_func.instruction(&Instruction::I32Const(1));
