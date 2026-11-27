@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use std::collections::HashMap;
+use std::ops::ControlFlow;
 
 use auto_lsp::lsp_types::{TextEdit, WorkspaceEdit};
 use db::WorkspaceDataBase;
@@ -14,9 +15,10 @@ use hir::{
             variable::{VariableDecl, VariableKind},
         },
         scope::ScopeKind,
-        semantic_index::get_scope,
+        semantic_index::{get_scope, semantic_index},
     },
     hir_ty::{
+        index_graphs::external_var_lookup,
         oop::{MethodRef, ancestry, descendants},
         ty::Type,
     },
@@ -24,6 +26,7 @@ use hir::{
 
 use crate::handlers::references::ReferenceLocation;
 use crate::handlers::{ReferencesHandler, RenameHandler};
+use crate::walk::WalkHir;
 
 impl<'db> RenameHandler<'db> for HirNode<'db> {
     fn rename(
@@ -102,7 +105,9 @@ impl<'db> RenameHandler<'db> for HirNode<'db> {
 /// input, output or in-out of one: the method shares its name with every
 /// method it overrides or implements and that overrides or implements it,
 /// and its parameters their names with theirs (E1128). Renaming one of them
-/// alone broke the others: E1113, E1116, E1119. `None` for anything else.
+/// alone broke the others: E1113, E1116, E1119. A VAR_GLOBAL and the
+/// VAR_EXTERNALs that import it share theirs too (E0206). `None` for
+/// anything else.
 fn renamed_together<'db>(
     db: &'db dyn WorkspaceDataBase,
     node: &HirNode<'db>,
@@ -112,6 +117,14 @@ fn renamed_together<'db>(
             .into_iter()
             .map(Type::MethodDecl)
             .collect(),
+        Type::Variable((variable, _))
+            if matches!(
+                variable.kind(db),
+                VariableKind::Global | VariableKind::External
+            ) =>
+        {
+            global_and_externals(db, variable)
+        }
         Type::Variable((variable, _)) => {
             let method = method_of_parameter(db, variable)?;
             let name = variable.get_name_ident(db);
@@ -134,6 +147,40 @@ fn renamed_together<'db>(
         .collect();
     super::references::once_each(&mut locations);
     Some(locations)
+}
+
+/// The VAR_GLOBAL `variable` is or imports, and every VAR_EXTERNAL of the
+/// workspace that imports it: a VAR_EXTERNAL names its global by its name.
+/// A library imports none (E1008).
+fn global_and_externals<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    variable: VariableDecl<'db>,
+) -> Vec<Type<'db>> {
+    let name = variable.get_name_ident(db);
+    let global = match variable.kind(db) {
+        VariableKind::Global => Some(variable),
+        _ => external_var_lookup(db, name),
+    };
+    let mut family: Vec<VariableDecl<'db>> = global.into_iter().chain([variable]).collect();
+    for file in db.get_files().iter() {
+        if db.get_library_file(file.url(db)).is_some() {
+            continue;
+        }
+        let _ = semantic_index(db, *file).walk_hir(db, &mut |node| {
+            if let HirNode::VariableDecl(declared) = node
+                && declared.kind(db) == VariableKind::External
+                && declared.get_name_ident(db) == name
+                && !family.contains(&declared)
+            {
+                family.push(declared);
+            }
+            ControlFlow::Continue(())
+        });
+    }
+    family
+        .into_iter()
+        .map(|declared| Type::Variable((declared, None)))
+        .collect()
 }
 
 /// The method `variable` is an input, an output or an in-out of. A method's
