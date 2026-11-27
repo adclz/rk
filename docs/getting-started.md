@@ -97,9 +97,14 @@ rk test next
 
 ```sh
 rk fmt                 # formats every .st file in place
-rk compile             # rk_build/debug/plant.wasm
-rk compile --release   # rk_build/release/plant.wasm, optimized
+rk compile             # debug/plant.wasm, in the workspace's build folder
+rk compile --release   # release/plant.wasm, optimized
+rk env build           # where that folder is
 ```
+
+A build writes nothing in the workspace.
+It goes to a folder of rk's cache, one for each workspace, so a binary never ends up in your repository or in an archive of your sources.
+`rk compile -o plant.wasm` writes the component where you say instead, and `rk clean` deletes the folder.
 
 The component runs on a WebAssembly runtime that reads components, such as wasmtime.
 [WASM ABI](wasm-abi.md) shows what it imports and how a host runs it, and [Profiles](profiles.md) what differs between the two builds.

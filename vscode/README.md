@@ -19,10 +19,6 @@ version = "0.1"
 name = "my_project"
 version = "0.1"
 
-# Output directory for generated files
-[output]
-directory = "build"
-
 # Toggle individual linter rules (all enabled by default)
 [linter.rules]
 unused-variable = true

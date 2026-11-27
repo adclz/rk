@@ -324,9 +324,6 @@ version = "0.1.0"
 opt_level = "2"
 stack_size = 1048576
 
-[settings.output]
-directory = "build"
-
 [linter]
 
 [linter.rules]
@@ -350,8 +347,6 @@ Release builds use the `wasm-opt` on PATH, else a checksum-verified Binaryen dow
 At most 4294967296, the 4 GiB a module can address.
 Without it, the stack holds the largest frame and 64 KiB more.
 A recursive function's frame larger than the stack is refused by `rk check` (`E1430`), and a stack that does not fit in 4 GiB after the rest of the memory stops the build with an error naming the setting. A build lays out a stack only when a recursive function it keeps, one its exports reach, pushes a frame.
-
-`[settings.output] directory` Accepted by the schema and currently ignored — the component always lands in `rk_build/debug/<project>.wasm` or `rk_build/release/<project>.wasm`.
 
 `[linter]` Optional, and only for TUNING: the linter runs by default with its recommended rules whether or not this section exists.
 

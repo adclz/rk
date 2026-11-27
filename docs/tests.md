@@ -13,7 +13,7 @@ END_FUNCTION
 ```
 
 `rk test` compiles the workspace and runs all of them, showing a summary at the end.
-It runs them on the component of the workspace, unoptimized, the way a host runs it, and leaves it in `rk_build/test/`.
+It runs them on the component of the workspace, unoptimized, the way a host runs it, and leaves it in the `test/` folder of the workspace's build folder, in rk's cache, which `rk env build` prints.
 That build tells `rk test` where each raise is (below), so no other command writes it.
 The clocks are WASI's, as wasmtime gives them, and the time zone is the machine's.
 The components of the libraries the workspace calls run beside it, with the same WASI, see [Dependencies](dependencies.md#a-component).

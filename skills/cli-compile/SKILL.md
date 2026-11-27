@@ -17,7 +17,8 @@ A workspace with errors does not compile, and `rk check` reports the same diagno
 The linter does not run here, so a lint can never block a build.
 A library (`type = "library"` in its `config.toml`) is refused: it is built into the programs that list it, and `rk check` and `rk test` take it in its own folder.
 
-The component is written to `rk_build/debug/<project>.wasm`, or to `rk_build/release/<project>.wasm` with `--release`.
+The component is written to the workspace's build folder, in rk's cache: `debug/<project>.wasm`, or `release/<project>.wasm` with `--release`.
+Nothing is written in the workspace.
 It carries the types of what it imports and exports, so no WIT is written beside it: `wasm-tools component wit <project>.wasm` prints them.
 The components of the libraries the program calls go beside it, in `components/`: each library's `component/` folder is copied whole into `components/<library>/`, its LICENSE with it. The runtime runs them beside the program and links its imports to them. The folder holds the last build's only.
 A component runs on WASI 0.3: one that imports another WASI release (a `wasm32-wasip2` build) is refused, naming its library and the interface; build it with `--target wasm32-wasip3`.
@@ -29,7 +30,7 @@ A component runs on WASI 0.3: one that imports another WASI release (a `wasm32-w
 `-O, --opt-level <OPT_LEVEL>` The optimization level of a release build: `0` to `4`, `s` (size) or `z` (aggressive size).
 Defaults to `2`, or to `opt_level` in `config.toml`; the flag wins.
 
-`-o, --output <OUTPUT>` Where to write the component.
+`-o, --output <OUTPUT>` Where to write the component, in place of the build folder: nothing is written in the cache then.
 
 `-w, --watch` Re-compile on every file change.
 
@@ -60,6 +61,16 @@ Every build keeps only what a host calls and what that reaches (`__init`, the bo
 What a release build saves on top is the dropped tables, and what Binaryen's optimization takes off the code.
 A release build carries no test either: the tests are compiled, so the layout does not move, but they are not exported and the `test-manifest` section is left out.
 `rk test` always builds the debug module, and `rk test -O` optimizes that one.
+
+## The build folder
+
+Each workspace has one folder in rk's cache, named by a hash of the workspace's path, and every build of it lands there.
+`rk env build` prints it, and `rk env cache` the cache: `~/.cache/rk` on Linux, or the folder `RK_CACHE_DIR` names.
+
+`rk compile` writes `debug/` and `release/` in it, and `rk test` writes `test/` and `test-O<level>/`, each component with its `components/` beside it.
+A file named `workspace` there says which workspace the folder is for.
+
+`rk clean` deletes the folder, and nothing else: the libraries the cache holds and the other workspaces' builds stay.
 
 ## wasm-opt
 
