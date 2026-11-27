@@ -66,30 +66,36 @@ impl<'db> ReferencesHandler<'db> for HirNode<'db> {
         }
 
         let target = resolve_cursor_target(db, self)?;
-        let name = reference_type_name(db, &target)?;
-
-        let mut locations = vec![];
-
-        for file in db.get_files().iter() {
-            // Text pre-filter: skip files that don't contain the symbol name
-            let source = file.document(db).as_str();
-            // Unicode, matching the fold resolution uses: an ASCII fold here
-            // would skip a file whose only mention of `MÄX` is spelled `mäx`.
-            if !source.to_lowercase().contains(&name.to_lowercase()) {
-                continue;
-            }
-
-            find_references_in_file(db, *file, &target, name, &mut locations);
-        }
-
-        once_each(&mut locations);
-
-        if locations.is_empty() {
-            None
-        } else {
-            Some(locations)
-        }
+        let locations = locations_of(db, &target);
+        (!locations.is_empty()).then_some(locations)
     }
+}
+
+/// Where `target` is declared and named, in every file, each place once.
+pub(crate) fn locations_of<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    target: &Type<'db>,
+) -> Vec<ReferenceLocation> {
+    let Some(name) = reference_type_name(db, target) else {
+        return vec![];
+    };
+
+    let mut locations = vec![];
+
+    for file in db.get_files().iter() {
+        // Text pre-filter: skip files that don't contain the symbol name
+        let source = file.document(db).as_str();
+        // Unicode, matching the fold resolution uses: an ASCII fold here
+        // would skip a file whose only mention of `MÄX` is spelled `mäx`.
+        if !source.to_lowercase().contains(&name.to_lowercase()) {
+            continue;
+        }
+
+        find_references_in_file(db, *file, target, name, &mut locations);
+    }
+
+    once_each(&mut locations);
+    locations
 }
 
 /// Get the name text of a reference target for text pre-filtering
@@ -143,7 +149,7 @@ fn path_reference_target<'db>(db: &'db dyn WorkspaceDataBase, p: PathExpr<'db>) 
 
 /// Extract a normalized reference target type from a HirNode at cursor position.
 /// Accepts all node types since `descendant_at` returns the deepest node.
-fn resolve_cursor_target<'db>(
+pub(crate) fn resolve_cursor_target<'db>(
     db: &'db dyn WorkspaceDataBase,
     node: &HirNode<'db>,
 ) -> Option<Type<'db>> {
@@ -448,7 +454,7 @@ pub(crate) fn find_namespace_references<'db>(
 /// a node once for each declaration it belongs to: the type of `a, b, c :
 /// Lib.T` once for each variable, and with it the `Lib` its path names. A
 /// rename edited that name three times, edits a client refuses.
-fn once_each(locations: &mut Vec<ReferenceLocation>) {
+pub(crate) fn once_each(locations: &mut Vec<ReferenceLocation>) {
     let mut seen = std::collections::HashSet::new();
     locations.retain(|location| {
         seen.insert((
