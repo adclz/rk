@@ -162,3 +162,34 @@ fn builds_that_fetch_at_once_end_with_one_copy() {
     let urls = std::fs::read_to_string(cached_urls(&cache, &first.hash)).unwrap();
     assert!(urls.lines().all(|line| line == url), "{urls}");
 }
+
+/// A workspace's builds land in a folder of the cache's `builds/`, named by
+/// sixteen hexadecimal digits of a hash of the workspace's path: the same
+/// however the path is written, another for another workspace. A file
+/// there names the workspace.
+#[test]
+fn a_workspace_s_builds_have_a_folder_named_by_its_path() {
+    let t = tempfile::tempdir().unwrap();
+    let cache = t.path().join("cache");
+    let ws = t.path().join("plant");
+    std::fs::create_dir_all(ws.join("src")).unwrap();
+
+    let dir = db::cache::make_build_dir(&cache, &ws).unwrap();
+    assert_eq!(dir.parent(), Some(db::cache::builds_dir(&cache).as_path()));
+    let key = dir.file_name().unwrap().to_string_lossy().into_owned();
+    assert!(
+        key.len() == 16 && key.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')),
+        "{key}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join(db::cache::BUILT_WORKSPACE)).unwrap(),
+        format!("{}\n", ws.canonicalize().unwrap().display())
+    );
+    assert_eq!(
+        db::cache::build_dir(&cache, &ws.join("src").join("..")),
+        dir
+    );
+    let press = t.path().join("press");
+    std::fs::create_dir(&press).unwrap();
+    assert_ne!(db::cache::build_dir(&cache, &press), dir);
+}
