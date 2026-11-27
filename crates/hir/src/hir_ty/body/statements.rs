@@ -380,12 +380,13 @@ impl<'db> StmtsResolverCtx<'db> {
             match stmt.stmt(db) {
                 StmtKind::EmptyPathExpression(expr) => {
                     resolver.resolve_begin_path_expr(db, *expr, None, ctx);
+                    let super_body = expr.invocation(db).map(|i| i.kind(db))
+                        == Some(crate::hir_def::expressions::invocation::InvocationKind::SuperBody);
                     // Rule 2 (IEC 6.6.7.2.9): SUPER() shall occur once in the FB
                     // body. Track the first; a second occurrence is E1110,
                     // pointing back to the first. (SUPER() in a method is E1109,
                     // handled in resolve_invocation, so restrict to FB bodies.)
-                    if expr.invocation(db).map(|i| i.kind(db))
-                        == Some(crate::hir_def::expressions::invocation::InvocationKind::SuperBody)
+                    if super_body
                         && matches!(
                             get_scope(db, self.scope).kind,
                             ScopeKind::Pou(crate::hir_def::pous::pou::Pou::FunctionBlock(_))
@@ -411,7 +412,11 @@ impl<'db> StmtsResolverCtx<'db> {
                             None => ctx.first_super_body = Some(*stmt),
                         }
                     }
-                    ctx.effectless_statements.push(*stmt);
+                    // `SUPER()` runs the base body: the one path alone that
+                    // does something. `x;`, `THIS;` and `SUPER;` do nothing.
+                    if !super_body {
+                        ctx.effectless_statements.push(*stmt);
+                    }
                 }
 
                 StmtKind::Assignment {
