@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! Lists the files of `stdlib/` for `src/stdlib.rs`, which builds them into
-//! the compiler: every file under it but the hidden ones and the build
-//! folder, by its path in the library.
+//! the compiler: every file under it but the hidden ones, by its path in the
+//! library.
 
 use std::path::{Path, PathBuf};
 
@@ -33,7 +33,7 @@ fn collect(root: &Path, dir: &Path, files: &mut Vec<(String, PathBuf)>) {
     for entry in std::fs::read_dir(dir).unwrap() {
         let entry = entry.unwrap();
         let name = entry.file_name().to_string_lossy().into_owned();
-        if name.starts_with('.') || name == "rk_build" {
+        if name.starts_with('.') {
             continue;
         }
         let path = entry.path();

@@ -276,7 +276,7 @@ fn walk(
         // Build outputs are not sources, and an output directory inside the
         // tree would feed on itself.
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if matches!(name, "target" | "node_modules" | "rk_build" | ".git")
+        if matches!(name, "target" | "node_modules" | ".git")
             || path.canonicalize().is_ok_and(|p| p == output_dir)
         {
             return Ok(());
