@@ -16,11 +16,12 @@
 //! depend on code layout, the swap would silently restore state into the wrong
 //! addresses — so this is a guard against a corruption bug, not a nicety.
 //!
-//! The one section that legitimately goes stale under optimization is
-//! `debug-lines` (source line -> code PC): its bytes survive but the PCs it
-//! names have moved. That is why line-stepping needs the unoptimized build,
-//! and it is asserted here as the *documented* exception rather than left
-//! implicit.
+//! The sections that describe the CODE go stale under optimization:
+//! `debug-lines` (code offsets), `debug-functions` (function indices) and
+//! `debug-locals` (function indices and local slots). wasm-opt passes custom
+//! sections through as they came, so the optimized module drops them: nothing
+//! places a failure or a breakpoint in code that moved. That is why
+//! line-stepping needs the unoptimized build.
 
 use db::RootDatabase;
 use rstest::rstest;
@@ -132,7 +133,7 @@ fn optimization_preserves_every_memory_describing_section(mut with_db: RootDatab
 
     // Every section whose contents are addresses or data offsets, none of
     // which wasm-opt may touch.
-    for name in ["debug-symbols", "retain-map", "rk.schedule", "debug-locals"] {
+    for name in ["debug-symbols", "retain-map", "rk.schedule"] {
         assert_eq!(
             a.get(name),
             b.get(name),
@@ -152,37 +153,40 @@ fn optimization_preserves_every_memory_describing_section(mut with_db: RootDatab
     );
 }
 
-/// The counterpart: `debug-lines` is PC-indexed, so optimization invalidates
-/// it. Its bytes may survive (wasm-opt passes custom sections through opaque),
-/// but the module is no longer safe to line-step. This asserts the *stale*
-/// state exists, so the swap design documents it rather than discovering it in
-/// the field — a breakpoint on an optimized build would land on the wrong
-/// instruction.
+/// The counterpart: the stepping tables index the code, by offset, function
+/// and local slot, so optimization invalidates them. wasm-opt passes custom
+/// sections through as they came, and an optimized module carried them stale:
+/// `rk test -O` placed a failure in a function it never reached, and a
+/// breakpoint would land on the wrong instruction. It drops them.
 #[rstest]
-fn optimization_invalidates_the_line_table(mut with_db: RootDatabase) {
+fn optimization_drops_the_tables_that_describe_the_code(mut with_db: RootDatabase) {
     let plain = compile_to_wasm(&mut with_db, SRC);
     let Some(opt) = optimize(&plain) else {
-        skip_without_wasm_opt("the stale line table");
+        skip_without_wasm_opt("the stale stepping tables");
         return;
     };
 
     let a = custom_sections(&plain);
     let b = custom_sections(&opt);
 
-    // wasm-opt passes unknown custom sections through unchanged, so the line
-    // table's BYTES are identical...
-    assert_eq!(
-        a.get("debug-lines"),
-        b.get("debug-lines"),
-        "wasm-opt is expected to pass `debug-lines` through opaquely"
-    );
-    // ...while the code they index HAS moved. Identical table + changed code =
-    // a table that now points at the wrong PCs. This is exactly why line
-    // stepping requires the unoptimized build.
+    for stepping in [
+        debug_format::DEBUG_FUNCTIONS_SECTION,
+        debug_format::DEBUG_LINES_SECTION,
+        debug_format::DEBUG_LOCALS_SECTION,
+    ] {
+        assert!(
+            a.contains_key(stepping),
+            "the plain build carries `{stepping}`"
+        );
+        assert!(
+            !b.contains_key(stepping),
+            "the optimized build must NOT carry `{stepping}`: it names code that moved"
+        );
+    }
     assert_ne!(
         code_section(&plain),
         code_section(&opt),
-        "the code did not move, so the line table is not actually stale here"
+        "the code did not move, so the test proves nothing"
     );
 }
 
