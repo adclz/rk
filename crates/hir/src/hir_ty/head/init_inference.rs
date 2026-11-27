@@ -536,9 +536,10 @@ impl<'db> InitExprInferenceResult<'db> {
         // Every value written reaches the leaves, once each time a
         // repetition writes it. `((x := 5))` and `(x := 2(5))` passed the
         // walk and reached none: the value was dropped with nothing said.
-        debug_assert_eq!(
-            placed(&out),
-            written(db, expr),
+        // Past a type that did not resolve, nothing is placed, and the
+        // program does not compile anyway.
+        debug_assert!(
+            ctx.unresolved || placed(&out) == written(db, expr),
             "an initializer of {} at {:?} drops a value",
             self.scope.file(db).url(db),
             expr.get_span(db)
@@ -653,6 +654,9 @@ impl<'db> InitExprInferenceResult<'db> {
         ctx: &mut InitContext<'db>,
         step: &'db InitExprWalkStep,
     ) {
+        if expected.normalize(db).is_never() {
+            ctx.unresolved = true;
+        }
         match step {
             InitExprWalkStep::ArrayInit { expr, values } => {
                 expected.walk_init_expr(db, step, place, self);
@@ -796,6 +800,13 @@ impl<'db> InitExprInferenceResult<'db> {
                 let saved_root = ctx.array_root;
                 let saved_positions = ctx.positions.clone();
                 let saved_overflow = ctx.overflow_reported.clone();
+                // Parentheses of no known type still walk what they hold,
+                // which is no element of an enclosing array: counted as
+                // such, `[(2, 3)]` was one too many for an array of two
+                // (E0507) past an unknown element type.
+                if declared.is_none() {
+                    ctx.reset_for_new_array(None);
+                }
 
                 for value in values {
                     let mut child_place = *place;
@@ -1155,6 +1166,10 @@ struct InitContext<'db> {
     /// The cell each element at its index lands in, from the start of the
     /// bracket that holds it, which the leaves follow.
     offsets: FxHashMap<InitExpr<'db>, usize>,
+    /// Whether the walk met a type that did not resolve. Its error is
+    /// reported where the name is written, the walk says nothing more, and
+    /// what it holds is placed nowhere: no program with it compiles.
+    unresolved: bool,
 }
 
 impl<'db> InitContext<'db> {
@@ -1166,6 +1181,7 @@ impl<'db> InitContext<'db> {
             seen_fields: FxHashMap::default(),
             roles: FxHashMap::default(),
             offsets: FxHashMap::default(),
+            unresolved: false,
         }
     }
 
