@@ -2937,6 +2937,26 @@ pub fn an_element_at_its_index(mut with_db: RootDatabase) {
     ");
 }
 
+/// `SUPER()` is written against its parentheses however it was spaced: they
+/// are two tokens, as a call's are.
+#[rstest]
+pub fn the_base_body_s_call_spaced(mut with_db: RootDatabase) {
+    let source = "FUNCTION_BLOCK base\nEND_FUNCTION_BLOCK\nFUNCTION_BLOCK a EXTENDS base\nSUPER ( );\nEND_FUNCTION_BLOCK\nFUNCTION_BLOCK b EXTENDS base\nSUPER(   );\nEND_FUNCTION_BLOCK\n";
+
+    let document = add_source(&mut with_db, source).document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION_BLOCK base
+    END_FUNCTION_BLOCK
+    FUNCTION_BLOCK a EXTENDS base
+    	SUPER();
+    END_FUNCTION_BLOCK
+    FUNCTION_BLOCK b EXTENDS base
+    	SUPER();
+    END_FUNCTION_BLOCK
+    ");
+}
+
 /// A struct element's `RETAIN` keeps its space from the name.
 #[rstest]
 pub fn a_retained_struct_element(mut with_db: RootDatabase) {
