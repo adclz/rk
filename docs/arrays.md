@@ -23,6 +23,7 @@ Elements can be of any type: structs, strings and function block instances inclu
 The elements go in brackets.
 `N(x)` repeats `x` N times, `N(a, b)` repeats the whole group, and `N()` leaves N elements at their default.
 A repetition stays inside the brackets, in a struct's value too: `(steps := [2(1, 2)])`.
+A repetition of member values repeats the element they make: `[3(PT := T#1s)]` gives each of three instances its `PT`.
 `[3] := 7` sets the element at index 3, one index per dimension, and what follows it starts at 4.
 The elements nothing names keep their default, whichever form names the others.
 IEC 61131-3 has no element at its index: this is an rk extension.

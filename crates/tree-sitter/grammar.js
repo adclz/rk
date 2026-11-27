@@ -346,6 +346,9 @@ module.exports = grammar({
     // In an array bracket, `[3` opens a row or an element at its index;
     // the `:=` after the `]` decides.
     [$.init_elem, $.index_value],
+    // `SUPER(` opens the base body's call or a call of SUPER; the `)`
+    // right after it decides, and the base body's call wins when both fit.
+    [$.ERR_unexpected_super_in_path, $.super_body_invocation, $.super_invocation],
   ],
 
   word: ($) => $.identifier,
@@ -2698,7 +2701,12 @@ module.exports = grammar({
 
     super_invocation: ($) => seq(field("SUPER", kw("SUPER"))),
 
-    super_body_invocation: ($) => seq(field("SUPER", kw("SUPER")), "()"),
+    // The base body's call, `SUPER()`, its parentheses two tokens as any
+    // call's: `SUPER( )` read as a call of SUPER with no argument, which
+    // only a parenthesis written against the other avoided (E0808). Where
+    // both readings hold, this one wins: SUPER is no POU to call.
+    super_body_invocation: ($) =>
+      prec.dynamic(1, seq(field("SUPER", kw("SUPER")), "(", ")")),
 
     path_expression: ($) =>
       choice($.var_access, $.field_expression, $.index_expression, $.deref_expression),

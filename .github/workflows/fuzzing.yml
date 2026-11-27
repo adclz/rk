@@ -249,6 +249,9 @@ jobs:
         if: steps.found.outputs.count != '0'
         env:
           RK_FUZZ_OPTIMIZE: "1"
+          # The targets run with debug assertions, so a crash may be a
+          # `debug_assert!`: without them, `repro` replays it as passing.
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: "true"
         run: |
           cargo build --release -p rk-fuzz --bin repro
           {
