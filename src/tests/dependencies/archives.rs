@@ -66,7 +66,7 @@ fn a_library_is_made_of_the_paths_it_lists() {
         ("LICENSE", "MIT"),
         ("src/Axis.st", "one"),
         ("tests/Axis.st", "tested"),
-        ("rk_build/debug/core.wasm", "built"),
+        ("out/plant.wasm", "built"),
     ]);
     let without = archive(&[
         ("config.toml", &config),

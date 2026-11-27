@@ -410,7 +410,7 @@ Before.
             "x <span class=\"hl-operator\">:</span> <span class=\"hl-type-builtin\">INT</span> <span class=\"hl-operator\">:=</span> <span class=\"hl-number\">5</span>"
         );
         // Not code: no word of the table, no address, no `:=`.
-        assert_eq!(html("rk_build/debug/core.wasm"), "rk_build/debug/core.wasm");
+        assert_eq!(html("out/plant.wasm"), "out/plant.wasm");
         assert_eq!(html("env.memory"), "env.memory");
     }
 

@@ -156,7 +156,7 @@ impl StHighlighter {
     /// token at a time: the query's words, numbers, strings, addresses and
     /// operators. Nothing is parsed. A span with no word of the table, no
     /// address and no operator like `:=` is not taken for code, and stays
-    /// plain: `rk_build/debug/core.wasm` is a path.
+    /// plain: `out/plant.wasm` is a path.
     fn inline_tokens(&self, src: &str) -> Option<String> {
         let mut out = String::with_capacity(src.len() * 2);
         let mut code = false;
