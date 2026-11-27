@@ -86,7 +86,29 @@ fn every_row_is_always_present() {
             "executable",
             "lsp",
             "cache",
+            "build",
             "stdlib"
         ]
+    );
+}
+
+/// `build` is the workspace's folder in the cache, where its builds land,
+/// printed before anything was built and without making it.
+#[test]
+fn the_build_folder_is_the_workspace_s_in_the_cache() {
+    disable_stdlib();
+    let cache = tempfile::tempdir().expect("cache");
+    unsafe { std::env::set_var(db::cache::CACHE_DIR_ENV, cache.path()) };
+    let ws = tempfile::tempdir().expect("workspace");
+
+    assert_eq!(
+        find(&describe(ws.path()), "build").value,
+        db::cache::build_dir(cache.path(), ws.path())
+            .display()
+            .to_string()
+    );
+    assert!(
+        !db::cache::builds_dir(cache.path()).exists(),
+        "nothing written"
     );
 }

@@ -208,12 +208,9 @@ fn file_type_from_path(path: &Path) -> CreatedKind {
     }
 }
 
-/// Only care about source files and `config.toml`, excluding build output.
+/// Only care about source files and `config.toml`. A build writes neither,
+/// and nothing in the workspace: `compile --watch` never wakes itself.
 fn is_relevant_path(path: &Path) -> bool {
-    // Ignore our own build output to prevent infinite loops with compile --watch
-    if path.components().any(|c| c.as_os_str() == "rk_build") {
-        return false;
-    }
     hir::front_end::parser_of(path).is_some()
         || path.file_name().is_some_and(|name| name == "config.toml")
 }

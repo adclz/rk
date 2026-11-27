@@ -76,3 +76,25 @@ fn set_stdlib(path: &std::ffi::OsStr) {
 fn tests_cache() -> std::path::PathBuf {
     std::env::temp_dir().join("rk-tests-cache")
 }
+
+/// The build folder of a workspace that exists, in the cache the tests
+/// share, which the guard points `RK_CACHE_DIR` at. It is deleted when the
+/// guard is, so that no test leaves one behind.
+struct Builds(std::path::PathBuf);
+
+impl Builds {
+    fn of(ws: &std::path::Path) -> Self {
+        unsafe { std::env::set_var(db::cache::CACHE_DIR_ENV, tests_cache()) };
+        Builds(db::cache::build_dir(&tests_cache(), ws))
+    }
+
+    fn dir(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for Builds {
+    fn drop(&mut self) {
+        let _ = db::cache::remove(&self.0);
+    }
+}

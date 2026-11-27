@@ -4,7 +4,7 @@
 |---|---|---|
 | `RK_STDLIB_PATH` | CLI, language server | A folder to read as the standard library, in place of the one built in. Empty, no standard library is read. |
 | `RK_NO_DOWNLOAD` | CLI | When set, Binaryen is never downloaded, and a missing library is only downloaded by `rk fetch`. |
-| `RK_CACHE_DIR` | CLI, language server | Where the standard library, the downloaded libraries and Binaryen are kept. |
+| `RK_CACHE_DIR` | CLI, language server | Where the standard library, the downloaded libraries, Binaryen and the builds are kept. |
 | `NO_COLOR` | CLI | When set, the output is not colored, see [no-color.org](https://no-color.org). |
 
 ## The standard library

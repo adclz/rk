@@ -211,7 +211,7 @@ The component runs beside your program, not inside it.
 The component's LICENSE, and whatever else its author put there, travel with it:
 
 ```schema
-rk_build/debug/
+debug/                              in the workspace's build folder
 ├─ press-line.wasm                  your program
 └─ components/
    └─ drives/                       the component/ of the library drives
@@ -230,7 +230,7 @@ A component your program does not call is not written.
 - A component runs on WASI 0.3, any release of it. One that imports another WASI, such as a build for WASI 0.2, is refused, its library and the interface named: build it for WASI 0.3, with Rust's `--target wasm32-wasip3` for example.
 
 `rk test` runs them the same way.
-It writes them beside its own build, in `rk_build/test/components/`, and starts each one for each test, in a store of its own, with the WASI 0.3 your program gets: its clocks and its command line.
+It writes them beside its own build, in `test/components/` of the workspace's build folder, and starts each one for each test, in a store of its own, with the WASI 0.3 your program gets: its clocks and its command line.
 Each runs in a task of its own for the whole test, as a runtime runs a component on a thread of its own: your program's calls into it run beside one another, and what crosses as a stream or a future moves between your program's cycles.
 A trap in a component fails the test that called it, named after its library, at your program's call:
 

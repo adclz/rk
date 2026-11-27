@@ -43,11 +43,6 @@ pub struct Dependency {
 }
 
 impl Config {
-    /// Convenience: get output config from settings.
-    pub fn output(&self) -> Option<&OutputConfig> {
-        self.settings.as_ref()?.output.as_ref()
-    }
-
     /// The workspace's `[addresses]`, each setting its default when the
     /// section or the setting is left out.
     pub fn addresses(&self) -> AddressesConfig {
@@ -92,7 +87,6 @@ pub enum ByteOrder {
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SettingsConfig {
-    pub output: Option<OutputConfig>,
     /// WASM optimization level: 0-4, "s" (size), "z" (aggressive size).
     /// Requires wasm-opt. Default: no optimization.
     pub opt_level: Option<String>,
@@ -179,12 +173,6 @@ pub enum ProjectKind {
     /// rules in its own folder too, where `rk check` and `rk test` read it
     /// and `rk compile` does not build it.
     Library,
-}
-
-#[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct OutputConfig {
-    pub directory: String,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -280,8 +268,8 @@ mod tests {
 name = "Lisa"
 version = "1"
 
-[settings.output]
-directory = "build"
+[settings]
+opt_level = "3"
 "#
     }
 
@@ -290,25 +278,18 @@ directory = "build"
         let config: Config = parse_config(full_config()).unwrap();
         assert_eq!(config.project.name, "Lisa");
         assert_eq!(config.project.version, "1");
-        assert_eq!(config.output().unwrap().directory, "build");
+        assert_eq!(config.settings.unwrap().opt_level.as_deref(), Some("3"));
     }
 
+    /// A build goes to the workspace's folder in the cache, or where
+    /// `--output` says: `config.toml` names no folder for it.
     #[test]
-    fn valid_with_output_only() {
-        let config: Config = parse_config(
-            r#"
-[project]
-name = "Test"
-version = "2"
-
-[settings.output]
-directory = "out"
-"#,
+    fn no_setting_names_an_output_folder() {
+        let err = parse_config(
+            "[project]\nname = \"T\"\nversion = \"1\"\n\n[settings.output]\ndirectory = \"build\"\n",
         )
-        .unwrap();
-        assert_eq!(config.project.name, "Test");
-        assert_eq!(config.project.version, "2");
-        assert_eq!(config.output().unwrap().directory, "out");
+        .unwrap_err();
+        assert!(err.to_string().contains("unknown field `output`"), "{err}");
     }
 
     #[test]
@@ -322,7 +303,7 @@ version = "1"
         )
         .unwrap();
         assert_eq!(config.project.name, "Test");
-        assert!(config.output().is_none());
+        assert!(config.settings.is_none());
     }
 
     /// `config.toml` has no say in the standard library; both former keys
@@ -552,9 +533,6 @@ version = "1"
 [project]
 name = 123
 version = "1"
-
-[output]
-directory = "build"
 "#;
         let err = parse_config(input).unwrap_err();
         assert!(err.span().is_some());

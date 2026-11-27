@@ -65,15 +65,15 @@ fn open(root: &Path) -> (RootDatabase, Vec<String>) {
 }
 
 /// The compiler holds the files of `stdlib/` as they are: every file
-/// there but the hidden ones and the build folder, its sources, its
-/// `config.toml` and its `LICENSE` among them.
+/// there but the hidden ones, its sources, its `config.toml` and its
+/// `LICENSE` among them.
 #[test]
 fn the_compiler_holds_the_files_of_stdlib() {
     fn walk(root: &Path, dir: &Path, files: &mut BTreeMap<String, Entry>) {
         for entry in std::fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
             let name = path.file_name().unwrap().to_string_lossy().into_owned();
-            if name.starts_with('.') || name == "rk_build" {
+            if name.starts_with('.') {
                 continue;
             }
             if path.is_dir() {

@@ -95,9 +95,12 @@ Format and compile:
 
 ```sh
 rk fmt             # rewrites the .st files in place; --check only reports
-rk compile         # the component, rk_build/debug/<project>.wasm
-rk compile --release   # optimized, no stepping tables, under rk_build/release/
+rk compile         # the component, debug/<project>.wasm in the build folder
+rk compile --release   # optimized, no stepping tables, under release/
+rk env build       # the build folder: the workspace's, in rk's cache
 ```
+
+A build writes nothing in the workspace; `-o <file>` writes the component elsewhere, and `rk clean` deletes the build folder.
 
 A `PROGRAM` only runs when a `CONFIGURATION` binds it to a task; without one the compiler says so.
 The `programming-config` skill shows the three lines that do it.
@@ -114,7 +117,7 @@ Any WebAssembly host can instantiate it; the ABI is documented in the repository
 | --- | --- | --- |
 | `RK_STDLIB_PATH` | CLI, language server | A folder to read as the standard library, in place of the one built in. Empty, none is read. |
 | `RK_NO_DOWNLOAD` | CLI | When set, Binaryen is never downloaded, and a missing library is only downloaded by `rk fetch`. |
-| `RK_CACHE_DIR` | CLI, language server | Where the standard library, the downloaded libraries and Binaryen are kept. |
+| `RK_CACHE_DIR` | CLI, language server | Where the standard library, the downloaded libraries, Binaryen and the builds are kept. |
 | `NO_COLOR` | CLI | When set, the output is not colored. |
 
 `RK_STDLIB_PATH` can also be written in a `.env` file at the workspace root.

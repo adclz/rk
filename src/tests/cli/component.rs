@@ -738,9 +738,9 @@ fn a_component_runs_its_tests(mut with_db: db::RootDatabase) {
 /// `plc`.
 #[test]
 fn the_component_is_named_after_the_project() {
-    let ws = std::path::Path::new("ws");
-    let debug = |project| rk::compiler::component_path(ws, wasm_codegen::Profile::Debug, project);
-    let built = ws.join("rk_build");
+    let built = std::path::Path::new("build");
+    let debug =
+        |project| rk::compiler::component_path(built, wasm_codegen::Profile::Debug, project);
     assert_eq!(debug("Plant_A"), built.join("debug").join("Plant_A.wasm"));
     assert_eq!(
         debug("line 2/east"),
@@ -748,16 +748,16 @@ fn the_component_is_named_after_the_project() {
     );
     assert_eq!(debug(".."), built.join("debug").join("plc.wasm"));
     assert_eq!(
-        rk::compiler::component_path(ws, wasm_codegen::Profile::Release, "Plant_A"),
+        rk::compiler::component_path(built, wasm_codegen::Profile::Release, "Plant_A"),
         built.join("release").join("Plant_A.wasm")
     );
     // `rk test` builds a module of its own, which lands beside them.
     assert_eq!(
-        rk::compiler::test_component_path(ws, None, "Plant_A"),
+        rk::compiler::test_component_path(built, None, "Plant_A"),
         built.join("test").join("Plant_A.wasm")
     );
     assert_eq!(
-        rk::compiler::test_component_path(ws, Some("z"), "Plant_A"),
+        rk::compiler::test_component_path(built, Some("z"), "Plant_A"),
         built.join("test-Oz").join("Plant_A.wasm")
     );
 }

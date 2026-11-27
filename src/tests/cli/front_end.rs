@@ -182,6 +182,7 @@ fn a_file_of_the_second_kind_is_found_and_read_by_its_front_end() {
 fn rk_s_commands_run_a_workspace_of_the_two_kinds() {
     second();
     let (_dir, root) = temp_workspace(&[("main.st", USES_TWICE), ("lib.two", TWICE)]);
+    let _builds = super::Builds::of(&root);
     let run = |command| rk::run(&root, false, OutputFormat::Concise, command);
 
     assert!(run(Command::Check { watch: false }).is_ok());
@@ -216,6 +217,7 @@ fn a_test_fails_on_what_the_second_kind_s_file_computes() {
     second();
     let thrice = TWICE.replace("x * 2", "x * 3");
     let (_dir, root) = temp_workspace(&[("main.st", USES_TWICE), ("lib.two", &thrice)]);
+    let _builds = super::Builds::of(&root);
     let tested = rk::run(
         &root,
         false,

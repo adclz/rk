@@ -1,6 +1,6 @@
 # WASM ABI
 
-A workspace compiles to one component, named after the project: `rk compile` writes `rk_build/debug/plant.wasm` for the project `plant`, and `rk_build/release/plant.wasm` with `--release`.
+A workspace compiles to one component, named after the project: `rk compile` writes `debug/plant.wasm` for the project `plant`, and `release/plant.wasm` with `--release`, in the workspace's build folder, in rk's cache (`rk env build`).
 The component carries the types of everything it imports and exports, so rk writes no WIT beside it.
 A host's tools read them from the binary: `wasm-tools component wit plant.wasm --out-dir wit/` writes them as WIT files, without their doc comments.
 

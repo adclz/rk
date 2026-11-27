@@ -311,31 +311,39 @@ fn validated(wasm: Vec<u8>) -> Result<Vec<u8>, String> {
     }
 }
 
-/// The folder a build of `workspace` lands in, by profile, the only axis
-/// there is.
-fn profile_dir(workspace: &std::path::Path, profile: wasm_codegen::Profile) -> std::path::PathBuf {
+/// The folder the builds of `workspace` land in, in the cache, made if it is
+/// not there yet: a build writes nothing in the workspace.
+pub fn make_build_dir(workspace: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    let cache = db::cache::root()
+        .ok_or_else(|| format!("no cache directory: set {}", db::cache::CACHE_DIR_ENV))?;
+    db::cache::make_build_dir(&cache, workspace).map_err(|e| {
+        format!(
+            "unable to write in the cache at '{}': {e}",
+            db::cache::builds_dir(&cache).display()
+        )
+    })
+}
+
+/// Where `rk compile` writes the component of a project in the build folder
+/// `build`, by profile, the only axis there is: named after the project.
+/// Every command writes it fresh; nothing reads it back expecting another
+/// to have filled it in.
+pub fn component_path(
+    build: &std::path::Path,
+    profile: wasm_codegen::Profile,
+    project: &str,
+) -> std::path::PathBuf {
     let dir = match profile {
         wasm_codegen::Profile::Debug => "debug",
         wasm_codegen::Profile::Release => "release",
     };
-    workspace.join("rk_build").join(dir)
+    build.join(dir).join(component_file(project))
 }
 
-/// Where `rk compile` writes the component of `workspace`: named after its
-/// project. Every command writes it fresh; nothing reads it back expecting
-/// another to have filled it in.
-pub fn component_path(
-    workspace: &std::path::Path,
-    profile: wasm_codegen::Profile,
-    project: &str,
-) -> std::path::PathBuf {
-    profile_dir(workspace, profile).join(component_file(project))
-}
-
-/// Where `rk test` writes the component it ran, which no other command
-/// builds: `rk_build/test/`, and `rk_build/test-O<level>/` optimized.
+/// Where `rk test` writes the component it ran in the build folder `build`,
+/// which no other command builds: `test/`, and `test-O<level>/` optimized.
 pub fn test_component_path(
-    workspace: &std::path::Path,
+    build: &std::path::Path,
     level: Option<&str>,
     project: &str,
 ) -> std::path::PathBuf {
@@ -343,10 +351,7 @@ pub fn test_component_path(
         None => "test".to_string(),
         Some(level) => format!("test-O{level}"),
     };
-    workspace
-        .join("rk_build")
-        .join(dir)
-        .join(component_file(project))
+    build.join(dir).join(component_file(project))
 }
 
 /// The file a component of `project` is: its name, as a file name.

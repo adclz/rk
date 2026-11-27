@@ -136,6 +136,8 @@ fn non_st_file_ignored() {
     std::fs::write(dir.path().join("readme.md"), "# hello").unwrap();
     std::fs::write(dir.path().join("data.json"), "{}").unwrap();
     std::fs::write(dir.path().join("notes.txt"), "stuff").unwrap();
+    // What `rk compile --output` writes when it names a file in the workspace.
+    std::fs::write(dir.path().join("plant.wasm"), [0u8; 100]).unwrap();
 
     let collected = collect(&watcher, &events);
     assert!(
@@ -219,26 +221,6 @@ fn rapid_create_then_delete() {
 
     // Should not hang or crash, events may or may not be delivered
     let _collected = collect(&watcher, &events);
-}
-
-#[test]
-fn rk_build_output_ignored() {
-    let dir = tempfile::tempdir().unwrap();
-    let build_dir = dir.path().join("rk_build").join("release");
-    std::fs::create_dir_all(&build_dir).unwrap();
-
-    let (watcher, events) = setup(dir.path());
-
-    // Simulate compile output — should NOT trigger events
-    std::fs::write(build_dir.join("output.wasm"), [0u8; 100]).unwrap();
-    // Also test .st files inside rk_build (e.g. intermediate artifacts)
-    std::fs::write(build_dir.join("gen.st"), "PROGRAM p END_PROGRAM").unwrap();
-
-    let collected = collect(&watcher, &events);
-    assert!(
-        collected.is_empty(),
-        "expected no events for rk_build/ contents, got: {collected:?}"
-    );
 }
 
 #[test]

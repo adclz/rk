@@ -104,7 +104,16 @@ pub fn describe(workspace: &Path) -> Vec<Row> {
         ),
     });
 
-    rows.push(row("cache", display_or(db::cache::root().as_deref())));
+    let cache = db::cache::root();
+    rows.push(row("cache", display_or(cache.as_deref())));
+    rows.push(row(
+        "build",
+        display_or(
+            cache
+                .map(|cache| db::cache::build_dir(&cache, workspace))
+                .as_deref(),
+        ),
+    ));
 
     rows.push(match db::stdlib::locate(Some(workspace)) {
         Standard::Found { library, origin } => {

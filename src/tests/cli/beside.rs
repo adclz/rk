@@ -542,6 +542,7 @@ fn a_future_of_each_scalar_crosses() {
         all.join(" AND ")
     );
     write(&ws, &[("main.st", &test)]);
+    let _builds = super::Builds::of(&ws);
     tested(&ws, None).expect("each future's value crosses");
 }
 
@@ -844,6 +845,7 @@ fn a_stream_of_each_type_crosses() {
         ));
     }
     write(&ws, &[("main.st", &tests)]);
+    let _builds = super::Builds::of(&ws);
     tested(&ws, None).expect("each stream and the future cross both ways");
 }
 
@@ -1088,6 +1090,7 @@ fn rk_test_carries_a_component_s_stream_and_future() {
     library(&root, "feed", &declarations(&feed), Some(&feed));
     let ws = program(&root, "feed = { path = \"../feed\" }\n", "0");
     write(&ws, &[("main.st", FEED_TESTS)]);
+    let _builds = super::Builds::of(&ws);
     tested(&ws, Some("test_feed")).expect("the component's stream and future cross");
     tested(&ws, Some("test_sink")).expect("the program's stream crosses");
     tested(&ws, Some("test_relay")).expect("a future the program passes on crosses");
@@ -1279,6 +1282,7 @@ fn a_copy_waiting_on_the_other_store_ends_when_cancelled() {
     library(&root, "wait", &declarations(&wait), Some(&wait));
     let ws = program(&root, "wait = { path = \"../wait\" }\n", "0");
     write(&ws, &[("main.st", WAIT_TESTS)]);
+    let _builds = super::Builds::of(&ws);
     tested(&ws, Some("test_cancelled_read")).expect("a waiting read is cancelled");
     tested(&ws, Some("test_cancelled_write")).expect("a waiting write is cancelled");
     tested(&ws, Some("test_reader_left")).expect("the writer finds its reader gone");
@@ -1380,6 +1384,7 @@ fn a_future_s_get_reads_it_and_lets_go() {
     library(&root, "feed", &declarations(&feed), Some(&feed));
     let ws = program(&root, "feed = { path = \"../feed\" }\n", "0");
     write(&ws, &[("main.st", GET_TESTS)]);
+    let _builds = super::Builds::of(&ws);
     tested(&ws, Some("test_get_reads_once")).expect("each value comes once");
     tested(&ws, Some("test_read_keeps")).expect("a plain read leaves the end to the program");
     assert!(
@@ -1509,6 +1514,7 @@ fn a_function_s_reader_reads_its_stream_to_the_end() {
     library(&root, "feed", &declarations(&feed), Some(&feed));
     let ws = program(&root, "feed = { path = \"../feed\" }\n", "0");
     write(&ws, &[("main.st", READER_TESTS)]);
+    let _builds = super::Builds::of(&ws);
     tested(&ws, Some("test_reader_reads_to_the_end")).expect("hello, then the end");
     assert!(
         tested(&ws, Some("test_reader_lets_go_when_its_writer_left")).is_err(),
@@ -1635,6 +1641,7 @@ fn the_array_forms_write_and_read_on_a_component() {
     library(&root, "drain", &declarations(&drain), Some(&drain));
     let ws = program(&root, "drain = { path = \"../drain\" }\n", "0");
     write(&ws, &[("main.st", ARRAY_WRITER_TESTS)]);
+    let _builds = super::Builds::of(&ws);
     tested(&ws, Some("test_array_writer_answers")).expect("hello goes from the array");
     tested(&ws, Some("test_array_writer_takes_its_whole_array"))
         .expect("a count of the whole array goes");
@@ -2053,6 +2060,7 @@ fn a_function_s_writer_opens_writes_and_reads_the_answer() {
     library(&root, "drain", &declarations(&drain), Some(&drain));
     let ws = program(&root, "drain = { path = \"../drain\" }\n", "0");
     write(&ws, &[("main.st", FUNCTION_WRITER_TESTS)]);
+    let _builds = super::Builds::of(&ws);
     tested(&ws, Some("test_function_writer_answers")).expect("the text goes, the answer comes");
     tested(&ws, Some("test_function_writer_waits_for_a_request"))
         .expect("nothing opens before a request");
@@ -2231,6 +2239,7 @@ fn an_async_function_s_writer_starts_the_call_and_keeps_its_result() {
     library(&root, "upload", &declarations(&upload), Some(&upload));
     let ws = program(&root, "upload = { path = \"../upload\" }\n", "0");
     write(&ws, &[("main.st", ASYNC_WRITER_TESTS)]);
+    let _builds = super::Builds::of(&ws);
     tested(&ws, None).expect("the call returns what came, once");
 }
 
@@ -2342,6 +2351,7 @@ fn a_function_s_writer_reports_the_error_it_answers_with() {
     library(&root, "upload", &declarations(&upload), Some(&upload));
     let ws = program(&root, "upload = { path = \"../upload\" }\n", "0");
     write(&ws, &[("main.st", RESULT_WRITER_TESTS)]);
+    let _builds = super::Builds::of(&ws);
     tested(&ws, Some("test_result_writer_reports_the_error"))
         .expect("the error is ERROR and ERRORID");
     tested(&ws, Some("test_result_writer_without_an_error")).expect("no error, no ERROR");
@@ -2361,6 +2371,7 @@ fn a_stream_s_writer_writes_and_ends_it() {
     library(&root, "drain", &declarations(&drain), Some(&drain));
     let ws = program(&root, "drain = { path = \"../drain\" }\n", "0");
     write(&ws, &[("main.st", WRITER_TESTS)]);
+    let _builds = super::Builds::of(&ws);
     tested(&ws, Some("test_writer_ends_the_stream")).expect("the text goes, then the end");
     tested(&ws, Some("test_writer_closes_after_its_write"))
         .expect("CLOSE waits for the write under way");
@@ -2485,6 +2496,7 @@ fn rk_test_passes_a_component_s_resources() {
     library(&root, "files", &declarations(&storage), Some(&storage));
     let ws = program(&root, "files = { path = \"../files\" }\n", "0");
     write(&ws, &[("main.st", STORAGE_TESTS)]);
+    let _builds = super::Builds::of(&ws);
     tested(&ws, None).expect("the handles cross");
 }
 
@@ -2676,11 +2688,12 @@ fn rk_test_runs_the_program_s_calls_into_a_component() {
         "0",
     );
     write(&ws, &[("main.st", MACHINE_TESTS)]);
+    let builds = super::Builds::of(&ws);
     tested(&ws, Some("test_echo")).expect("the string comes back");
     assert!(tested(&ws, None).is_err(), "test_stuck fails");
 
     // What ran: the program, and the components beside it, byte for byte.
-    let built = ws.join("rk_build").join("test");
+    let built = builds.dir().join("test");
     let component = |library: &str| {
         std::fs::read(built.join("components").join(library).join("c.wasm")).unwrap()
     };
@@ -2754,8 +2767,9 @@ fn a_component_that_does_not_start_fails_each_test() {
              __RAISE('the axis moved');\n    END_IF;\nEND_FUNCTION\n",
         )],
     );
+    let builds = super::Builds::of(&ws);
     assert!(tested(&ws, None).is_err(), "the test fails");
-    let built = ws.join("rk_build").join("test");
+    let built = builds.dir().join("test");
     let records = rk::test_host::run_each(
         &std::fs::read(built.join("plant.wasm")).unwrap(),
         &rk::test_runner::beside_of(&built.join("plant.wasm")).unwrap(),
@@ -2795,10 +2809,11 @@ fn a_library_s_own_tests_run_its_component() {
         )],
     );
     let drives = root.join("drives");
+    let builds = super::Builds::of(&drives);
     tested(&drives, None).expect("the library's test runs its component");
     assert!(
-        drives
-            .join("rk_build")
+        builds
+            .dir()
             .join("test")
             .join("components")
             .join("drives")

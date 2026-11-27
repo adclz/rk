@@ -6,6 +6,10 @@
 
 use std::process::Command;
 
+mod common;
+
+use common::{Builds, tests_cache};
+
 fn rk(args: &[&str], ws: &std::path::Path) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_rk"))
         .arg("--workspace")
@@ -13,6 +17,7 @@ fn rk(args: &[&str], ws: &std::path::Path) -> std::process::Output {
         .args(args)
         .env("RK_STDLIB_PATH", "")
         .env("RK_HOME", ws.join("home"))
+        .env("RK_CACHE_DIR", tests_cache())
         .output()
         .expect("run rk")
 }
@@ -26,13 +31,15 @@ fn rk_with_std(args: &[&str], ws: &std::path::Path) -> std::process::Output {
         .args(args)
         .env_remove("RK_STDLIB_PATH")
         .env("RK_HOME", ws.join("home"))
+        .env("RK_CACHE_DIR", tests_cache())
         .output()
         .expect("run rk")
 }
 
-/// The tests run on the component, which lands in `rk_build/test/` with no
-/// core module: the debug build, which also tells its host where each raise
-/// is, so no other command writes it.
+/// The tests run on the component, which lands in the `test/` folder of the
+/// workspace's build folder, in the cache, with no core module: the debug
+/// build, which also tells its host where each raise is, so no other command
+/// writes it. Nothing is written in the workspace.
 #[test]
 fn rk_test_writes_the_component_it_ran() {
     let ws = tempfile::tempdir().unwrap();
@@ -50,6 +57,7 @@ END_FUNCTION
 "#,
     )
     .unwrap();
+    let builds = Builds::of(ws.path());
     let out = rk(&["test"], ws.path());
     assert!(
         out.status.success(),
@@ -57,7 +65,13 @@ END_FUNCTION
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    let built = ws.path().join("rk_build").join("test");
+    let mut held: Vec<String> = std::fs::read_dir(ws.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    held.sort();
+    assert_eq!(held, ["config.toml", "main.st"]);
+    let built = builds.dir().join("test");
     let component = std::fs::read(built.join("Plant_A.wasm")).expect("the component");
     assert!(wasmparser::Parser::is_component(&component));
     assert!(!built.join("core.wasm").exists(), "and no core module");
@@ -77,7 +91,7 @@ END_FUNCTION
         "{imports:?}"
     );
     assert!(
-        !ws.path().join("rk_build").join("debug").exists(),
+        !builds.dir().join("debug").exists(),
         "what `rk compile` writes is left alone"
     );
 }
@@ -120,6 +134,7 @@ END_FUNCTION
 "#,
     )
     .unwrap();
+    let _builds = Builds::of(ws.path());
 
     let out = rk_with_std(&["test"], ws.path());
     assert!(!out.status.success(), "a test fails");

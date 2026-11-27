@@ -14,7 +14,8 @@ description: Compile a workspace and run its {test} FUNCTIONs and FUNCTION_BLOCK
 Runs every FUNCTION marked `{test}`, once, and every FUNCTION_BLOCK marked `{test}`, cycle by cycle until a cycle leaves its `DONE` TRUE.
 Writing them is the `programming-tests` skill.
 
-The tests run on the component of the workspace, unoptimized, the way a host runs it: it is left in `rk_build/test/<project>.wasm`, or in `rk_build/test-O<level>/` with `-O`.
+The tests run on the component of the workspace, unoptimized, the way a host runs it: it is left in the workspace's build folder, in rk's cache, as `test/<project>.wasm`, or in `test-O<level>/` with `-O`.
+`rk env build` prints the folder; nothing is written in the workspace.
 That build tells `rk test` where each raise is, so a failure is reported with the calls in progress, and no other command writes it.
 The clocks are WASI's, as wasmtime gives them, and the time zone is the machine's.
 

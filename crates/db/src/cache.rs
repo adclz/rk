@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! rk's cache directory: what it keeps between builds. Each library is
-//! there under the hash of its files, the standard library with them, and
-//! the optimizer beside them.
+//! there under the hash of its files, the standard library with them, the
+//! optimizer beside them, and what each workspace builds under a hash of
+//! its path.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+
+use sha2::{Digest, Sha256};
 
 use crate::dependencies::{ContentHash, cached_dir, packages_dir};
 
@@ -29,6 +32,46 @@ pub fn root() -> Option<PathBuf> {
 /// Whether rk may download by itself what it lacks.
 pub fn may_download() -> bool {
     std::env::var_os(NO_DOWNLOAD_ENV).is_none()
+}
+
+/// Where the cache keeps the builds, a folder per workspace.
+pub fn builds_dir(cache: &Path) -> PathBuf {
+    cache.join("builds")
+}
+
+/// The file of a build folder that names its workspace, for whoever looks
+/// through the cache.
+pub const BUILT_WORKSPACE: &str = "workspace";
+
+/// The folder of `cache` that the builds of `workspace` land in, named by a
+/// hash of the workspace's path as the file system resolves it: one
+/// workspace has one folder whichever way a command names it, and two
+/// workspaces have two.
+pub fn build_dir(cache: &Path, workspace: &Path) -> PathBuf {
+    let digest = Sha256::digest(resolved(workspace).as_os_str().as_encoded_bytes());
+    let key: String = digest[..8].iter().map(|b| format!("{b:02x}")).collect();
+    builds_dir(cache).join(key)
+}
+
+/// [`build_dir`], made if it is not there yet, with the file that names the
+/// workspace.
+pub fn make_build_dir(cache: &Path, workspace: &Path) -> std::io::Result<PathBuf> {
+    let dir = build_dir(cache, workspace);
+    std::fs::create_dir_all(&dir)?;
+    let file = dir.join(BUILT_WORKSPACE);
+    let named = format!("{}\n", resolved(workspace).display());
+    if std::fs::read_to_string(&file).ok().as_deref() != Some(named.as_str()) {
+        std::fs::write(&file, named)?;
+    }
+    Ok(dir)
+}
+
+/// The workspace's path as the file system resolves it, or as an absolute
+/// path when it cannot: a folder that is not there yet.
+fn resolved(workspace: &Path) -> PathBuf {
+    std::fs::canonicalize(workspace)
+        .or_else(|_| std::path::absolute(workspace))
+        .unwrap_or_else(|_| workspace.to_path_buf())
 }
 
 /// A file or a link of a library.
