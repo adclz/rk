@@ -5,8 +5,24 @@ use std::collections::HashMap;
 
 use auto_lsp::lsp_types::{TextEdit, WorkspaceEdit};
 use db::WorkspaceDataBase;
-use hir::{HirNodeInfo, hir_def::hir_node::HirNode};
+use hir::{
+    HasName, HasVisibility, HirNodeInfo, Visibility,
+    hir_def::{
+        hir_node::HirNode,
+        pous::{
+            pou::Pou,
+            variable::{VariableDecl, VariableKind},
+        },
+        scope::ScopeKind,
+        semantic_index::get_scope,
+    },
+    hir_ty::{
+        oop::{MethodRef, ancestry, descendants},
+        ty::Type,
+    },
+};
 
+use crate::handlers::references::ReferenceLocation;
 use crate::handlers::{ReferencesHandler, RenameHandler};
 
 impl<'db> RenameHandler<'db> for HirNode<'db> {
@@ -45,7 +61,11 @@ impl<'db> RenameHandler<'db> for HirNode<'db> {
         };
         let locations = match namespace {
             Some(path) => super::references::find_namespace_references(db, path)?,
-            None => self.locations(db)?,
+            None => match renamed_together(db, self) {
+                Some(locations) if !locations.is_empty() => locations,
+                Some(_) => return None,
+                None => self.locations(db)?,
+            },
         };
 
         let mut changes: HashMap<_, Vec<TextEdit>> = HashMap::new();
@@ -76,6 +96,113 @@ impl<'db> RenameHandler<'db> for HirNode<'db> {
         }
         Some(WorkspaceEdit::new(changes))
     }
+}
+
+/// Where a rename from `node` edits when the cursor names a method, or an
+/// input, output or in-out of one: the method shares its name with every
+/// method it overrides or implements and that overrides or implements it,
+/// and its parameters their names with theirs (E1128). Renaming one of them
+/// alone broke the others: E1113, E1116, E1119. `None` for anything else.
+fn renamed_together<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    node: &HirNode<'db>,
+) -> Option<Vec<ReferenceLocation>> {
+    let targets: Vec<Type<'db>> = match super::references::resolve_cursor_target(db, node)? {
+        Type::MethodDecl(method) => method_family(db, method)
+            .into_iter()
+            .map(Type::MethodDecl)
+            .collect(),
+        Type::Variable((variable, _)) => {
+            let method = method_of_parameter(db, variable)?;
+            let name = variable.get_name_ident(db);
+            method_family(db, method)
+                .into_iter()
+                .filter_map(|member| {
+                    member
+                        .variables(db)
+                        .iter()
+                        .find(|parameter| parameter.get_name_ident(db) == name)
+                        .map(|parameter| Type::Variable((*parameter, None)))
+                })
+                .collect()
+        }
+        _ => return None,
+    };
+    let mut locations: Vec<ReferenceLocation> = targets
+        .iter()
+        .flat_map(|target| super::references::locations_of(db, target))
+        .collect();
+    super::references::once_each(&mut locations);
+    Some(locations)
+}
+
+/// The method `variable` is an input, an output or an in-out of. A method's
+/// own VARs are its own: two methods of a family keep theirs apart.
+fn method_of_parameter<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    variable: VariableDecl<'db>,
+) -> Option<MethodRef<'db>> {
+    if !matches!(
+        variable.kind(db),
+        VariableKind::Input | VariableKind::Output | VariableKind::InOut
+    ) {
+        return None;
+    }
+    match get_scope(db, variable.get_scope_id(db)).kind {
+        ScopeKind::MethodDecl(method) => Some(MethodRef::Declared(method)),
+        ScopeKind::MethodProt(prototype) => Some(MethodRef::Prototype(prototype)),
+        _ => None,
+    }
+}
+
+/// `method` and every method that shares its name with it through
+/// overriding and implementing: what it overrides or implements, what
+/// overrides or implements it, and so on through every base, INTERFACE and
+/// derived block. A PRIVATE method neither overrides nor is overridden, and
+/// is alone.
+fn method_family<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    method: MethodRef<'db>,
+) -> Vec<MethodRef<'db>> {
+    let private = |m: &MethodRef<'db>| m.get_visibility(db).contains(Visibility::PRIVATE);
+    let mut family = vec![method];
+    if private(&method) {
+        return family;
+    }
+    let name = method.get_name_ident(db);
+    let mut next = 0;
+    while let Some(&member) = family.get(next) {
+        next += 1;
+        let Some(owner) = super::implementation::owner_of(db, member) else {
+            continue;
+        };
+        let ancestry = ancestry(db, owner);
+        let related = ancestry
+            .chain
+            .iter()
+            .copied()
+            .chain(
+                ancestry
+                    .interfaces
+                    .iter()
+                    .map(|iface| Pou::Interface(*iface)),
+            )
+            .chain(descendants(db, owner));
+        for pou in related {
+            if let Some(other) = pou
+                .get_scope_id(db)
+                .def_map(db)
+                .declared_methods
+                .get(&name)
+                .copied()
+                && !private(&other)
+                && !family.contains(&other)
+            {
+                family.push(other);
+            }
+        }
+    }
+    family
 }
 
 /// Whether `span` of `source` holds one identifier.
