@@ -109,7 +109,7 @@ impl<'db> ImplementationHandler<'db> for hir::hir_ty::oop::MethodRef<'db> {
 /// The POU a method belongs to. A method's scope does not name it: a
 /// prototype's parent scope is the file's, so the owner is found by asking
 /// each POU in the file whether the method is one of its own.
-fn owner_of<'db>(
+pub(crate) fn owner_of<'db>(
     db: &'db dyn WorkspaceDataBase,
     method: hir::hir_ty::oop::MethodRef<'db>,
 ) -> Option<Pou<'db>> {

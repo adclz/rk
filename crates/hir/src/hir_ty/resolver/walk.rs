@@ -803,12 +803,21 @@ impl<'db> Type<'db> {
             }
             _ => {
                 if report_errors && !self.is_never() {
-                    ctx.errors.push(
-                        ArrayError::IndexNonArrayTypePathExpr {
-                            expr,
-                            ty: place.current_typ,
+                    // After a bracket, what this one indexes is the element
+                    // the other read, `x[1]` of `x[1][2]`, not the variable
+                    // the path started from: the error named the array.
+                    // Named as declared: the type the other bracket read.
+                    let ty = match expr.expr(db) {
+                        PathExprKind::Index(index)
+                            if matches!(index.path.expr(db), PathExprKind::Index(_)) =>
+                        {
+                            ctx.type_of_path_expr_with_adjustments(index.path)
                         }
-                        .to_diagnostic(db, ctx.scope.file(db)),
+                        _ => place.current_typ,
+                    };
+                    ctx.errors.push(
+                        ArrayError::IndexNonArrayTypePathExpr { expr, ty }
+                            .to_diagnostic(db, ctx.scope.file(db)),
                     );
                 }
                 return;
@@ -843,13 +852,15 @@ impl<'db> Type<'db> {
                     .of_type(db)
                     .map_or(Type::Never, |of_type| of_type.infer(db)),
                 Ordering::Greater => {
+                    // Past the array's dimensions, an index reads into its
+                    // element, `m[1, 2, 3]` of a 2-D `m` into a DINT.
                     if report_errors {
+                        let ty = array
+                            .of_type(db)
+                            .map_or(Type::Never, |of_type| of_type.infer(db));
                         ctx.errors.push(
-                            ArrayError::IndexNonArrayTypePathExpr {
-                                expr,
-                                ty: place.current_typ,
-                            }
-                            .to_diagnostic(db, ctx.scope.file(db)),
+                            ArrayError::IndexNonArrayTypePathExpr { expr, ty }
+                                .to_diagnostic(db, ctx.scope.file(db)),
                         );
                     }
                     return;

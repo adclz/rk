@@ -184,6 +184,50 @@ END_FUNCTION
     assert_snapshot!(format_definition_response(&def.unwrap()), @"/test0.st:1:10-1:16");
 }
 
+/// A positional argument written as a name is that name: on `level` in
+/// `Twice(level)` the definition is the variable passed, as it is in
+/// `Twice(level + 1)`, not the input of `Twice` the argument binds. A binding
+/// names its input, `value` in `value := level`, and its value the variable;
+/// an instance's call takes its arguments the same way.
+#[rstest]
+pub fn definition_on_a_positional_argument_is_what_it_names(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Twice : DINT
+VAR_INPUT value : DINT; END_VAR
+    Twice := value * 2;
+END_FUNCTION
+
+FUNCTION_BLOCK Acc
+VAR_INPUT amount : DINT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION Caller : DINT
+VAR level : DINT; a : Acc; END_VAR
+    Caller := Twice(level) + Twice(value := level);
+    a(level);
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    let definition = |marker: &str, inside: usize| {
+        let offset = source.find(marker).unwrap() + inside;
+        let node = descendant_at(&with_db, file, offset).expect("a node");
+        let def = node.definition(&with_db, offset).expect("a definition");
+        format!("{marker} +{inside}: {}", format_definition_response(&def))
+    };
+    let answers = [
+        definition("Twice(level)", "Twice(".len()),
+        definition("value := level", 0),
+        definition("value := level", "value := ".len()),
+        definition("a(level)", "a(".len()),
+    ];
+    assert_snapshot!(answers.join("\n"), @r"
+    Twice(level) +6: /test0.st:11:4-11:9
+    value := level +0: /test0.st:2:10-2:15
+    value := level +9: /test0.st:11:4-11:9
+    a(level) +2: /test0.st:11:4-11:9
+    ");
+}
+
 /// An index is an expression like any other: what it reads is reached from it.
 #[rstest]
 pub fn definition_in_the_index_of_a_read_by_position(mut with_db: RootDatabase) {

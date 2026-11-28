@@ -200,6 +200,46 @@ fn a_string_an_import_cannot_take_is_placed_at_the_call(mut with_db: db::RootDat
     );
 }
 
+/// A message reaches the host as WIT's `string`, which is UTF-8. One that is
+/// not is reported cut before its first byte that is not, and still placed:
+/// here a message caught into a STRING too short for its `é` and raised
+/// again, and one holding a byte that starts no character.
+#[rstest]
+#[case::cut_inside_a_character("__RAISE(why);", "a")]
+#[case::a_byte_that_starts_none("__RAISE('ab$C3cd');", "ab")]
+fn a_message_that_is_not_utf8_is_reported_cut(
+    mut with_db: db::RootDatabase,
+    #[case] statement: &str,
+    #[case] message: &str,
+) {
+    let source = format!(
+        r#"
+        FUNCTION Rethrow
+        VAR why : STRING[2]; END_VAR
+            __TRY
+                __RAISE('aé');
+            __CATCH(why)
+            __END_TRY;
+            {statement}                     // raise
+        END_FUNCTION
+
+        {{test}}
+        FUNCTION test_rethrow
+            Rethrow();                      // call
+        END_FUNCTION
+    "#
+    );
+    let record = only(run_build(&compile_tests(&mut with_db, &source), None));
+    assert_eq!(record.reason.as_deref(), Some(message));
+    assert_eq!(
+        calls(&record),
+        [
+            ("Rethrow".to_string(), line_of(&source, "// raise")),
+            ("test_rethrow".to_string(), line_of(&source, "// call")),
+        ]
+    );
+}
+
 /// A trap is not an exception: it comes back with wasmtime's backtrace, read
 /// as it came. Its function indices count the module's imports first, which
 /// the tables do not: one `{extern}` here shifts them. Its offsets count
@@ -315,6 +355,36 @@ fn a_failure_of_an_optimized_module_has_no_calls(
             Some(line_of(source, &format!("FUNCTION {}", record.name))),
             "{record:?}"
         );
+    }
+}
+
+/// The same through wasm-opt, as `rk test -O` builds it. wasm-opt keeps a
+/// custom section as it came, so the tables a failure is placed with
+/// described bodies it had rewritten, and a failure was placed in a
+/// function it never reached. The optimized module drops them, at every
+/// level.
+#[rstest]
+#[case::trap(TRAPPED)]
+#[case::raise(RAISED)]
+fn a_failure_wasm_opt_optimized_has_no_calls(mut with_db: db::RootDatabase, #[case] source: &str) {
+    if !crate::tests::utils::wasm_opt_installed() {
+        crate::tests::utils::skip_without_wasm_opt("an optimized test build's failures");
+        return;
+    }
+    let build = compile_tests(&mut with_db, source);
+    for level in ["0", "1", "2", "3", "4", "s", "z"] {
+        let optimized = rk::compiler::optimize_wasm(build.core.clone(), Some(level), false);
+        let records = run(&build.wrap(&optimized), Some(Duration::from_millis(200)));
+        assert!(!records.is_empty());
+        for record in &records {
+            assert!(record.reason.is_some(), "-O{level}: {record:?}");
+            assert!(record.backtrace.is_empty(), "-O{level}: {record:?}");
+            assert_eq!(
+                record.line,
+                Some(line_of(source, &format!("FUNCTION {}", record.name))),
+                "-O{level}: {record:?}"
+            );
+        }
     }
 }
 

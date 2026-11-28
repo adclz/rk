@@ -35,6 +35,7 @@ interface control {
 
 No function of the interface waits.
 An exception never leaves the component, where it would be a trap that stops the whole PLC: it comes back as the error of the result, `raised` with its message for a scan.
+A host reads the message as text, so one that is not UTF-8, like a `STRING` cut inside a character, comes cut before its first byte that is not.
 
 The WIT of the interface, with each case explained, is [crates/debug_format/wit/rk-plc/control.wit](../crates/debug_format/wit/rk-plc/control.wit).
 
@@ -171,7 +172,7 @@ export plant: interface {
 
 A `VAR_OUTPUT` named as the function is would be a second field of that name (`E1513`), and a record named as another function of the interface would be a second item of that name, which the build refuses.
 
-The result is what the FUNCTION returns, or the message of the exception that stopped it.
+The result is what the FUNCTION returns, or the message of the exception that stopped it, cut before its first byte that is not UTF-8 as a scan's is.
 An exception never leaves the component, where it would be a trap, and a trap stops the whole PLC.
 What a host passes is checked the same way, before the FUNCTION runs:
 

@@ -1423,3 +1423,25 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// An unknown name in an initial value is reported as one, where it is
+/// written, and nothing follows from it. In a TYPE's default nothing
+/// resolved it, and it was only "not constant" (E0401); in a member's or a
+/// constant's it was both. The bare value of an enum is such a name too.
+#[rstest]
+#[case::a_type_s_default("TYPE T : INT := nope; END_TYPE")]
+#[case::a_struct_field("TYPE S : STRUCT x : INT := nope; END_STRUCT; END_TYPE")]
+#[case::an_array_type("TYPE A : ARRAY[0..1] OF INT := [nope, 1]; END_TYPE")]
+#[case::a_member("FUNCTION_BLOCK Fb VAR y : INT := nope; END_VAR END_FUNCTION_BLOCK")]
+#[case::a_constant("VAR_CONSTANT K : INT := nope; END_VAR")]
+#[case::a_global("CONFIGURATION C VAR_GLOBAL g : INT := nope + 1; END_VAR END_CONFIGURATION")]
+#[case::a_bare_enum_value("TYPE Level : (Low, Mid) := Mid; END_TYPE")]
+fn invalid_an_unknown_name_in_an_initial_value(mut with_db: RootDatabase, #[case] source: &str) {
+    let diagnostics = test_diagnostics(&mut with_db, &[source]);
+    let codes: Vec<&str> = diagnostics
+        .lines()
+        .filter(|line| line.contains("] Error:"))
+        .map(|line| &line[1..6])
+        .collect();
+    assert_eq!(codes, ["E0201"], "{diagnostics}");
+}

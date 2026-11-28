@@ -136,3 +136,31 @@ fn effectless_in_function_block(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+/// `SUPER()` runs the base body, and was flagged in every block that called
+/// it. A bare `THIS` does nothing, and still is.
+#[rstest]
+fn the_base_body_s_call_has_an_effect(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+        VAR_OUTPUT n : INT; END_VAR
+            n := n + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Kid EXTENDS Base
+            SUPER();
+            THIS;
+        END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "effectless-statement"), @r"
+    [L0215] Info: effectless statement
+       ,-[ file:///test0.st:9:13 ]
+       |
+     9 |             THIS;
+       |             ^^|^
+       |               `--- statement has no effect
+       |
+       | Note: lint rule: effectless-statement
+    ---'
+    ");
+}

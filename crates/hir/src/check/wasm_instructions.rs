@@ -198,6 +198,7 @@ pub const BUILTINS: &[(&str, &[Lane], &[Lane])] = &[
     ("rk.str_from_u32", &[Lane::I32, Lane::I32, Lane::I32], &[]),
     ("rk.str_from_u64", &[Lane::I64, Lane::I32, Lane::I32], &[]),
     ("rk.utf8_check", &[Lane::I32, Lane::I32], &[]),
+    ("rk.utf8_cut", &[Lane::I32, Lane::I32], &[Lane::I32]),
     (
         "str.byte_cmp",
         &[Lane::I32, Lane::I32, Lane::I32, Lane::I32],

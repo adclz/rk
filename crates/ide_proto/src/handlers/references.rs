@@ -9,7 +9,9 @@ use hir::{
     HasName, HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{InitExpr, InitExprKind, ParamAssign, ParamAssignKind, PathExpr},
+            expression::{
+                Expr, ExprKind, InitExpr, InitExprKind, ParamAssign, ParamAssignKind, PathExpr,
+            },
             spec::{Spec, SpecKind},
         },
         hir_node::HirNode,
@@ -17,6 +19,7 @@ use hir::{
             identifier::SpanIdent,
             namespace::{NamespacePath, SpanNamespacePath},
         },
+        pous::variable::VariableDecl,
         semantic_index::semantic_index,
     },
     hir_ty::{
@@ -66,30 +69,36 @@ impl<'db> ReferencesHandler<'db> for HirNode<'db> {
         }
 
         let target = resolve_cursor_target(db, self)?;
-        let name = reference_type_name(db, &target)?;
-
-        let mut locations = vec![];
-
-        for file in db.get_files().iter() {
-            // Text pre-filter: skip files that don't contain the symbol name
-            let source = file.document(db).as_str();
-            // Unicode, matching the fold resolution uses: an ASCII fold here
-            // would skip a file whose only mention of `MÄX` is spelled `mäx`.
-            if !source.to_lowercase().contains(&name.to_lowercase()) {
-                continue;
-            }
-
-            find_references_in_file(db, *file, &target, name, &mut locations);
-        }
-
-        once_each(&mut locations);
-
-        if locations.is_empty() {
-            None
-        } else {
-            Some(locations)
-        }
+        let locations = locations_of(db, &target);
+        (!locations.is_empty()).then_some(locations)
     }
+}
+
+/// Where `target` is declared and named, in every file, each place once.
+pub(crate) fn locations_of<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    target: &Type<'db>,
+) -> Vec<ReferenceLocation> {
+    let Some(name) = reference_type_name(db, target) else {
+        return vec![];
+    };
+
+    let mut locations = vec![];
+
+    for file in db.get_files().iter() {
+        // Text pre-filter: skip files that don't contain the symbol name
+        let source = file.document(db).as_str();
+        // Unicode, matching the fold resolution uses: an ASCII fold here
+        // would skip a file whose only mention of `MÄX` is spelled `mäx`.
+        if !source.to_lowercase().contains(&name.to_lowercase()) {
+            continue;
+        }
+
+        find_references_in_file(db, *file, target, name, &mut locations);
+    }
+
+    once_each(&mut locations);
+    locations
 }
 
 /// Get the name text of a reference target for text pre-filtering
@@ -143,7 +152,7 @@ fn path_reference_target<'db>(db: &'db dyn WorkspaceDataBase, p: PathExpr<'db>) 
 
 /// Extract a normalized reference target type from a HirNode at cursor position.
 /// Accepts all node types since `descendant_at` returns the deepest node.
-fn resolve_cursor_target<'db>(
+pub(crate) fn resolve_cursor_target<'db>(
     db: &'db dyn WorkspaceDataBase,
     node: &HirNode<'db>,
 ) -> Option<Type<'db>> {
@@ -157,6 +166,11 @@ fn resolve_cursor_target<'db>(
         HirNode::Spec(spec) => spec.infer(db),
         HirNode::PathExpr(p) => path_reference_target(db, *p),
         HirNode::VariableAccess(v) => v.infer(db),
+        // `...values+` names the pack, whatever the fold gives: a
+        // comparison's is a BOOL.
+        HirNode::Expr(e) if let Some((_, pack)) = pack_named(db, *e) => {
+            Type::Variable((pack, None))
+        }
         HirNode::Expr(e) => e.infer(db),
         HirNode::Param(p) => p.infer(db),
         // A field it names: its parentheses and brackets name nothing, and
@@ -192,8 +206,12 @@ fn resolve_walk_target<'db>(
         // A field named in an initializer, `fuel` of `(fuel := 1)`. The other
         // initializer nodes hold their values, and name nothing themselves.
         HirNode::InitExpr(i) => init_field_name(db, *i).map(|_| i.infer(db))?,
-        // Skip Expr, Invocation, VariableAccess — they wrap inner nodes
-        // and would produce duplicate matches (PathExpr already covers variable accesses)
+        // A variadic parameter is read by `...values+` or `...values[i]`
+        // alone, which no path names: a rename left them behind (E0814).
+        HirNode::Expr(e) => Type::Variable((pack_named(db, *e)?.1, None)),
+        // Skip the other Exprs, Invocation, VariableAccess — they wrap inner
+        // nodes and would produce duplicate matches (PathExpr already covers
+        // variable accesses)
         _ => return None,
     };
     normalize_reference_type(ty)
@@ -207,6 +225,27 @@ fn param_name<'db>(db: &'db dyn WorkspaceDataBase, p: ParamAssign<'db>) -> Optio
         | ParamAssignKind::FormalOutput { param, .. } => Some(param),
         ParamAssignKind::NonFormal { .. } => None,
     }
+}
+
+/// The variadic parameter a fold or an element of a pack reads, `values` of
+/// `...values+` or `...values[i]`, and the name it is written with: the
+/// POU's own, as inference binds it.
+fn pack_named<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    e: Expr<'db>,
+) -> Option<(SpanIdent<'db>, VariableDecl<'db>)> {
+    let (ExprKind::FoldExpr { param_id, .. } | ExprKind::PackElement { param_id, .. }) = e.expr(db)
+    else {
+        return None;
+    };
+    let pack = e
+        .scope_id(db)
+        .def_map(db)
+        .local_variables
+        .get(&param_id.ident(db))
+        .copied()
+        .filter(|var| var.variadic(db))?;
+    Some((*param_id, pack))
 }
 
 /// The field or member an initializer names, `fuel` of `(fuel := 1)`.
@@ -235,6 +274,7 @@ fn node_reference_ident<'db>(
         HirNode::Param(p) => param_name(db, *p)?.ident(db).text(db),
         HirNode::InitExpr(i) => init_field_name(db, *i)?.ident(db).text(db),
         HirNode::Spec(spec) => spec_target(db, *spec)?.ident(db).text(db),
+        HirNode::Expr(e) => pack_named(db, *e)?.0.ident(db).text(db),
         _ => return None,
     })
 }
@@ -274,6 +314,11 @@ fn reference_span<'db>(
         },
         // The name alone, `T` of `Lib.T`: the whole path was replaced, and
         // the namespace it was qualified with went with it.
+        // The name alone, `values` of `...values+`.
+        HirNode::Expr(e) => match pack_named(db, *e) {
+            Some((name, _)) => name.get_span(db),
+            None => node.get_span(db),
+        },
         HirNode::Spec(spec) => match spec_target(db, *spec) {
             Some(name) => name.get_span(db),
             None => node.get_span(db),
@@ -448,7 +493,7 @@ pub(crate) fn find_namespace_references<'db>(
 /// a node once for each declaration it belongs to: the type of `a, b, c :
 /// Lib.T` once for each variable, and with it the `Lib` its path names. A
 /// rename edited that name three times, edits a client refuses.
-fn once_each(locations: &mut Vec<ReferenceLocation>) {
+pub(crate) fn once_each(locations: &mut Vec<ReferenceLocation>) {
     let mut seen = std::collections::HashSet::new();
     locations.retain(|location| {
         seen.insert((

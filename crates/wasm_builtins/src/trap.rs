@@ -97,6 +97,21 @@ pub extern "C" fn rk_utf8_check(ptr: *const u8, len: u32) {
     }
 }
 
+/// How many bytes of the message `(ptr, len)` an exception carries are
+/// UTF-8 from its start: what a host is given of a message caught at the
+/// interface, which it reads as WIT's `string`. A message cut inside a
+/// character, or holding a byte that starts none, reaches it cut before
+/// that byte, where the component model would trap on the whole message.
+/// Nothing is written: the bytes may be a literal, or a CONSTANT.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_utf8_cut(ptr: *const u8, len: u32) -> u32 {
+    let bytes = unsafe { core::slice::from_raw_parts(ptr, len as usize) };
+    match core::str::from_utf8(bytes) {
+        Ok(_) => len,
+        Err(error) => error.valid_up_to() as u32,
+    }
+}
+
 /// Character check for a CHAR the module passes to an import: WIT's `char`
 /// is a Unicode scalar value, and the component model traps on a surrogate
 /// or on a code past U+10FFFF.

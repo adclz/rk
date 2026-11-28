@@ -468,7 +468,8 @@ fn run_wasm_opt(wasm_bytes: &[u8], level: &str, verbose: bool) -> Result<Vec<u8>
     cmd.arg(format!("-O{level}"));
     // The functions keep their names: a trap in a release build names the
     // function it happened in, where it showed a number. The stepping
-    // tables are still dropped, since the bodies are rewritten.
+    // tables are still dropped after, since the bodies are rewritten
+    // ([`drop_rewritten_tables`]).
     cmd.arg("-g");
     // -O4 is the level that runs Binaryen's Flatten pass, and Flatten does not
     // support `try_table`, the instruction that catches a raise: it aborts
@@ -512,6 +513,7 @@ fn run_wasm_opt(wasm_bytes: &[u8], level: &str, verbose: bool) -> Result<Vec<u8>
         }
     };
     let optimized = preserve_load_bearing_sections(wasm_bytes, optimized);
+    let optimized = drop_rewritten_tables(optimized);
 
     if verbose {
         let savings = original_size as f64 - optimized.len() as f64;
@@ -575,6 +577,45 @@ fn preserve_section(original: &[u8], optimized: Vec<u8>, section: &str) -> Vec<u
     out.push(0x00);
     write_leb128(&mut out, payload.len() as u64);
     out.extend_from_slice(&payload);
+    out
+}
+
+/// The custom sections that describe the bodies by their code offsets and
+/// function indices: the stepping tables of a debug-profile module, which
+/// `rk test -O` optimizes. wasm-opt keeps a custom section as it came, so
+/// after it they describe code that is gone, and a failure would be placed
+/// in a function it never reached. A release build never carries them.
+const REWRITTEN_TABLES: [&str; 3] = [
+    debug_format::DEBUG_FUNCTIONS_SECTION,
+    debug_format::DEBUG_LINES_SECTION,
+    debug_format::DEBUG_LOCALS_SECTION,
+];
+
+/// `optimized` without the [`REWRITTEN_TABLES`]: a failure of an optimized
+/// test build is reported without the calls, nothing naming them. A module
+/// without any comes back as it is.
+fn drop_rewritten_tables(optimized: Vec<u8>) -> Vec<u8> {
+    let rewritten = |payload: &wasmparser::Payload| {
+        matches!(payload, wasmparser::Payload::CustomSection(section)
+            if REWRITTEN_TABLES.contains(&section.name()))
+    };
+    let parsed: Result<Vec<_>, _> = wasmparser::Parser::new(0).parse_all(&optimized).collect();
+    // The optimizer's output, if it cannot be read, stays as it came.
+    let Ok(payloads) = parsed else {
+        return optimized;
+    };
+    if !payloads.iter().any(rewritten) {
+        return optimized;
+    }
+    // The header, then every other section as it was.
+    let mut out = optimized[..8].to_vec();
+    for payload in payloads.iter().filter(|payload| !rewritten(payload)) {
+        if let Some((id, range)) = payload.as_section() {
+            out.push(id);
+            write_leb128(&mut out, range.len() as u64);
+            out.extend_from_slice(&optimized[range]);
+        }
+    }
     out
 }
 
@@ -729,6 +770,50 @@ mod tests {
                 "{section} must be re-attached after being stripped"
             );
         }
+    }
+
+    /// What wasm-opt hands back still carries the stepping tables, as they
+    /// came: they are dropped, and every other section is kept as it was.
+    /// A module without any is handed back byte for byte.
+    #[test]
+    fn the_stepping_tables_are_dropped_after_optimization() {
+        let mut optimized = module_with_section(debug_format::DEBUG_LINES_SECTION, b"lines");
+        for (section, data) in [
+            (debug_format::DEBUG_SYMBOLS_SECTION, b"symbols".as_slice()),
+            (debug_format::DEBUG_FUNCTIONS_SECTION, b"functions"),
+            (debug_format::SCHEDULE_SECTION, b"schedule"),
+            (debug_format::DEBUG_LOCALS_SECTION, b"locals"),
+        ] {
+            optimized.extend_from_slice(&module_with_section(section, data)[8..]);
+        }
+        let custom = |module: &[u8]| -> Vec<(String, Vec<u8>)> {
+            wasmparser::Parser::new(0)
+                .parse_all(module)
+                .filter_map(|payload| match payload.expect("a valid module") {
+                    wasmparser::Payload::CustomSection(section) => {
+                        Some((section.name().to_string(), section.data().to_vec()))
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+
+        let kept = drop_rewritten_tables(optimized);
+
+        assert_eq!(
+            custom(&kept),
+            [
+                (
+                    debug_format::DEBUG_SYMBOLS_SECTION.to_string(),
+                    b"symbols".to_vec()
+                ),
+                (
+                    debug_format::SCHEDULE_SECTION.to_string(),
+                    b"schedule".to_vec()
+                ),
+            ]
+        );
+        assert_eq!(drop_rewritten_tables(kept.clone()), kept);
     }
 
     /// A minimal valid module carrying one custom section.

@@ -411,6 +411,48 @@ END_FUNCTION
     ");
 }
 
+/// What a bracket cannot index is named as what it indexes: after another
+/// bracket, the element that one read, and past the array's dimensions, its
+/// element type. Both named the array the path started from, `'ARRAY [1..2]
+/// OF DINT'` for `x[1][2]`, which can be indexed.
+#[rstest]
+#[case::after_a_bracket("x[1][2]", "DINT")]
+#[case::after_all_dimensions("m[1, 2][1]", "DINT")]
+#[case::past_the_dimensions("m[1, 2, 1]", "DINT")]
+#[case::after_a_partial_bracket("m[1][2][1]", "DINT")]
+#[case::an_element_of_a_named_type("e[0][1].power", "Engine")]
+#[case::past_a_named_row("rows[0][1][2]", "INT")]
+#[case::the_variable_itself("w[0]", "WORD")]
+fn invalid_index_names_what_it_indexes(
+    mut with_db: RootDatabase,
+    #[case] read: &str,
+    #[case] named: &str,
+) {
+    let source = format!(
+        r#"
+TYPE Engine : STRUCT power : INT; END_STRUCT; END_TYPE
+TYPE Row : ARRAY[0..2] OF INT; END_TYPE
+FUNCTION F : DINT
+VAR
+    x : ARRAY[1..2] OF DINT;
+    m : ARRAY[1..2, 1..2] OF DINT;
+    e : ARRAY[0..1] OF Engine;
+    rows : ARRAY[0..1] OF Row;
+    w : WORD;
+END_VAR
+    F := {read};
+END_FUNCTION
+"#
+    );
+    let diagnostics = test_diagnostics(&mut with_db, &[&source]);
+    assert_eq!(diagnostics.matches("] Error:").count(), 1, "{diagnostics}");
+    assert!(
+        diagnostics.contains("[E0508]")
+            && diagnostics.contains(&format!("cannot index into type '{named}'")),
+        "{diagnostics}"
+    );
+}
+
 #[rstest]
 fn field_expression_on_array(mut with_db: RootDatabase) {
     let source = r#"

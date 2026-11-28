@@ -108,6 +108,17 @@ impl<'db> InitInference<'db> {
         if enforce {
             for leaves in self.init_expr_result.resolved.values() {
                 for leaf in leaves {
+                    // A value that did not resolve was reported where it
+                    // failed (E0201, E0205, E1008): that it is no constant
+                    // follows, and is not reported again.
+                    if self
+                        .body_infer_result
+                        .type_of_expr
+                        .get(&leaf.value)
+                        .is_some_and(|ty| ty.is_never())
+                    {
+                        continue;
+                    }
                     // A value naming a constant in a loop is reported at the
                     // constant (E0408).
                     if !crate::hir_ty::infer::const_eval::init_leaf_is_constant(db, leaf.value)

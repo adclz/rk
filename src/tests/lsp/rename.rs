@@ -8,7 +8,7 @@ use ide_proto::{handlers::RenameHandler, walk::descendant_at};
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{add_source, add_sources, with_db};
+use crate::tests::utils::{add_source, add_sources, test_diagnostics, with_db};
 
 /// Apply a WorkspaceEdit to the original sources and return the modified text.
 /// Sources are concatenated with `---` separators for multi-file snapshots.
@@ -572,6 +572,423 @@ END_FUNCTION
     FUNCTION caller : INT
     VAR v : INT; r : INT; END_VAR
         caller := g(a0 := 1, a1 := 3) + g(v, 2) + g(a0 := g(a0 := 4, a1 := 5), a1 := v, out => r);
+    END_FUNCTION
+    ");
+}
+
+/// The other way: a positional argument written as a name is that name, so
+/// renaming from it renames the variable passed, every use of it included,
+/// and leaves the input it binds alone. It used to rename the input.
+#[rstest]
+fn rename_from_a_positional_argument_renames_what_it_names(mut with_db: RootDatabase) {
+    let source = r#"FUNCTION Twice : DINT
+VAR_INPUT value : DINT; END_VAR
+    Twice := value * 2;
+END_FUNCTION
+
+FUNCTION_BLOCK Acc
+VAR_INPUT amount : DINT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION Caller : DINT
+VAR level : DINT; a : Acc; END_VAR
+    Caller := Twice(level) + Twice(value := level);
+    a(level);
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    let renamed: Vec<String> = ["Twice(level)", "a(level)"]
+        .iter()
+        .map(|marker| {
+            let offset = source.find(marker).unwrap() + marker.find('(').unwrap() + 1;
+            let node = descendant_at(&with_db, file, offset).unwrap();
+            let edit = node.rename(&with_db, offset, "speed").unwrap();
+            apply_rename(&with_db, &edit, &[source])
+        })
+        .collect();
+    assert_eq!(
+        renamed[0], renamed[1],
+        "from an instance's call as from a FUNCTION's"
+    );
+    assert_snapshot!(renamed[0], @r"
+    FUNCTION Twice : DINT
+    VAR_INPUT value : DINT; END_VAR
+        Twice := value * 2;
+    END_FUNCTION
+
+    FUNCTION_BLOCK Acc
+    VAR_INPUT amount : DINT; END_VAR
+    END_FUNCTION_BLOCK
+
+    FUNCTION Caller : DINT
+    VAR speed : DINT; a : Acc; END_VAR
+        Caller := Twice(speed) + Twice(value := speed);
+        a(speed);
+    END_FUNCTION
+    ");
+}
+
+/// `source` renamed to `new_name` from each of `cursors`, a marker and how far
+/// into it the cursor is: every start renames the same places, and the text
+/// they give is returned, checked to be a program rk accepts and compiles.
+fn rename_from_each(
+    db: &mut RootDatabase,
+    source: &str,
+    cursors: &[(&str, usize)],
+    new_name: &str,
+) -> String {
+    let file = add_source(db, source);
+    let renamed: Vec<String> = cursors
+        .iter()
+        .map(|(marker, inside)| {
+            let offset = source.find(marker).expect(marker) + inside;
+            let node = descendant_at(db, file, offset).unwrap();
+            let edit = node.rename(db, offset, new_name).expect(marker);
+            apply_rename(db, &edit, &[source])
+        })
+        .collect();
+    for (text, (marker, _)) in renamed.iter().zip(cursors) {
+        assert_eq!(text, &renamed[0], "from {marker:?}");
+    }
+    let renamed = renamed.into_iter().next().unwrap();
+    assert_eq!(
+        test_diagnostics(&mut RootDatabase::default(), &[renamed.as_str()]),
+        "",
+        "the renamed program is accepted"
+    );
+    renamed
+}
+
+/// A method shares its name with the method it overrides and the ones that
+/// override it, an ABSTRACT one with its implementations: renaming any of
+/// them renames them all, and every call bound to one, through `THIS` and
+/// `SUPER` too. Renaming one alone broke the others (E1113, E1116). A
+/// PRIVATE method is its block's own: a derived block's method of the same
+/// name is another one.
+#[rstest]
+fn rename_a_method_renames_what_overrides_it_and_what_it_overrides(mut with_db: RootDatabase) {
+    let source = r#"FUNCTION_BLOCK ABSTRACT Base
+    METHOD PUBLIC ABSTRACT Area : DINT
+    END_METHOD
+    METHOD PUBLIC Twice : DINT
+        Twice := 2 * THIS.Area() + Helper();
+    END_METHOD
+    METHOD PRIVATE Helper : DINT
+        Helper := 1;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Square EXTENDS Base
+VAR_INPUT side : DINT; END_VAR
+    METHOD PUBLIC OVERRIDE Area : DINT
+        Area := side * side;
+    END_METHOD
+    METHOD PRIVATE Helper : DINT
+        Helper := 2;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Tile EXTENDS Square
+    METHOD PUBLIC OVERRIDE Area : DINT
+        Area := SUPER.Area() + 1;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION Total : DINT
+VAR s : Square; t : Tile; END_VAR
+    Total := s.Area() + t.Area() + t.Twice();
+END_FUNCTION
+"#;
+    let area = [
+        ("ABSTRACT Area", "ABSTRACT ".len()),
+        ("Area := side", 0),
+        ("SUPER.Area", "SUPER.".len()),
+        ("t.Area", "t.".len()),
+    ];
+    assert_snapshot!(rename_from_each(&mut with_db, source, &area, "Surface"), @r"
+    FUNCTION_BLOCK ABSTRACT Base
+        METHOD PUBLIC ABSTRACT Surface : DINT
+        END_METHOD
+        METHOD PUBLIC Twice : DINT
+            Twice := 2 * THIS.Surface() + Helper();
+        END_METHOD
+        METHOD PRIVATE Helper : DINT
+            Helper := 1;
+        END_METHOD
+    END_FUNCTION_BLOCK
+
+    FUNCTION_BLOCK Square EXTENDS Base
+    VAR_INPUT side : DINT; END_VAR
+        METHOD PUBLIC OVERRIDE Surface : DINT
+            Surface := side * side;
+        END_METHOD
+        METHOD PRIVATE Helper : DINT
+            Helper := 2;
+        END_METHOD
+    END_FUNCTION_BLOCK
+
+    FUNCTION_BLOCK Tile EXTENDS Square
+        METHOD PUBLIC OVERRIDE Surface : DINT
+            Surface := SUPER.Surface() + 1;
+        END_METHOD
+    END_FUNCTION_BLOCK
+
+    FUNCTION Total : DINT
+    VAR s : Square; t : Tile; END_VAR
+        Total := s.Surface() + t.Surface() + t.Twice();
+    END_FUNCTION
+    ");
+
+    let helper = [("PRIVATE Helper", "PRIVATE ".len()), ("Helper()", 0)];
+    let renamed = rename_from_each(&mut RootDatabase::default(), source, &helper, "Help");
+    assert!(renamed.contains("+ Help();") && renamed.contains("Help := 1;"));
+    assert!(
+        renamed.contains("Helper := 2;"),
+        "Square's own Helper stays"
+    );
+}
+
+/// An INTERFACE's method shares its name with every implementation, and an
+/// implementation with what overrides it in a derived block: renaming any of
+/// them renames them all, and the calls through the INTERFACE. So do its
+/// inputs, which E1128 holds to one name in every signature, with the
+/// bindings that name them. A method's own VARs stay its own.
+#[rstest]
+fn rename_an_interface_method_or_its_input_renames_every_signature(mut with_db: RootDatabase) {
+    let source = r#"INTERFACE IShape
+    METHOD Size : DINT
+    VAR_INPUT factor : DINT := 1; END_VAR
+    END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Rect IMPLEMENTS IShape
+VAR_INPUT w : DINT; h : DINT; END_VAR
+    METHOD PUBLIC Size : DINT
+    VAR_INPUT factor : DINT := 1; END_VAR
+    VAR tmp : DINT; END_VAR
+        tmp := w * h;
+        Size := tmp * factor;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Big EXTENDS Rect IMPLEMENTS IShape
+    METHOD PUBLIC OVERRIDE Size : DINT
+    VAR_INPUT factor : DINT := 1; END_VAR
+        Size := 10 * SUPER.Size(factor := factor);
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Disk IMPLEMENTS IShape
+VAR_INPUT r : DINT; END_VAR
+    METHOD PUBLIC Size : DINT
+    VAR_INPUT factor : DINT := 1; END_VAR
+    VAR tmp : DINT; END_VAR
+        tmp := 3 * r * r;
+        Size := tmp * factor;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION Measure : DINT
+VAR_IN_OUT shape : IShape; END_VAR
+    Measure := shape.Size(factor := 2);
+END_FUNCTION
+
+FUNCTION Both : DINT
+VAR r : Rect; b : Big; d : Disk; END_VAR
+    Both := Measure(shape := r) + Measure(shape := b) + d.Size();
+END_FUNCTION
+"#;
+    let size = [
+        ("METHOD Size", "METHOD ".len()),
+        ("shape.Size", "shape.".len()),
+        ("d.Size", "d.".len()),
+    ];
+    let renamed = rename_from_each(&mut with_db, source, &size, "Extent");
+    assert!(!renamed.contains("Size"), "{renamed}");
+
+    let factor = [
+        ("factor : DINT := 1; END_VAR\n    END_METHOD", 0),
+        ("(factor := factor)", 1),
+        ("(factor := 2)", 1),
+    ];
+    assert_snapshot!(rename_from_each(&mut RootDatabase::default(), source, &factor, "scale"), @r"
+    INTERFACE IShape
+        METHOD Size : DINT
+        VAR_INPUT scale : DINT := 1; END_VAR
+        END_METHOD
+    END_INTERFACE
+
+    FUNCTION_BLOCK Rect IMPLEMENTS IShape
+    VAR_INPUT w : DINT; h : DINT; END_VAR
+        METHOD PUBLIC Size : DINT
+        VAR_INPUT scale : DINT := 1; END_VAR
+        VAR tmp : DINT; END_VAR
+            tmp := w * h;
+            Size := tmp * scale;
+        END_METHOD
+    END_FUNCTION_BLOCK
+
+    FUNCTION_BLOCK Big EXTENDS Rect IMPLEMENTS IShape
+        METHOD PUBLIC OVERRIDE Size : DINT
+        VAR_INPUT scale : DINT := 1; END_VAR
+            Size := 10 * SUPER.Size(scale := scale);
+        END_METHOD
+    END_FUNCTION_BLOCK
+
+    FUNCTION_BLOCK Disk IMPLEMENTS IShape
+    VAR_INPUT r : DINT; END_VAR
+        METHOD PUBLIC Size : DINT
+        VAR_INPUT scale : DINT := 1; END_VAR
+        VAR tmp : DINT; END_VAR
+            tmp := 3 * r * r;
+            Size := tmp * scale;
+        END_METHOD
+    END_FUNCTION_BLOCK
+
+    FUNCTION Measure : DINT
+    VAR_IN_OUT shape : IShape; END_VAR
+        Measure := shape.Size(scale := 2);
+    END_FUNCTION
+
+    FUNCTION Both : DINT
+    VAR r : Rect; b : Big; d : Disk; END_VAR
+        Both := Measure(shape := r) + Measure(shape := b) + d.Size();
+    END_FUNCTION
+    ");
+
+    let tmp = [("tmp := w * h", 0)];
+    let renamed = rename_from_each(&mut RootDatabase::default(), source, &tmp, "area");
+    assert!(renamed.contains("area := w * h;") && renamed.contains("Size := area * factor;"));
+    assert!(
+        renamed.contains("tmp := 3 * r * r;"),
+        "Disk's own tmp stays"
+    );
+}
+
+/// A VAR_EXTERNAL names the VAR_GLOBAL it imports by its name: renaming
+/// either renames the global and every VAR_EXTERNAL of it, with their uses
+/// and what a task reads of it, `INTERVAL := period` and `SINGLE := trigger`.
+/// Renaming one side alone left the other unbound (E0206).
+#[rstest]
+fn rename_a_global_renames_every_var_external_of_it(mut with_db: RootDatabase) {
+    let source = r#"PROGRAM Main
+VAR_EXTERNAL trigger : BOOL; count : DINT; END_VAR
+    count := count + 1;
+    trigger := count > 3;
+END_PROGRAM
+
+FUNCTION Reads : DINT
+VAR_EXTERNAL count : DINT; END_VAR
+    Reads := count;
+END_FUNCTION
+
+CONFIGURATION Plant
+    VAR_GLOBAL CONSTANT
+        period : TIME := T#20ms;
+    END_VAR
+    VAR_GLOBAL
+        trigger : BOOL;
+        count : DINT;
+    END_VAR
+    RESOURCE Cpu ON PLC
+        TASK Cyclic(INTERVAL := period, PRIORITY := 1);
+        TASK OnEdge(SINGLE := trigger, PRIORITY := 2);
+        PROGRAM Main1 WITH Cyclic : Main;
+        PROGRAM Main2 WITH OnEdge : Main;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    let count = [
+        ("count : DINT; END_VAR\n    count := count", 0),
+        ("VAR_EXTERNAL count", "VAR_EXTERNAL ".len()),
+        ("Reads := count", "Reads := ".len()),
+        ("count : DINT;\n    END_VAR", 0),
+    ];
+    assert_snapshot!(rename_from_each(&mut with_db, source, &count, "total"), @r"
+    PROGRAM Main
+    VAR_EXTERNAL trigger : BOOL; total : DINT; END_VAR
+        total := total + 1;
+        trigger := total > 3;
+    END_PROGRAM
+
+    FUNCTION Reads : DINT
+    VAR_EXTERNAL total : DINT; END_VAR
+        Reads := total;
+    END_FUNCTION
+
+    CONFIGURATION Plant
+        VAR_GLOBAL CONSTANT
+            period : TIME := T#20ms;
+        END_VAR
+        VAR_GLOBAL
+            trigger : BOOL;
+            total : DINT;
+        END_VAR
+        RESOURCE Cpu ON PLC
+            TASK Cyclic(INTERVAL := period, PRIORITY := 1);
+            TASK OnEdge(SINGLE := trigger, PRIORITY := 2);
+            PROGRAM Main1 WITH Cyclic : Main;
+            PROGRAM Main2 WITH OnEdge : Main;
+        END_RESOURCE
+    END_CONFIGURATION
+    ");
+
+    let trigger = [
+        ("trigger : BOOL; count", 0),
+        ("trigger : BOOL;\n        count", 0),
+    ];
+    let renamed = rename_from_each(&mut RootDatabase::default(), source, &trigger, "edge");
+    assert!(
+        renamed.contains("VAR_EXTERNAL edge : BOOL;")
+            && renamed.contains("edge := count > 3;")
+            && renamed.contains("VAR_GLOBAL\n        edge : BOOL;")
+            && renamed.contains("SINGLE := edge"),
+        "{renamed}"
+    );
+
+    let period = [("period : TIME", 0)];
+    let renamed = rename_from_each(&mut RootDatabase::default(), source, &period, "cycle");
+    assert!(
+        renamed.contains("cycle : TIME := T#20ms;") && renamed.contains("INTERVAL := cycle"),
+        "{renamed}"
+    );
+}
+
+/// A variadic parameter is read by `...values+` or `...values[i]` alone, which
+/// no path names: a rename renamed its declaration and left its reads naming
+/// nothing (E0814). From a read, as from the declaration, every one is
+/// renamed, a comparison's among them, whose value is a BOOL.
+#[rstest]
+fn rename_a_variadic_parameter_renames_its_reads(mut with_db: RootDatabase) {
+    let source = r#"FUNCTION Sum : DINT
+VAR_INPUT k : LINT; values : DINT...; END_VAR
+VAR ascending : BOOL; END_VAR
+    ascending := ...values<;
+    Sum := ...values+;
+    Sum := Sum + ...values[k];
+END_FUNCTION
+
+FUNCTION Caller : DINT
+    Caller := Sum(0, 1, 2, 3);
+END_FUNCTION
+"#;
+    let cursors = [
+        ("values : DINT", 0),
+        ("...values<", "...".len()),
+        ("...values+", "...".len()),
+        ("...values[k]", "...".len()),
+    ];
+    assert_snapshot!(rename_from_each(&mut with_db, source, &cursors, "args"), @r"
+    FUNCTION Sum : DINT
+    VAR_INPUT k : LINT; args : DINT...; END_VAR
+    VAR ascending : BOOL; END_VAR
+        ascending := ...args<;
+        Sum := ...args+;
+        Sum := Sum + ...args[k];
+    END_FUNCTION
+
+    FUNCTION Caller : DINT
+        Caller := Sum(0, 1, 2, 3);
     END_FUNCTION
     ");
 }

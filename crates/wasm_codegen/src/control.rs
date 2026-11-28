@@ -28,7 +28,9 @@
 //!
 //! An error is the message of the exception that stopped the call, which
 //! is caught here: one that left the module would trap at a component's
-//! boundary, and lock its store.
+//! boundary, and lock its store. So would a message that is not UTF-8, a
+//! `string` to the host: it is handed over cut before its first byte that
+//! is not ([`cut_message`]).
 
 use mir::MirModule;
 use wasm_encoder::{BlockType, Catch, ConstExpr, Function, Instruction, ValType};
@@ -53,6 +55,20 @@ const OUTSIDE_VARIABLES: u8 = 2;
 /// than 4 bytes: every result of the control interface. An error that is a
 /// variant has its case there, and what the case holds 4 bytes on.
 pub(crate) const PAYLOAD: u64 = 4;
+
+/// How a function a host calls catches a raise: the exception's tag, the
+/// type of the block its catch lands in, `() -> (i32, i32)`, and the
+/// bundle's [`UTF8_CUT`], which says how much of the message the host is
+/// given.
+#[derive(Clone, Copy)]
+pub(crate) struct Caught {
+    pub(crate) tag: u32,
+    pub(crate) block_type: u32,
+    pub(crate) cut: u32,
+}
+
+/// The bundle's function that gives the length of a message's UTF-8 start.
+pub(crate) const UTF8_CUT: &str = "rk.utf8_cut";
 
 /// What a raise caught at the interface becomes.
 #[derive(Clone, Copy)]
@@ -287,6 +303,15 @@ fn import_records_size(module: &MirModule) -> u32 {
 }
 
 impl WasmGen<'_> {
+    /// The index of the bundle's [`UTF8_CUT`], grafted wherever the module
+    /// can raise.
+    pub(crate) fn utf8_cut(&self) -> u32 {
+        self.builtin_indices
+            .get(UTF8_CUT)
+            .copied()
+            .unwrap_or_else(|| panic!("internal compiler error: `{UTF8_CUT}` was not grafted"))
+    }
+
     /// Emits the interface's functions after every other function, exports
     /// them, and writes the message an `{export}` FUNCTION refuses a long
     /// STRING with.
@@ -298,7 +323,7 @@ impl WasmGen<'_> {
         );
         // A catch hands its `(ptr, len)` to the block it branches out of.
         let caught = self.rk_exception_tag_idx.map(|tag| {
-            let ty = match self.test_catch_block_type_idx {
+            let block_type = match self.test_catch_block_type_idx {
                 Some(ty) => ty,
                 None => {
                     let ty = self.add_type(&[], &[ValType::I32, ValType::I32]);
@@ -306,7 +331,11 @@ impl WasmGen<'_> {
                     ty
                 }
             };
-            (tag, ty)
+            Caught {
+                tag,
+                block_type,
+                cut: self.utf8_cut(),
+            }
         });
 
         let arena = self.arena;
@@ -444,7 +473,7 @@ impl WasmGen<'_> {
         &self,
         area: &ControlArea,
         init: Option<u32>,
-        caught: Option<(u32, u32)>,
+        caught: Option<Caught>,
     ) -> Function {
         let mut f = Function::new([(2, ValType::I32)]);
         let (ptr, len) = (0, 1);
@@ -463,12 +492,7 @@ impl WasmGen<'_> {
     /// `run-task`: the inputs copied into the input band, as much of them
     /// as it holds; each program instance of the task run in order; the
     /// output band returned. An unknown task is an error.
-    fn control_run_task(
-        &self,
-        area: &ControlArea,
-        caught: Option<(u32, u32)>,
-        arena: u32,
-    ) -> Function {
+    fn control_run_task(&self, area: &ControlArea, caught: Option<Caught>, arena: u32) -> Function {
         // Params: task 0, ptr 1, len 2; locals: the caught message 3, 4.
         let mut f = Function::new([(2, ValType::I32)]);
         let (task, input_ptr, input_len) = (0, 1, 2);
@@ -1071,26 +1095,31 @@ fn copy_in(f: &mut Function, base: u32, size: u32, ptr: u32, len: u32) {
 }
 
 /// Runs `body`, which returns, and when the module can raise, catches what
-/// it raises into an error: the message stashed in the locals `stash`, then
-/// written at the return area as `raised` says, whose address the function
-/// returns.
+/// it raises into an error: the message stashed in the locals `stash`, cut
+/// to its UTF-8 start ([`cut_message`]), then written at the return area as
+/// `raised` says, whose address the function returns.
 pub(crate) fn catching(
     f: &mut Function,
     area: &ControlArea,
-    caught: Option<(u32, u32)>,
+    caught: Option<Caught>,
     stash: (u32, u32),
     raised: Raised,
     body: impl FnOnce(&mut Function),
 ) {
-    let Some((tag, block_ty)) = caught else {
+    let Some(caught) = caught else {
         body(f);
         f.instruction(&Instruction::End);
         return;
     };
-    f.instruction(&Instruction::Block(BlockType::FunctionType(block_ty)));
+    f.instruction(&Instruction::Block(BlockType::FunctionType(
+        caught.block_type,
+    )));
     f.instruction(&Instruction::TryTable(
         BlockType::Empty,
-        std::borrow::Cow::Owned(vec![Catch::One { tag, label: 0 }]),
+        std::borrow::Cow::Owned(vec![Catch::One {
+            tag: caught.tag,
+            label: 0,
+        }]),
     ));
     body(f);
     f.instruction(&Instruction::End);
@@ -1101,6 +1130,7 @@ pub(crate) fn catching(
     let (ptr, len) = stash;
     f.instruction(&Instruction::LocalSet(len));
     f.instruction(&Instruction::LocalSet(ptr));
+    cut_message(f, caught.cut, ptr, len);
     match raised {
         Raised::Message { payload } => write_err(f, area, payload, ptr, len),
         Raised::Case(case) => {
@@ -1114,6 +1144,18 @@ pub(crate) fn catching(
     }
     f.instruction(&Instruction::I32Const(area.ret as i32));
     f.instruction(&Instruction::End);
+}
+
+/// Sets the local `len` to how many bytes of the message `(ptr, len)` are
+/// UTF-8 from its start, with `cut`, the bundle's [`UTF8_CUT`]. A host reads
+/// the message as WIT's `string`, and the component model traps on one
+/// that is not UTF-8: a message cut inside a character, or holding a `$hh`
+/// byte that starts none, reaches it cut before that byte instead.
+pub(crate) fn cut_message(f: &mut Function, cut: u32, ptr: u32, len: u32) {
+    f.instruction(&Instruction::LocalGet(ptr));
+    f.instruction(&Instruction::LocalGet(len));
+    f.instruction(&Instruction::Call(cut));
+    f.instruction(&Instruction::LocalSet(len));
 }
 
 /// `Err` at the return area, of the case `case` of the error's variant: what

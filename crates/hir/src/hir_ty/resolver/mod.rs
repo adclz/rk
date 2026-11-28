@@ -332,9 +332,10 @@ impl<'db> Resolver<'db> {
                 // `Idx` hid the global `idx` of `P1.bits[idx]` (E0317). A
                 // name no value has is a POU: a FUNCTION called, or a type,
                 // which is no value. The type before a `#` is resolved
-                // before this, by `resolve_qualifier`. A local name is left
-                // to the once-per-type rule, which refuses it as not
-                // constant.
+                // before this, by `resolve_qualifier`. A name that is
+                // neither is unknown, ambiguous or out of reach, and says
+                // so (E0201, E0205, E1008): left to the once-per-type rule,
+                // an unknown name was only "not constant" (E0401).
                 if path_expr.invocation(db).is_none()
                     && let Some(path) = path_expr.expr(db)
                     && let steps = path.flatten(db)
@@ -367,6 +368,10 @@ impl<'db> Resolver<'db> {
                     self.resolve_index_subscripts(db, path, ctx);
                 } else if let Some((pou, using)) = pou_named(db, path_expr) {
                     record_pou(db, path_expr, pou, using, multibits, ctx);
+                } else if path_expr.invocation(db).is_none()
+                    && let Some(path) = path_expr.expr(db)
+                {
+                    self.try_resolve_as_fq(db, path, multibits, ctx);
                 }
             }
         };
