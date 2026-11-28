@@ -954,6 +954,45 @@ END_CONFIGURATION
     );
 }
 
+/// A variadic parameter is read by `...values+` or `...values[i]` alone, which
+/// no path names: a rename renamed its declaration and left its reads naming
+/// nothing (E0814). From a read, as from the declaration, every one is
+/// renamed, a comparison's among them, whose value is a BOOL.
+#[rstest]
+fn rename_a_variadic_parameter_renames_its_reads(mut with_db: RootDatabase) {
+    let source = r#"FUNCTION Sum : DINT
+VAR_INPUT k : LINT; values : DINT...; END_VAR
+VAR ascending : BOOL; END_VAR
+    ascending := ...values<;
+    Sum := ...values+;
+    Sum := Sum + ...values[k];
+END_FUNCTION
+
+FUNCTION Caller : DINT
+    Caller := Sum(0, 1, 2, 3);
+END_FUNCTION
+"#;
+    let cursors = [
+        ("values : DINT", 0),
+        ("...values<", "...".len()),
+        ("...values+", "...".len()),
+        ("...values[k]", "...".len()),
+    ];
+    assert_snapshot!(rename_from_each(&mut with_db, source, &cursors, "args"), @r"
+    FUNCTION Sum : DINT
+    VAR_INPUT k : LINT; args : DINT...; END_VAR
+    VAR ascending : BOOL; END_VAR
+        ascending := ...args<;
+        Sum := ...args+;
+        Sum := Sum + ...args[k];
+    END_FUNCTION
+
+    FUNCTION Caller : DINT
+        Caller := Sum(0, 1, 2, 3);
+    END_FUNCTION
+    ");
+}
+
 /// A namespace declared with a dotted name is renamed by its last segment,
 /// in its declarations and in the USINGs that name it; the segments before
 /// it are its parents. With the cursor on a parent segment nothing is
