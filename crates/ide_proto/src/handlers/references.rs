@@ -9,7 +9,9 @@ use hir::{
     HasName, HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{InitExpr, InitExprKind, ParamAssign, ParamAssignKind, PathExpr},
+            expression::{
+                Expr, ExprKind, InitExpr, InitExprKind, ParamAssign, ParamAssignKind, PathExpr,
+            },
             spec::{Spec, SpecKind},
         },
         hir_node::HirNode,
@@ -17,6 +19,7 @@ use hir::{
             identifier::SpanIdent,
             namespace::{NamespacePath, SpanNamespacePath},
         },
+        pous::variable::VariableDecl,
         semantic_index::semantic_index,
     },
     hir_ty::{
@@ -163,6 +166,11 @@ pub(crate) fn resolve_cursor_target<'db>(
         HirNode::Spec(spec) => spec.infer(db),
         HirNode::PathExpr(p) => path_reference_target(db, *p),
         HirNode::VariableAccess(v) => v.infer(db),
+        // `...values+` names the pack, whatever the fold gives: a
+        // comparison's is a BOOL.
+        HirNode::Expr(e) if let Some((_, pack)) = pack_named(db, *e) => {
+            Type::Variable((pack, None))
+        }
         HirNode::Expr(e) => e.infer(db),
         HirNode::Param(p) => p.infer(db),
         // A field it names: its parentheses and brackets name nothing, and
@@ -198,8 +206,12 @@ fn resolve_walk_target<'db>(
         // A field named in an initializer, `fuel` of `(fuel := 1)`. The other
         // initializer nodes hold their values, and name nothing themselves.
         HirNode::InitExpr(i) => init_field_name(db, *i).map(|_| i.infer(db))?,
-        // Skip Expr, Invocation, VariableAccess — they wrap inner nodes
-        // and would produce duplicate matches (PathExpr already covers variable accesses)
+        // A variadic parameter is read by `...values+` or `...values[i]`
+        // alone, which no path names: a rename left them behind (E0814).
+        HirNode::Expr(e) => Type::Variable((pack_named(db, *e)?.1, None)),
+        // Skip the other Exprs, Invocation, VariableAccess — they wrap inner
+        // nodes and would produce duplicate matches (PathExpr already covers
+        // variable accesses)
         _ => return None,
     };
     normalize_reference_type(ty)
@@ -213,6 +225,27 @@ fn param_name<'db>(db: &'db dyn WorkspaceDataBase, p: ParamAssign<'db>) -> Optio
         | ParamAssignKind::FormalOutput { param, .. } => Some(param),
         ParamAssignKind::NonFormal { .. } => None,
     }
+}
+
+/// The variadic parameter a fold or an element of a pack reads, `values` of
+/// `...values+` or `...values[i]`, and the name it is written with: the
+/// POU's own, as inference binds it.
+fn pack_named<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    e: Expr<'db>,
+) -> Option<(SpanIdent<'db>, VariableDecl<'db>)> {
+    let (ExprKind::FoldExpr { param_id, .. } | ExprKind::PackElement { param_id, .. }) = e.expr(db)
+    else {
+        return None;
+    };
+    let pack = e
+        .scope_id(db)
+        .def_map(db)
+        .local_variables
+        .get(&param_id.ident(db))
+        .copied()
+        .filter(|var| var.variadic(db))?;
+    Some((*param_id, pack))
 }
 
 /// The field or member an initializer names, `fuel` of `(fuel := 1)`.
@@ -241,6 +274,7 @@ fn node_reference_ident<'db>(
         HirNode::Param(p) => param_name(db, *p)?.ident(db).text(db),
         HirNode::InitExpr(i) => init_field_name(db, *i)?.ident(db).text(db),
         HirNode::Spec(spec) => spec_target(db, *spec)?.ident(db).text(db),
+        HirNode::Expr(e) => pack_named(db, *e)?.0.ident(db).text(db),
         _ => return None,
     })
 }
@@ -280,6 +314,11 @@ fn reference_span<'db>(
         },
         // The name alone, `T` of `Lib.T`: the whole path was replaced, and
         // the namespace it was qualified with went with it.
+        // The name alone, `values` of `...values+`.
+        HirNode::Expr(e) => match pack_named(db, *e) {
+            Some((name, _)) => name.get_span(db),
+            None => node.get_span(db),
+        },
         HirNode::Spec(spec) => match spec_target(db, *spec) {
             Some(name) => name.get_span(db),
             None => node.get_span(db),
